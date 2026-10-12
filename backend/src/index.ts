@@ -1,6 +1,6 @@
 import { createApp } from './app';
-import { env } from './config/env';
-import { connectDb, disconnectDb } from './db/connection';
+import { env } from './config';
+import { connectDb, disconnectDb } from './db';
 
 async function main(): Promise<void> {
   await connectDb(env.mongoUri);

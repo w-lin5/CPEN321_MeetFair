@@ -21,3 +21,10 @@ export const env = {
   jwtSecret: requireValue('JWT_SECRET', process.env.JWT_SECRET, 'test-secret'),
   googleClientId: requireValue('GOOGLE_CLIENT_ID', process.env.GOOGLE_CLIENT_ID, 'test-client-id'),
 } as const;
+
+// Every tunable number lives here (no magic numbers elsewhere) 
+export const tuning = {
+  jwtTtlSeconds: 7 * 24 * 60 * 60,
+  msPerSecond: 1000,
+  idTokenMaxLength: 4096,
+} as const;
