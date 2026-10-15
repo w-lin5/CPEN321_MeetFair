@@ -126,26 +126,34 @@
 
 #### Use Case 4: Finalize Meetup
 
-**Description**: ...
+**Description**: The Organizer closes the voting process, allowing the system to determine the winning location, update each member's fairness debt based on their finalized commute, and export the event to the members' calendars.
 
-**Primary actor(s)**: ... 
+**Primary actor(s)**: Organizer, Google Calendar API 
     
 **Main success scenario**:
-1. ...
-2. ...
+1. The Organizer selects the option to close voting and finalize the meetup.
+2. The system tallies the weighted votes and determines the winning location.
+3. The system saves the winning location as the finalized destination in the database.
+4. The system sends the meetup details (location, time, attendees) to the Google Calendar API to create a calendar event.
+5. The system marks the meetup as finalized and sends a notification to all group members with the final result.
 
 **Failure scenario(s)**:
-- 1a. ...
-    - 1a1. ...
-    - 1a2. ...
-
-- 1b. ...
-    - 1b1. ...
-    - 1b2. ...
-                
-- 2a. ...
-    - 2a1. ...
-    - 2a2. ...
+- 1a. The Organizer attempts to finalize with zero votes cast.
+    - 1a1. The system blocks finalization and displays an error prompt, requiring the Organizer to either cast a vote themselves or manually select a winner to proceed.
+- 1b. The Organizer attempts to finalize meetup before all members have voted.
+    - 1b1. The system presents a warning prompt asking the Organizer to confirm they want to force-close the poll early. If confirmed, the system proceeds to step 2. If cancelled, the system returns to the active voting screen.
+- 1c. The Organizer's device has no network connection.
+    - 1c1. The system displays a "No network connection" error and leaves the poll open, prompting the Organizer to try again when reconnected.
+- 2a. A tie occurs in the weighted voting tally.
+    - 2a1. The system reviews the members who voted for the tied locations and selects the candidate chosen by the member with the highest individual fairness debt.
+    - 2a2. If there is more than one member with the same fairness debt, the system prompts the Organizer to manually select the final winner to break the tie.
+- 3a. The data fails to upload to the database.
+    - 3a1. The system aborts the finalization, rolls back any partial database changes to prevent data corruption, and alerts the Organizer to retry.
+- 4a. The external calendar sync fails for one or more members.
+    - 4a1. The system successfully creates the calendar event for all other authorized members and sends a targeted notification to the affected member with a prompt to re-authenticate and sync manually.
+    - 4a2. The finalized event remains in the user's database and is available for a manual sync later.
+- 5a. Push notification service fails.
+    - 5a1. The system updates the meetup status to "Finalized" within the app UI so active users see it, queues the notification payload, and silently retries sending the push notification in the background.
 
 <a name="uc5"></a>
 
