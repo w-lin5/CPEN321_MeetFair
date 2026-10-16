@@ -74,30 +74,51 @@
     - 2a1. ...
     - 2a2. ...
 
-<a name="uc2"></a>
+#### Use Case 2: Create or Join Group
 
-#### Use Case 2: Join Group
+**Description**: A user creates a new group and receives an invite code to share, or joins an existing group by entering an invite code, associating their account with that group so they can participate in future meetups.
 
-**Description**: ...
+**Primary actor(s)**: User
 
-**Primary actor(s)**: ... 
-    
-**Main success scenario**:
-1. ...
-2. ...
+**Main success scenario (Create)**:
+1. The user selects the option to create a group.
+2. The user enters a group name.
+3. The system creates the group in the database and assigns the user as a member.
+4. The system generates a unique invite code that serves as the group's identifier.
+5. The system displays the group page with the invite code for sharing.
+
+**Main success scenario (Join)**:
+1. The user selects the option to join a group.
+2. The user enters the invite code shared by the group creator.
+3. The system validates the invite code against the database.
+4. The system adds the user to the group's member list.
+5. If the user already has a group with the same name, the system displays both groups as "Group Name (distinct member name)" to differentiate them.
+6. The system displays the group page with existing members and any active meetups.
 
 **Failure scenario(s)**:
-- 1a. ...
-    - 1a1. ...
-    - 1a2. ...
+- Create 2a. The user enters an empty group name.
+    - 2a1. The system displays an error message and prompts the user to enter a valid name.
 
-- 1b. ...
-    - 1b1. ...
-    - 1b2. ...
-                
-- 2a. ...
-    - 2a1. ...
-    - 2a2. ...
+- Create 2b. The user already has a group with the same name.
+    - 2b1. The system creates the group and displays both groups as "Group Name (distinct member name)" to differentiate them.
+
+- Create 3a. The user's device has no network connection.
+    - 3a1. The system displays a "No network connection" error and prompts the user to try again when reconnected.
+
+- Join 2a. The user enters an invalid invite code.
+    - 2a1. The system displays an error message indicating the code is invalid.
+    - 2a2. The system prompts the user to re-enter a valid code.
+
+- Join 3a. The user is already a member of this group.
+    - 3a1. The system displays a message informing the user they are already in the group.
+    - 3a2. The system navigates the user to the existing group page.
+
+- Join 3b. The user's device has no network connection.
+    - 3b1. The system displays a "No network connection" error and prompts the user to try again when reconnected.
+
+- Join 4a. The group has reached its maximum member limit.
+    - 4a1. The system displays an error message that the group is full.
+    - 4a2. The system returns the user to the join group screen.
 
 <a name="uc3"></a>
 
