@@ -20,6 +20,8 @@ export const env = {
   mongoUri: requireValue('MONGODB_URI', process.env.MONGODB_URI, 'mongodb://localhost:27017/test'),
   jwtSecret: requireValue('JWT_SECRET', process.env.JWT_SECRET, 'test-secret'),
   googleClientId: requireValue('GOOGLE_CLIENT_ID', process.env.GOOGLE_CLIENT_ID, 'test-client-id'),
+  googleClientSecret: requireValue('GOOGLE_CLIENT_SECRET', process.env.GOOGLE_CLIENT_SECRET, 'test-client-secret'),
+  googleRedirectUri: requireValue('GOOGLE_REDIRECT_URI', process.env.GOOGLE_REDIRECT_URI, 'http://localhost:3000/api/v1/auth/google/callback'),
 } as const;
 
 // Every tunable number lives here (no magic numbers elsewhere) 
@@ -27,4 +29,6 @@ export const tuning = {
   jwtTtlSeconds: 7 * 24 * 60 * 60,
   msPerSecond: 1000,
   idTokenMaxLength: 4096,
+  // Google OAuth access tokens are short-lived JWTs; 2048 chars is a safe upper bound
+  oauthAccessTokenMaxLength: 2048,
 } as const;

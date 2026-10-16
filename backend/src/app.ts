@@ -2,6 +2,7 @@ import express, { type Express, Router } from 'express';
 
 import { errorHandler } from './common/middleware/error-handler';
 import { requireAuth } from './common/middleware/require-auth';
+import { googleCalendarRouter } from './integrations/google-calendar.routes';
 import { authRouter } from './users-groups/auth.routes';
 import { usersGroupsRouter } from './users-groups/routes';
 
@@ -17,6 +18,7 @@ export function createApp(): Express {
   api.use('/auth', authRouter);
   api.use(requireAuth);
   api.use(usersGroupsRouter);
+  api.use('/integrations/google-calendar', googleCalendarRouter);
   app.use('/api', api);
 
   app.use((_req, res) => {
