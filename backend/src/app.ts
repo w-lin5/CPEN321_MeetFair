@@ -4,6 +4,7 @@ import { errorHandler } from './common/middleware/error-handler';
 import { requireAuth } from './common/middleware/require-auth';
 import { authRouter } from './users-groups/auth.routes';
 import { usersGroupsRouter } from './users-groups/routes';
+import { votingRouter } from './voting/routes';
 
 export function createApp(): Express {
   const app = express();
@@ -18,6 +19,7 @@ export function createApp(): Express {
   api.use(requireAuth);
   api.use(usersGroupsRouter);
   app.use('/api', api);
+  api.use(votingRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'Not Found' });

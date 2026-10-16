@@ -2,6 +2,7 @@
 import { BadRequest, NotFound } from '../common/errors';
 import { VoteModel, VotingSessionModel } from './models';
 
+
 async function submitVote(
     sessionId: string,
     userId: string,
@@ -40,6 +41,35 @@ async function submitVote(
     return vote;
 }
 
+
+async function getResults(sessionId: string) {
+  const session = await VotingSessionModel.findById(sessionId);
+
+  if (!session) {
+    throw new NotFound('Voting session not found');
+  }
+
+const votes = await VoteModel.find({ sessionId });
+
+const totals = session.candidateIds.map((candidateId) => {
+    // Count the number of votes for this candidate
+    const count = votes.filter(
+        (vote) => vote.candidateId.toString() === candidateId.toString(),
+    ).length;
+
+    return {
+        candidateId: candidateId.toString(),
+        count,
+    };
+});
+
+return {
+    sessionId,
+    totals,
+};
+}
+
 export const voteService = {
   submitVote,
+  getResults,
 };
