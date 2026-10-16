@@ -9,6 +9,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.cpen321application.AppContainer
 import com.example.cpen321application.ui.auth.SignInScreen
+import com.example.cpen321application.ui.calendar.GoogleCalendarScreen
 import com.example.cpen321application.ui.groups.GroupListScreen
 
 /** Token present -> app, token absent (sign-out or 401 status code) -> sign-in. */
@@ -27,14 +28,21 @@ private fun AuthedApp(container: AppContainer, token: String) {
     val entry = navigator.current
     key(entry.id) {
         CompositionLocalProvider(LocalEntryKey provides "${token.hashCode()}-${entry.id}") {
-            RouteContent(container, entry.route)
+            RouteContent(container, entry.route, navigator)
         }
     }
 }
 
 @Composable
-private fun RouteContent(container: AppContainer, route: Route) {
+private fun RouteContent(container: AppContainer, route: Route, navigator: Navigator) {
     when (route) {
-        Route.GroupList -> GroupListScreen(container)
+        Route.GroupList -> GroupListScreen(
+            container = container,
+            onNavigate = { destination -> navigator.push(destination) }
+        )
+        Route.GoogleCalendar -> GoogleCalendarScreen(
+            container = container,
+            onBack = { navigator.pop() }
+        )
     }
 }

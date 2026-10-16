@@ -1,0 +1,31 @@
+package com.example.cpen321application.data
+
+import com.example.cpen321application.model.CalendarEvent
+import org.json.JSONObject
+
+class GoogleCalendarRepository(private val api: ApiClient) {
+
+    /**
+     * Triggers backend import/sync of Google Calendar events into database.
+     * POST /api/integrations/google-calendar/sync
+     * Optionally accepts a Google OAuth access token with calendar.readonly scope.
+     */
+    suspend fun syncGoogleCalendar(accessToken: String? = null): ApiResult<String> {
+        val body = if (accessToken.isNullOrEmpty()) {
+            JSONObject()
+        } else {
+            JSONObject()
+                .put("accessToken", accessToken)
+                .put("token", accessToken)
+        }
+        return api.post("integrations/google-calendar/sync", body).parse(::parseSyncResponse)
+    }
+
+    /**
+     * Fetches all imported calendar events from backend database.
+     * GET /api/integrations/google-calendar/events
+     */
+    suspend fun getCalendarEvents(): ApiResult<List<CalendarEvent>> {
+        return api.get("integrations/google-calendar/events").parse(::parseCalendarEvents)
+    }
+}

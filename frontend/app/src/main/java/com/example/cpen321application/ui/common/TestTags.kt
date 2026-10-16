@@ -12,4 +12,11 @@ object TestTags {
     const val LOADING = "loading"
     const val EMPTY = "empty"
     const val BACK_BUTTON = "back_button"
+
+    const val GOOGLE_CALENDAR_NAV_BUTTON = "google_calendar_nav_button"
+    const val GOOGLE_CALENDAR_SYNC_BUTTON = "google_calendar_sync_button"
+    const val GOOGLE_CALENDAR_EVENTS_LIST = "google_calendar_events_list"
+    const val GOOGLE_CALENDAR_EVENT_ITEM = "google_calendar_event_item"
+    const val GOOGLE_CALENDAR_SYNC_SUCCESS_TEXT = "google_calendar_sync_success_text"
 }
+

@@ -13,15 +13,21 @@ import androidx.lifecycle.ViewModelProvider
 /** Every destination in the signed in app. New screens must also be added to [encode], [decodeRoute] and RouteContent. */
 sealed interface Route {
     data object GroupList : Route
+    data object GoogleCalendar : Route
 }
 
 /** Stable string form of a route, used only for saving the back stack. */
 fun Route.encode(): String = when (this) {
     Route.GroupList -> "groups"
+    Route.GoogleCalendar -> "google_calendar"
 }
 
 /** Inverse of [encode]; returns null for unrecognised text so stale saved state is dropped (instead of crashing). */
-fun decodeRoute(text: String): Route? = if (text == "groups") Route.GroupList else null
+fun decodeRoute(text: String): Route? = when (text) {
+    "groups" -> Route.GroupList
+    "google_calendar" -> Route.GoogleCalendar
+    else -> null
+}
 
 data class Entry(val id: Int, val route: Route)
 
