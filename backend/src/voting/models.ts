@@ -4,7 +4,7 @@ import { jsonOptions } from '../db';
 const votingSessionSchema = new Schema(
   {
     // Candidate locations users can vote for this round
-    candidateIds: {
+      candidateIds: {
       type: [Schema.Types.ObjectId],
       required: true,
     },
