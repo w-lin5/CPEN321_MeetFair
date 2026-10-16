@@ -17,14 +17,16 @@
 ## 3. Requirements Specification
 
 ### **3.1. List of Features**
-
-
+1. **Sign in with Google**: Users log in with their Google account.
+2. **Groups and meetups**: Any user can create a group and invite others; each user enters start location, meeting purpose (meal, study, coffee chat, outdoors, fun) and optional place types.
+3. **Fair spot recommendation**: Backend collects candidate places (Places API), gets each user's travel time (Distance Matrix), then scores every candidate with our own fairness + preference algorithm and returns the top 3 (if there exist 3).
+4. **Weighted voting**: Users vote on the top 3, weighted by each user's fairness debt (how much extra they actually travelled in past meetups). Votes appear live; the winner becomes a Google Calendar event.
+5. **Live commute tracking**: On meetup day, members tap "I'm leaving" and share live location; the group sees who is on the way. The commute ends when they tap "I'm here," or automatically when their location reaches the venue. The actual commute time updates their fairness debt for the next meetup. If someone never starts tracking, we fall back to the Google Maps estimate.
 ### **3.2. Use Case Diagram**
 ![Use Case Diagram](images\Use_Case_Diagram.jpg)
 
 ### **3.3. Actors Description**
-1. **[WRITE_NAME_HERE]**: ...
-2. **[WRITE_NAME_HERE]**: ...
+1. **User**: A signed-in user who creates or joins a meetup, enters start location and preferences, votes, and shares live location on the way so their actual commute time is recorded.
 
 ### **3.4. Use Case Description**
 - Use cases for feature 1: Sign In
@@ -72,30 +74,51 @@
     - 2a1. ...
     - 2a2. ...
 
-<a name="uc2"></a>
+#### Use Case 2: Create or Join Group
 
-#### Use Case 2: Join Group
+**Description**: A user creates a new group and receives an invite code to share, or joins an existing group by entering an invite code, associating their account with that group so they can participate in future meetups.
 
-**Description**: ...
+**Primary actor(s)**: User
 
-**Primary actor(s)**: ... 
-    
-**Main success scenario**:
-1. ...
-2. ...
+**Main success scenario (Create)**:
+1. The user selects the option to create a group.
+2. The user enters a group name.
+3. The system creates the group in the database and assigns the user as a member.
+4. The system generates a unique invite code that serves as the group's identifier.
+5. The system displays the group page with the invite code for sharing.
+
+**Main success scenario (Join)**:
+1. The user selects the option to join a group.
+2. The user enters the invite code shared by the group creator.
+3. The system validates the invite code against the database.
+4. The system adds the user to the group's member list.
+5. If the user already has a group with the same name, the system displays both groups as "Group Name (distinct member name)" to differentiate them.
+6. The system displays the group page with existing members and any active meetups.
 
 **Failure scenario(s)**:
-- 1a. ...
-    - 1a1. ...
-    - 1a2. ...
+- Create 2a. The user enters an empty group name.
+    - 2a1. The system displays an error message and prompts the user to enter a valid name.
 
-- 1b. ...
-    - 1b1. ...
-    - 1b2. ...
-                
-- 2a. ...
-    - 2a1. ...
-    - 2a2. ...
+- Create 2b. The user already has a group with the same name.
+    - 2b1. The system creates the group and displays both groups as "Group Name (distinct member name)" to differentiate them.
+
+- Create 3a. The user's device has no network connection.
+    - 3a1. The system displays a "No network connection" error and prompts the user to try again when reconnected.
+
+- Join 2a. The user enters an invalid invite code.
+    - 2a1. The system displays an error message indicating the code is invalid.
+    - 2a2. The system prompts the user to re-enter a valid code.
+
+- Join 3a. The user is already a member of this group.
+    - 3a1. The system displays a message informing the user they are already in the group.
+    - 3a2. The system navigates the user to the existing group page.
+
+- Join 3b. The user's device has no network connection.
+    - 3b1. The system displays a "No network connection" error and prompts the user to try again when reconnected.
+
+- Join 4a. The group has reached its maximum member limit.
+    - 4a1. The system displays an error message that the group is full.
+    - 4a2. The system returns the user to the join group screen.
 
 <a name="uc3"></a>
 
