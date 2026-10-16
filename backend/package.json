@@ -21,6 +21,8 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "google-auth-library": "^11.2.0",
+    "googleapis": "^186.0.0",
+    "mongodb": "^7.7.0",
     "mongoose": "^9.11.1",
     "socket.io": "^4.8.3"
   },
