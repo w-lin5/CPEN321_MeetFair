@@ -3,6 +3,12 @@ package com.example.cpen321application.data
 import com.example.cpen321application.model.Group
 import com.example.cpen321application.model.GroupMember
 import com.example.cpen321application.model.GroupRole
+import com.example.cpen321application.model.Meetup
+import com.example.cpen321application.model.MeetupStatus
+import com.example.cpen321application.model.Participant
+import com.example.cpen321application.model.Preference
+import com.example.cpen321application.model.StartLocation
+import com.example.cpen321application.model.TravelMode
 import com.example.cpen321application.model.User
 import org.json.JSONArray
 import org.json.JSONObject
@@ -22,6 +28,8 @@ internal fun JSONObject.stringOrNull(key: String): String? = if (has(key) && !is
 internal fun <T> JSONArray.mapObjects(transform: (JSONObject) -> T): List<T> =
     List(length()) { transform(getJSONObject(it)) }
 
+internal fun JSONArray.strings(): List<String> = List(length()) { getString(it) }
+
 internal fun parseGroupMember(o: JSONObject) = GroupMember(
     userId = o.getString("userId"),
     name = o.stringOrNull("name"),
@@ -34,4 +42,27 @@ internal fun parseGroup(o: JSONObject) = Group(
     inviteCode = o.getString("inviteCode"),
     organizerId = o.getString("organizerId"),
     members = o.getJSONArray("members").mapObjects(::parseGroupMember),
+)
+
+internal fun parseStartLocation(o: JSONObject) = StartLocation(
+    lat = o.getDouble("lat"),
+    lng = o.getDouble("lng"),
+    label = o.stringOrNull("label").orEmpty(),
+)
+
+internal fun parseParticipant(o: JSONObject) = Participant(
+    userId = o.getString("userId"),
+    startLocation = parseStartLocation(o.getJSONObject("startLocation")),
+    travelMode = TravelMode.fromWire(o.stringOrNull("travelMode")),
+    preferences = o.getJSONArray("preferences").strings().mapNotNull { Preference.fromWire(it) },
+)
+
+internal fun parseMeetup(o: JSONObject) = Meetup(
+    id = o.getString("id"),
+    groupId = o.getString("groupId"),
+    organizerId = o.getString("organizerId"),
+    title = o.getString("title"),
+    scheduledAt = o.getString("scheduledAt"),
+    status = MeetupStatus.fromWire(o.stringOrNull("status")),
+    participants = o.getJSONArray("participants").mapObjects(::parseParticipant),
 )

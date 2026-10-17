@@ -21,4 +21,22 @@ object TestTags {
     const val JOIN_GROUP_SUBMIT = "join_group_submit"
     const val INVITE_CODE_TEXT = "invite_code_text"
     const val MEMBER_ITEM = "member_item"
+    const val NEW_MEETUP_BUTTON = "new_meetup_button"
+    const val MEETUP_ITEM = "meetup_item"
+    const val MEETUPS_EMPTY = "meetups_empty"
+    const val MEETUP_TITLE_INPUT = "meetup_title_input"
+    const val MEETUP_TIME_INPUT = "meetup_time_input"
+    const val CREATE_MEETUP_SUBMIT = "create_meetup_submit"
+    const val MEETUP_TITLE_TEXT = "meetup_title_text"
+    const val MEETUP_STATUS_TEXT = "meetup_status_text"
+    const val PARTICIPATION_STATUS_TEXT = "participation_status_text"
+    const val PARTICIPATION_BUTTON = "participation_button"
+    const val LAT_INPUT = "lat_input"
+    const val LNG_INPUT = "lng_input"
+    const val LABEL_INPUT = "label_input"
+    const val PARTICIPATION_SUBMIT = "participation_submit"
+
+    // Chips are tagged per option name, e.g. modeChip("WALK")
+    fun modeChip(mode: String) = "mode_chip_$mode"
+    fun preferenceChip(preference: String) = "preference_chip_$preference"
 }
