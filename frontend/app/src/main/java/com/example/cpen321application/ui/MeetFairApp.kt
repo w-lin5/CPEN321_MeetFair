@@ -10,6 +10,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.cpen321application.AppContainer
 import com.example.cpen321application.ui.auth.SignInScreen
 import com.example.cpen321application.ui.groups.GroupListScreen
+import com.example.cpen321application.ui.voting.VotingScreen
 
 /** Token present -> app, token absent (sign-out or 401 status code) -> sign-in. */
 @Composable
@@ -27,14 +28,24 @@ private fun AuthedApp(container: AppContainer, token: String) {
     val entry = navigator.current
     key(entry.id) {
         CompositionLocalProvider(LocalEntryKey provides "${token.hashCode()}-${entry.id}") {
-            RouteContent(container, entry.route)
+            RouteContent(container = container,route = entry.route,navigator = navigator,)
         }
     }
 }
 
 @Composable
-private fun RouteContent(container: AppContainer, route: Route) {
+private fun RouteContent(container: AppContainer,route: Route,navigator: Navigator,) {
     when (route) {
-        Route.GroupList -> GroupListScreen(container)
+        Route.GroupList -> GroupListScreen(
+            container = container,
+            onOpenVoting = { sessionId ->
+                navigator.push(Route.Voting(sessionId))
+            },
+        )
+
+        is Route.Voting -> VotingScreen(
+            container = container,
+            sessionId = route.sessionId,
+        )
     }
 }

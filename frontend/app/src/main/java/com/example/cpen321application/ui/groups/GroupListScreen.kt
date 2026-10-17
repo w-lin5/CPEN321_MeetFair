@@ -15,7 +15,7 @@ import kotlinx.coroutines.launch
 
 // TODO: IMPORTANNT -- change later, just for visual test to check that everything working as intended
 @Composable
-fun GroupListScreen(container: AppContainer) {
+fun GroupListScreen(container: AppContainer,onOpenVoting: (String) -> Unit,) {
     val name by container.sessionStore.userName.collectAsState()
     val scope = rememberCoroutineScope()
     ScreenColumn("MeetFair") {

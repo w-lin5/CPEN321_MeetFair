@@ -15,16 +15,19 @@ import com.example.cpen321application.model.VotingResults
 import androidx.compose.runtime.LaunchedEffect
 import com.example.cpen321application.model.VotingSession
 
+
 @Composable
 fun VotingScreen(
     container: AppContainer,
     sessionId: String,
 ) {
     val scope = rememberCoroutineScope()
+    val currentUserId = container.sessionStore.currentUserId()
     var message by remember { mutableStateOf<String?>(null) }
     var results by remember { mutableStateOf<VotingResults?>(null) }
     var session by remember { mutableStateOf<VotingSession?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    
 
     LaunchedEffect(sessionId) {
         when (val result = container.votingRepository.getSession(sessionId)) {
@@ -42,6 +45,10 @@ fun VotingScreen(
 
     if (isLoading) {
     Text("Loading voting session...")
+    }
+
+    if (session?.status == "closed") {
+    Text("Voting is closed")
     }
 
     session?.candidateIds?.forEach { candidateId ->
@@ -64,6 +71,7 @@ fun VotingScreen(
                     }
                 }
             },
+        enabled = session?.status == "open",
         ) {
             Text(candidateId)
         }
@@ -71,6 +79,27 @@ fun VotingScreen(
 
     message?.let {
         Text(it)
+    }
+
+    if (session?.status == "open" && session?.createdBy == currentUserId) {
+        Button(
+            onClick = {
+                scope.launch {
+                    when (val result = container.votingRepository.closeSession(sessionId)) {
+                        is ApiResult.Success -> {
+                            session = result.data
+                            message = "Voting closed"
+                        }
+
+                        is ApiResult.Failure -> {
+                            message = result.error.message
+                        }
+                    }
+                }
+            },
+        ) {
+            Text("Close Voting")
+        }
     }
 
     Button(
