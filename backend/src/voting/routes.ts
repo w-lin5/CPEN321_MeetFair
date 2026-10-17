@@ -65,3 +65,11 @@ votingRouter.patch(
     res.json(session);
   },
 );
+
+votingRouter.get('/voting-sessions/:sessionId', async (req, res) => {
+  const { sessionId } = parseInput(votingSessionParams, req.params);
+
+  const session = await voteService.getSession(sessionId);
+
+  res.json(session);
+});

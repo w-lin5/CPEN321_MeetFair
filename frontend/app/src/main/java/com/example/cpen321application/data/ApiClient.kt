@@ -39,6 +39,9 @@ class ApiClient(baseUrl: String, private val http: OkHttpClient) {
 
     private fun asJsonBody(body: JSONObject?): RequestBody =
         (body ?: JSONObject()).toString().toRequestBody(JSON_MEDIA)
+    
+    suspend fun patch(path: String, body: JSONObject? = null): ApiResult<String> =
+    execute(Request.Builder().url(base + path).patch(asJsonBody(body)).build())
 
     // Blocking network I/O on IO dispatcher and normalize HTTP/network failures
     private suspend fun execute(request: Request): ApiResult<String> = withContext(Dispatchers.IO) {

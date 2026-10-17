@@ -7,6 +7,7 @@ import com.example.cpen321application.data.AuthRepository
 import com.example.cpen321application.data.GoogleSignInHelper
 import com.example.cpen321application.data.SessionStore
 import okhttp3.OkHttpClient
+import com.example.cpen321application.data.VotingRepository
 
 class AppContainer(context: Context) {
     // Shared session storage and GOogle Sign-in configuration for application
@@ -19,4 +20,5 @@ class AppContainer(context: Context) {
     )
 
     val authRepository = AuthRepository(api, sessionStore)
+    val votingRepository = VotingRepository(api)
 }

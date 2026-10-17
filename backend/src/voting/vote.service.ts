@@ -111,9 +111,20 @@ async function closeSession(
     return session;
 }
 
+async function getSession(sessionId: string) {
+  const session = await VotingSessionModel.findById(sessionId);
+
+  if (!session) {
+    throw new NotFound('Voting session not found');
+  }
+
+  return session;
+}
+
 export const voteService = {
     submitVote,
     getResults,
     createSession,
     closeSession,
+    getSession,
 };
