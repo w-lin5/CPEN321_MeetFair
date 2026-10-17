@@ -16,17 +16,40 @@ internal fun parseAuth(text: String): AuthSession {
 }
 
 internal fun parseCalendarEvent(o: JSONObject): CalendarEvent {
-    val id = o.getString("id")
-    val title = o.getString("title")
+    val id = o.optString("id").ifEmpty { o.optString("_id", "") }
+    val title = o.optString("title").ifEmpty { o.optString("summary").ifEmpty { "Untitled Event" } }
     val description = o.optString("description").ifEmpty { null }
     val location = o.optString("location").ifEmpty { null }
 
-    val startTime = o.optString("startTime").ifEmpty { null }
-    val endTime = o.optString("endTime").ifEmpty { null }
+    val startTime = when {
+        o.has("startTime") -> o.optString("startTime").ifEmpty { null }
+        o.has("start") -> {
+            val startObj = o.optJSONObject("start")
+            if (startObj != null) {
+                startObj.optString("dateTime").ifEmpty { startObj.optString("date").ifEmpty { null } }
+            } else {
+                o.optString("start").ifEmpty { null }
+            }
+        }
+        else -> null
+    }
+
+    val endTime = when {
+        o.has("endTime") -> o.optString("endTime").ifEmpty { null }
+        o.has("end") -> {
+            val endObj = o.optJSONObject("end")
+            if (endObj != null) {
+                endObj.optString("dateTime").ifEmpty { endObj.optString("date").ifEmpty { null } }
+            } else {
+                o.optString("end").ifEmpty { null }
+            }
+        }
+        else -> null
+    }
 
     return CalendarEvent(
         id = id,
-        externalId = o.optString("externalId").ifEmpty { null },
+        externalId = o.optString("externalId").ifEmpty { o.optString("googleEventId").ifEmpty { null } },
         source = o.optString("source").ifEmpty { "google" },
         title = title,
         description = description,
@@ -57,7 +80,29 @@ internal fun parseCalendarEvent(o: JSONObject): CalendarEvent {
 internal fun parseCalendarEvents(text: String): List<CalendarEvent> {
     val trimmed = text.trim()
     if (trimmed.isEmpty()) return emptyList()
-    val array = JSONArray(trimmed)
+
+    val array: JSONArray = if (trimmed.startsWith("[")) {
+        try {
+            JSONArray(trimmed)
+        } catch (_: Exception) {
+            JSONArray()
+        }
+    } else if (trimmed.startsWith("{")) {
+        try {
+            val obj = JSONObject(trimmed)
+            when {
+                obj.has("events") -> obj.getJSONArray("events")
+                obj.has("items") -> obj.getJSONArray("items")
+                obj.has("data") -> obj.getJSONArray("data")
+                obj.has("calendarEvents") -> obj.getJSONArray("calendarEvents")
+                else -> JSONArray()
+            }
+        } catch (_: Exception) {
+            JSONArray()
+        }
+    } else {
+        JSONArray()
+    }
 
     val list = mutableListOf<CalendarEvent>()
     for (i in 0 until array.length()) {
