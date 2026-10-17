@@ -39,6 +39,7 @@
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.12",
     "tsx": "^4.23.5",
-    "typescript": "~5.9"
+    "typescript": "~5.9",
+    "@shelf/jest-mongodb": "^6.0.2"
   }
 }
