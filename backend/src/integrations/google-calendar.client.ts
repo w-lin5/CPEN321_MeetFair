@@ -4,11 +4,16 @@ import { BadRequest, Unauthorized, UpstreamError } from '../common/errors';
 import { env } from '../config';
 import type { CalendarEventFields } from './calendar-event.model';
 
-type CalendarEventData = Pick<
+type CalendarEventAttendeeData = Pick<
+  CalendarEventFields['attendees'][number],
+  'email' | 'displayName' | 'responseStatus'
+>;
+
+type CalendarEventData = Omit<Pick<
   CalendarEventFields,
   'title' | 'description' | 'location' | 'startTime' | 'endTime' | 'timezone'
     | 'recurrence' | 'allDay' | 'attendees' | 'busy'
->;
+>, 'attendees'> & { attendees: CalendarEventAttendeeData[] };
 
 // Google event data normalized to the fields persisted by CalendarEventModel.
 export type GoogleCalendarEvent = CalendarEventData & { externalId: string };
@@ -41,8 +46,8 @@ export async function createGoogleCalendarEvent(
       calendarId: 'primary',
       requestBody: {
         summary: event.title,
-        description: event.description || undefined,
-        location: event.location || undefined,
+        ...(event.description ? { description: event.description } : {}),
+        ...(event.location ? { location: event.location } : {}),
         start: { dateTime: event.startTime, timeZone: event.timezone },
         end: { dateTime: event.endTime, timeZone: event.timezone },
         attendees: event.attendeeEmails.map((email) => ({ email })),
@@ -130,7 +135,7 @@ export async function fetchCalendarEvents(
       attendees: (item.attendees ?? []).map((a) => ({
         email: a.email ?? '',
         displayName: a.displayName ?? null,
-        responseStatus: (a.responseStatus as CalendarEventFields['attendees'][number]['responseStatus']) ?? 'needsAction',
+        responseStatus: (a.responseStatus as CalendarEventAttendeeData['responseStatus']) ?? 'needsAction',
       })).filter((a) => a.email !== ''),
       busy: item.transparency !== 'transparent'
         && !(item.attendees?.length && item.attendees.every((attendee) => attendee.responseStatus === 'declined')),
