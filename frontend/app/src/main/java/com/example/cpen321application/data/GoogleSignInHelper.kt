@@ -54,7 +54,7 @@ class GoogleSignInHelper(private val serverClientId: String) {
      * or [CalendarAuthResult.Failure] on error.
      */
     suspend fun requestCalendarAuthorization(activityContext: Context): CalendarAuthResult {
-        val calendarScope = Scope("https://www.googleapis.com/auth/calendar.readonly")
+        val calendarScope = Scope("https://www.googleapis.com/auth/calendar.events")
         val authRequest = AuthorizationRequest.builder()
             .setRequestedScopes(listOf(calendarScope))
             .build()

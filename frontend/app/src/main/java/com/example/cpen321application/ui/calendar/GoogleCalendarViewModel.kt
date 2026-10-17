@@ -24,6 +24,9 @@ class GoogleCalendarViewModel(
     private val _syncState = MutableStateFlow(FormState<String>())
     val syncState: StateFlow<FormState<String>> = _syncState.asStateFlow()
 
+    private val _exportStates = MutableStateFlow<Map<String, FormState<String>>>(emptyMap())
+    val exportStates: StateFlow<Map<String, FormState<String>>> = _exportStates.asStateFlow()
+
     init {
         loadEvents()
     }
@@ -59,6 +62,71 @@ class GoogleCalendarViewModel(
                 loadEvents()
             }
         }
+    }
+
+    fun exportEvent(event: CalendarEvent, accessToken: String? = null) {
+        val eventKey = event.id.ifEmpty { event.hashCode().toString() }
+        _exportStates.value = _exportStates.value + (eventKey to FormState(submitting = true))
+        viewModelScope.launch {
+            when (val result = repository.exportCalendarEvent(event, accessToken)) {
+                is ApiResult.Success -> {
+                    _exportStates.value = _exportStates.value + (eventKey to FormState(result = result.data))
+                    loadEvents()
+                }
+                is ApiResult.Failure -> _exportStates.value = _exportStates.value +
+                    (eventKey to FormState(error = result.error.message))
+            }
+        }
+    }
+
+    /**
+     * TODO: Remove this when recommendation feature implemented.file
+     * Adds an unsynced sample event to the current list to test the "Add to Google Calendar" feature.
+     */
+    fun addSampleEvent() {
+        val sampleId = "sample-" + System.currentTimeMillis()
+        val sampleEvent = CalendarEvent(
+            id = sampleId,
+            externalId = null,
+            source = "app",
+            title = "MeetFair Sample Study Session",
+            description = "Auto-generated sample event to test exporting to Google Calendar",
+            startTime = "2026-10-25T14:00:00Z",
+            endTime = "2026-10-25T15:00:00Z",
+            location = "Kaiser Building Room 2020",
+            timezone = "UTC",
+            syncedAt = null,
+        )
+        val currentList = when (val state = _eventsState.value) {
+            is UiState.Success -> state.data
+            else -> emptyList()
+        }
+        _eventsState.value = UiState.Success(listOf(sampleEvent) + currentList)
+    }
+
+    /**
+     * Programmatically creates and exports an event to the backend database and external Google Calendar.
+     * Designed for automated event generation without manual entry.
+     */
+    fun createAndExportEvent(
+        title: String,
+        description: String? = null,
+        startTime: String,
+        endTime: String,
+        location: String? = null,
+        timezone: String = "UTC",
+        accessToken: String? = null,
+    ) {
+        val autoEvent = CalendarEvent(
+            id = "",
+            title = title,
+            description = description,
+            startTime = startTime,
+            endTime = endTime,
+            location = location,
+            timezone = timezone,
+        )
+        exportEvent(autoEvent, accessToken)
     }
 
     class Factory(private val repository: GoogleCalendarRepository) : ViewModelProvider.Factory {

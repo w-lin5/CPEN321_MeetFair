@@ -18,10 +18,14 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,8 +50,10 @@ fun GoogleCalendarScreen(
 ) {
     val eventsState by viewModel.eventsState.collectAsState()
     val syncState by viewModel.syncState.collectAsState()
+    val exportStates by viewModel.exportStates.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var pendingExportEvent by remember { mutableStateOf<CalendarEvent?>(null) }
 
     val consentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult()
@@ -58,14 +64,20 @@ fun GoogleCalendarScreen(
                 try {
                     val authResult = Identity.getAuthorizationClient(context).getAuthorizationResultFromIntent(intent)
                     val token = authResult.accessToken
-                    viewModel.syncCalendar(accessToken = token)
+                    val exportEvent = pendingExportEvent
+                    pendingExportEvent = null
+                    if (exportEvent != null) viewModel.exportEvent(exportEvent, token)
+                    else viewModel.syncCalendar(accessToken = token)
                 } catch (_: Exception) {
+                    pendingExportEvent = null
                     viewModel.syncCalendar()
                 }
             } else {
+                pendingExportEvent = null
                 viewModel.syncCalendar()
             }
         } else {
+            pendingExportEvent = null
             viewModel.setSyncError("Google Calendar permission request was canceled.")
         }
     }
@@ -77,7 +89,7 @@ fun GoogleCalendarScreen(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(
@@ -115,8 +127,15 @@ fun GoogleCalendarScreen(
                         )
                         Text("Syncing...")
                     } else {
-                        Text("Sync Google Calendar")
+                        Text("Sync Calendar")
                     }
+                }
+
+                OutlinedButton(
+                    onClick = { viewModel.addSampleEvent() },
+                    enabled = !syncState.submitting
+                ) {
+                    Text("+ Create Test Event")
                 }
             }
 
@@ -140,12 +159,12 @@ fun GoogleCalendarScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Text("Imported Calendar Events", style = MaterialTheme.typography.titleMedium)
+            Text("Calendar Events", style = MaterialTheme.typography.titleMedium)
 
             UiStateContent(
                 state = eventsState,
                 onRetry = { viewModel.loadEvents() },
-                emptyMessage = "No Google Calendar events found. Tap 'Sync Google Calendar' above to import your events."
+                emptyMessage = "No calendar events found. Tap 'Sync Calendar' or '+ Create Test Event' above."
             ) { events ->
                 LazyColumn(
                     modifier = Modifier
@@ -154,7 +173,24 @@ fun GoogleCalendarScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(events, key = { it.id.ifEmpty { it.hashCode().toString() } }) { event ->
-                        CalendarEventCard(event = event)
+                        CalendarEventCard(
+                            event = event,
+                            exportState = exportStates[event.id],
+                            onExport = {
+                                scope.launch {
+                                    when (val auth = container.googleSignInHelper.requestCalendarAuthorization(context)) {
+                                        is CalendarAuthResult.Success -> viewModel.exportEvent(event, auth.accessToken)
+                                        is CalendarAuthResult.NeedsConsent -> auth.result.pendingIntent?.let { pendingIntent ->
+                                            pendingExportEvent = event
+                                            consentLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+                                        } ?: viewModel.setSyncError("Google Calendar permission request could not be started.")
+                                        is CalendarAuthResult.Failure -> viewModel.setSyncError(
+                                            "Google Calendar authorization failed: ${auth.error.message ?: "Please grant Calendar permissions."}"
+                                        )
+                                    }
+                                }
+                            }
+                        )
                     }
                 }
             }
@@ -163,7 +199,11 @@ fun GoogleCalendarScreen(
 }
 
 @Composable
-fun CalendarEventCard(event: CalendarEvent) {
+fun CalendarEventCard(
+    event: CalendarEvent,
+    exportState: com.example.cpen321application.ui.common.FormState<String>? = null,
+    onExport: (() -> Unit)? = null,
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -210,6 +250,22 @@ fun CalendarEventCard(event: CalendarEvent) {
                     text = event.description,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            if (!event.isSyncedToExternalCalendar && onExport != null) {
+                Button(onClick = onExport, enabled = exportState?.submitting != true) {
+                    Text(if (exportState?.submitting == true) "Adding..." else "Add to Google Calendar")
+                }
+                exportState?.result?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+                exportState?.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            } else {
+                Text(
+                    text = "Synced to Google Calendar",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }
