@@ -3,23 +3,21 @@ import { Router } from 'express';
 import { parseInput } from '../common/middleware/validate';
 import { getUserId } from '../common/middleware/require-auth';
 import { voteService } from './vote.service';
-import {
-  createVotingSessionBody,
-  submitVoteBody,
-  votingSessionParams,
-} from './schemas';
-
+import {createVotingSessionBody,submitVoteBody,votingSessionParams,} from './schemas';
+import { fairCreditService } from './fair-credit.service';
 export const votingRouter = Router();
 
 votingRouter.post('/voting-sessions/:sessionId/vote', async (req, res) => {
   const userId = getUserId(req);
   const { candidateId } = parseInput(submitVoteBody, req.body);
   const { sessionId } = parseInput(votingSessionParams, req.params);
-
+  const weight = await fairCreditService.getFairCredit(userId,sessionId);
+  
   const vote = await voteService.submitVote(
     sessionId,
     userId,
     candidateId,
+    weight, 
   );
 
   res.json(vote);

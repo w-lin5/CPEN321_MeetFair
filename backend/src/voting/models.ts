@@ -20,6 +20,7 @@ const votingSessionSchema = new Schema(
       required: true,
       index: true,
     },
+
   },
   {
     timestamps: true,
@@ -45,6 +46,11 @@ const voteSchema = new Schema(
     candidateId: {
       type: Schema.Types.ObjectId,
       required: true,
+    },
+    weight: {
+      type: Number,
+      required: true,
+      default: 1,
     },
   },
   {

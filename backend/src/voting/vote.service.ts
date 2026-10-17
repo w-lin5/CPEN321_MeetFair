@@ -4,10 +4,15 @@ import { VoteModel, VotingSessionModel } from './models';
 
 
 async function submitVote(
-    sessionId: string,
-    userId: string,
-    candidateId: string,
+  sessionId: string,
+  userId: string,
+  candidateId: string,
+  weight: number,
 ) {
+    if (!Number.isFinite(weight) || weight < 0) {
+        throw new BadRequest('Vote weight must be a non-negative finite number');
+    }
+
     const session = await VotingSessionModel.findById(sessionId);
     if (!session) {
         throw new NotFound('Voting session not found');
@@ -27,7 +32,7 @@ async function submitVote(
     // Upsert the vote: if a vote already exists for this user in this session, update it; otherwise, create a new vote
     const vote = await VoteModel.findOneAndUpdate(
         { sessionId, userId },
-        { $set: { candidateId } },
+        { $set: { candidateId, weight } },
         {
             upsert: true, 
             returnDocument: 'after',
@@ -49,15 +54,23 @@ async function getResults(sessionId: string) {
 const votes = await VoteModel.find({ sessionId });
 
 const totals = session.candidateIds.map((candidateId) => {
-    // Count the number of votes for this candidate
-    const count = votes.filter(
-        (vote) => vote.candidateId.toString() === candidateId.toString(),
-    ).length;
+  const candidateVotes = votes.filter(
+    (vote) => vote.candidateId.toString() === candidateId.toString(),
+  );
 
-    return {
-        candidateId: candidateId.toString(),
-        count,
-    };
+  const voteCount = candidateVotes.length;
+
+  const totalWeight = candidateVotes.reduce(
+    (sum, vote) => sum + vote.weight,
+    0,
+  );
+
+  // return both how many votes and total weight for each candidate
+  return {
+    candidateId: candidateId.toString(),
+    voteCount,
+    totalWeight,
+  };
 });
 
 return {
