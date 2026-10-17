@@ -1,9 +1,11 @@
 import { createApp } from './app';
 import { env } from './config';
 import { connectDb, disconnectDb } from './db';
+import { CalendarEventModel } from './integrations/calendar-event.model';
 
 async function main(): Promise<void> {
   await connectDb(env.mongoUri);
+  await CalendarEventModel.syncIndexes();
   const server = createApp().listen(env.port, () => {
     console.log(`Server listening on port ${env.port}`);
   });

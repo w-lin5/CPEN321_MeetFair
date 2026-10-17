@@ -1,7 +1,9 @@
 import type { Types } from 'mongoose';
 
+import { BadRequest } from '../common/errors';
 import { CalendarEventModel } from './calendar-event.model';
-import { fetchCalendarEvents } from './google-calendar.client';
+import { createGoogleCalendarEvent, fetchCalendarEvents } from './google-calendar.client';
+import type { CreateCalendarEventInput } from './google-calendar.schemas';
 
 export interface SyncResult {
   upserted: number;
@@ -20,21 +22,26 @@ async function syncCalendar(
 ): Promise<SyncResult> {
   const events = await fetchCalendarEvents(accessToken);
 
-  // Bulk-upsert: update if the (userId, googleEventId) pair already exists,
+  // Bulk-upsert: update if the (userId, externalId) pair already exists,
   // otherwise insert.
   const ops = events.map((ev) => ({
     updateOne: {
-      filter: { userId, googleEventId: ev.googleEventId },
+      filter: { userId, externalId: ev.externalId },
       update: {
         $set: {
           title:     ev.title,
+          description: ev.description ?? '',
+          location: ev.location ?? '',
           startTime: ev.startTime,
           endTime:   ev.endTime,
           timezone:  ev.timezone,
           recurrence: ev.recurrence,
           allDay:    ev.allDay,
           attendees: ev.attendees,
+          busy: ev.busy,
+          syncedAt: new Date(),
         },
+        $setOnInsert: { source: 'google' },
       },
       upsert: true,
     },
@@ -60,5 +67,28 @@ async function getEventsForUser(userId: Types.ObjectId | string) {
   return CalendarEventModel.find({ userId }).sort({ startTime: 1 });
 }
 
-export const calendarService = { syncCalendar, getEventsForUser };
+
+async function addCalendarEvent(userId: Types.ObjectId | string, input: CreateCalendarEventInput) {
+  if (Date.parse(input.endTime) <= Date.parse(input.startTime)) {
+    throw new BadRequest('endTime must be after startTime.');
+  }
+  const created = await createGoogleCalendarEvent(input.accessToken, input);
+  return CalendarEventModel.create({
+    userId,
+    externalId: created.externalId,
+    source: 'app',
+    title: input.title,
+    description: input.description,
+    location: input.location,
+    startTime: new Date(input.startTime),
+    endTime: new Date(input.endTime),
+    timezone: input.timezone,
+    allDay: false,
+    busy: true,
+    syncedAt: new Date(),
+    attendees: input.attendeeEmails.map((email) => ({ email, responseStatus: 'needsAction' as const })),
+  });
+}
+
+export const calendarService = { syncCalendar, getEventsForUser, addCalendarEvent };
 

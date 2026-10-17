@@ -2,23 +2,65 @@ import { google } from 'googleapis';
 
 import { BadRequest, Unauthorized, UpstreamError } from '../common/errors';
 import { env } from '../config';
+import type { CalendarEventFields } from './calendar-event.model';
 
-export interface GoogleCalendarAttendee {
-  email: string;
-  displayName: string | null;
-  responseStatus: 'accepted' | 'declined' | 'tentative' | 'needsAction';
+type CalendarEventData = Pick<
+  CalendarEventFields,
+  'title' | 'description' | 'location' | 'startTime' | 'endTime' | 'timezone'
+    | 'recurrence' | 'allDay' | 'attendees' | 'busy'
+>;
+
+// Google event data normalized to the fields persisted by CalendarEventModel.
+export type GoogleCalendarEvent = CalendarEventData & { externalId: string };
+
+export interface CreateGoogleCalendarEventInput {
+  title: string;
+  description: string;
+  startTime: string;
+  endTime: string;
+  timezone: string;
+  location: string;
+  attendeeEmails: string[];
 }
 
-// Normalised shape of a single Google Calendar event after extraction
-export interface GoogleCalendarEvent {
-  googleEventId: string;
-  title: string;
-  startTime: Date;
-  endTime: Date;
-  timezone: string;
-  recurrence: string[];
-  allDay: boolean;
-  attendees: GoogleCalendarAttendee[];
+export interface CreatedGoogleCalendarEvent {
+  externalId: string;
+  htmlLink: string | null;
+}
+
+export async function createGoogleCalendarEvent(
+  accessToken: string,
+  event: CreateGoogleCalendarEventInput,
+): Promise<CreatedGoogleCalendarEvent> {
+  const oauth2Client = new google.auth.OAuth2(env.googleClientId, env.googleClientSecret, env.googleRedirectUri);
+  oauth2Client.setCredentials({ access_token: accessToken });
+  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+  try {
+    const response = await calendar.events.insert({
+      calendarId: 'primary',
+      requestBody: {
+        summary: event.title,
+        description: event.description || undefined,
+        location: event.location || undefined,
+        start: { dateTime: event.startTime, timeZone: event.timezone },
+        end: { dateTime: event.endTime, timeZone: event.timezone },
+        attendees: event.attendeeEmails.map((email) => ({ email })),
+      },
+      sendUpdates: event.attendeeEmails.length > 0 ? 'all' : 'none',
+    });
+    if (!response.data.id) throw new UpstreamError('Google Calendar did not return an event ID.');
+    return { externalId: response.data.id, htmlLink: response.data.htmlLink ?? null };
+  } catch (err: unknown) {
+    if (err instanceof UpstreamError) throw err;
+    if (isGoogleAuthError(err)) {
+      throw new Unauthorized('Google OAuth token is invalid or lacks calendar write permission. Please re-authorize.');
+    }
+    if (isGoogleRateLimitError(err)) {
+      throw new UpstreamError('Google Calendar API rate limit reached. Please retry in a few minutes.');
+    }
+    throw new UpstreamError('Failed to create event in Google Calendar.');
+  }
 }
 
 // Maximum events to fetch per sync to stay inside reasonable memory and rate limits
@@ -47,8 +89,8 @@ export async function fetchCalendarEvents(
   try {
     response = await calendar.events.list({
       calendarId: 'primary',
-      // Only fetch future events and the recent past (rolling 30-day window)
-      timeMin: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      // Only fetch future events and the recent past (rolling 7-day window)
+      timeMin: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
       maxResults: MAX_EVENTS_PER_SYNC,
       singleEvents: true,
       orderBy: 'startTime',
@@ -76,8 +118,10 @@ export async function fetchCalendarEvents(
 
     const { startTime, endTime, timezone, allDay } = extractTimes(item);
     events.push({
-      googleEventId: item.id,
+      externalId: item.id,
       title: item.summary ?? '(No title)',
+      description: item.description ?? '',
+      location: item.location ?? '',
       startTime,
       endTime,
       timezone,
@@ -86,8 +130,10 @@ export async function fetchCalendarEvents(
       attendees: (item.attendees ?? []).map((a) => ({
         email: a.email ?? '',
         displayName: a.displayName ?? null,
-        responseStatus: (a.responseStatus as GoogleCalendarAttendee['responseStatus']) ?? 'needsAction',
+        responseStatus: (a.responseStatus as CalendarEventFields['attendees'][number]['responseStatus']) ?? 'needsAction',
       })).filter((a) => a.email !== ''),
+      busy: item.transparency !== 'transparent'
+        && !(item.attendees?.length && item.attendees.every((attendee) => attendee.responseStatus === 'declined')),
     });
   }
 
@@ -99,6 +145,9 @@ export async function fetchCalendarEvents(
 // ---------------------------------------------------------------------------
 
 interface GCalEvent {
+  description?: string | null;
+  location?: string | null;
+  transparency?: string | null;
   start?: { dateTime?: string | null; date?: string | null; timeZone?: string | null } | null;
   end?: { dateTime?: string | null; date?: string | null; timeZone?: string | null } | null;
 }
