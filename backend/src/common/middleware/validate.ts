@@ -99,3 +99,29 @@ export function objectId(f: Fields, key: string): string {
   
   return value;
 }
+
+export function objectIdArray(
+  f: Fields,
+  key: string,
+  exactItems: number,
+): string[] {
+  const value = f.get(key);
+
+  if (!Array.isArray(value) || value.length !== exactItems) {
+    return fail(`${key} must contain exactly ${exactItems} items`);
+  }
+
+  const items = value.map((item) => {
+    if (typeof item !== 'string' || !OBJECT_ID.test(item)) {
+      return fail(`${key} has an invalid ObjectId`);
+    }
+
+    return item;
+  });
+
+  if (new Set(items).size !== items.length) {
+    return fail(`${key} must not contain duplicate items`);
+  }
+
+  return items;
+}

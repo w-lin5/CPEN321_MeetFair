@@ -1,5 +1,5 @@
 
-import { BadRequest, NotFound } from '../common/errors';
+import {BadRequest,Forbidden,NotFound,Conflict} from '../common/errors';
 import { VoteModel, VotingSessionModel } from './models';
 
 
@@ -8,18 +8,15 @@ async function submitVote(
     userId: string,
     candidateId: string,
 ) {
-    // Check if the voting session exists
     const session = await VotingSessionModel.findById(sessionId);
     if (!session) {
         throw new NotFound('Voting session not found');
     }
 
-    // Check if the voting session is open
     if (session.status !== 'open') {
-        throw new BadRequest('Voting session is closed');
+        throw new Conflict('Voting session is closed');
     }
 
-    // Check if the candidateId belongs to the voting session
     const isValidCandidate = session.candidateIds.some(
     (id) => id.toString() === candidateId,
     );
@@ -32,7 +29,7 @@ async function submitVote(
         { sessionId, userId },
         { $set: { candidateId } },
         {
-            upsert: true,
+            upsert: true, 
             returnDocument: 'after',
             setDefaultsOnInsert: true,
         },
@@ -69,7 +66,41 @@ return {
 };
 }
 
+async function createSession(
+    candidateIds: string[],
+    userId: string,
+) {
+    const session = await VotingSessionModel.create({
+        candidateIds,
+        createdBy: userId,
+    });
+
+    return session;
+}
+
+async function closeSession(
+    sessionId: string,
+    userId: string,
+) {
+    const session = await VotingSessionModel.findById(sessionId);
+
+    if (!session) {
+        throw new NotFound('Voting session not found');
+    }
+
+    if (session.createdBy.toString() !== userId) {
+        throw new Forbidden('Only the creator can close this voting session');
+    }
+
+    session.status = 'closed';
+    await session.save();
+
+    return session;
+}
+
 export const voteService = {
-  submitVote,
-  getResults,
+    submitVote,
+    getResults,
+    createSession,
+    closeSession,
 };

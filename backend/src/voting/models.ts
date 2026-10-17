@@ -14,6 +14,12 @@ const votingSessionSchema = new Schema(
       enum: ['open', 'closed'],
       default: 'open',
     },
+    // The organizer who created this voting session
+    createdBy: {
+      type: Schema.Types.ObjectId,
+      required: true,
+      index: true,
+    },
   },
   {
     timestamps: true,

@@ -3,7 +3,11 @@ import { Router } from 'express';
 import { parseInput } from '../common/middleware/validate';
 import { getUserId } from '../common/middleware/require-auth';
 import { voteService } from './vote.service';
-import { submitVoteBody, votingSessionParams } from './schemas';
+import {
+  createVotingSessionBody,
+  submitVoteBody,
+  votingSessionParams,
+} from './schemas';
 
 export const votingRouter = Router();
 
@@ -28,3 +32,38 @@ votingRouter.get('/voting-sessions/:sessionId/votes', async (req, res) => {
 
   res.json(results);
 });
+
+votingRouter.post('/voting-sessions', async (req, res) => {
+  const userId = getUserId(req);
+
+  const { candidateIds } = parseInput(
+    createVotingSessionBody,
+    req.body,
+  );
+
+  const session = await voteService.createSession(
+    candidateIds,
+    userId,
+  );
+
+  res.status(201).json(session);
+});
+
+votingRouter.patch(
+  '/voting-sessions/:sessionId/close',
+  async (req, res) => {
+    const userId = getUserId(req);
+
+    const { sessionId } = parseInput(
+      votingSessionParams,
+      req.params,
+    );
+
+    const session = await voteService.closeSession(
+      sessionId,
+      userId,
+    );
+
+    res.json(session);
+  },
+);
