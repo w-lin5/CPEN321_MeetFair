@@ -1,0 +1,129 @@
+type Callback = () => void;
+type Signal = 'SIGINT' | 'SIGTERM';
+
+interface FakeServer {
+  close: jest.Mock<void, [Callback]>;
+}
+
+interface Harness {
+  connectDb: jest.Mock<Promise<void>, [string]>;
+  disconnectDb: jest.Mock<Promise<void>, []>;
+  listen: jest.Mock<FakeServer, [number, Callback]>;
+  server: FakeServer;
+  handlers: Map<string, Callback>;
+  exit: jest.SpyInstance;
+  consoleLog: jest.SpyInstance;
+  consoleError: jest.SpyInstance;
+}
+
+const PORT = 4321;
+const URI = 'mongodb://example/meetfair';
+
+// Let pending promise callbacks (the `main().catch` chain, `disconnectDb().then`) run
+async function flush(): Promise<void> {
+  await new Promise((resolve) => setImmediate(resolve));
+}
+
+// Load index.ts fresh with its collaborators replaced by fakes
+function boot(overrides: Partial<Pick<Harness, 'connectDb' | 'disconnectDb'>> = {}): Harness {
+  // Fake server/listen invoke their callbacks synchronously so no real port is opened
+  const handlers = new Map<string, Callback>();
+  const server: FakeServer = { close: jest.fn((cb: Callback) => { cb(); }) };
+  const listen = jest.fn((_port: number, cb: Callback): FakeServer => {
+    cb();
+    return server;
+  });
+  const connectDb = overrides.connectDb ?? jest.fn().mockResolvedValue(undefined);
+  const disconnectDb = overrides.disconnectDb ?? jest.fn().mockResolvedValue(undefined);
+
+  // Capture signal handlers instead of attaching them to the real process; stub exit so tests survive it
+  jest.spyOn(process, 'on').mockImplementation(((event: string, handler: Callback) => {
+    handlers.set(event, handler);
+    return process;
+  }) as never);
+  const exit = jest.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+  const consoleLog = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+  const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+  // isolateModules gives index.ts a fresh module registry, so its top-level bootstrap re-runs on every call
+  jest.isolateModules(() => {
+    jest.doMock('../../src/app', () => ({ createApp: () => ({ listen }) }));
+    jest.doMock('../../src/config', () => ({ env: { port: PORT, mongoUri: URI } }));
+    jest.doMock('../../src/db', () => ({ connectDb, disconnectDb }));
+    require('../../src/index');
+  });
+
+  return { connectDb, disconnectDb, listen, server, handlers, exit, consoleLog, consoleError };
+}
+
+afterEach(() => {
+  jest.restoreAllMocks();
+  jest.dontMock('../../src/app');
+  jest.dontMock('../../src/config');
+  jest.dontMock('../../src/db');
+});
+
+// Interface: server bootstrap (src/index.ts)
+describe('Mocked: index bootstrap', () => {
+  // Input: normal startup
+  // Expected behavior: DB connected with the configured URI, app listens on the configured port,
+  //                    startup is logged, SIGINT and SIGTERM handlers are registered
+  test('Starts the server and registers shutdown handlers', async () => {
+    const h = boot();
+    await flush();
+
+    expect(h.connectDb).toHaveBeenCalledWith(URI);
+    expect(h.listen).toHaveBeenCalledWith(PORT, expect.any(Function));
+    expect(h.consoleLog).toHaveBeenCalledWith(`Server listening on port ${PORT}`);
+    expect([...h.handlers.keys()].sort()).toEqual(['SIGINT', 'SIGTERM']);
+    expect(h.exit).not.toHaveBeenCalled();
+  });
+
+  // Input: SIGINT / SIGTERM after a successful startup, DB disconnects cleanly
+  // Expected behavior: server is closed, DB disconnected, process exits with 0
+  test.each<Signal>(['SIGINT', 'SIGTERM'])('%s shuts down gracefully', async (signal) => {
+    const h = boot();
+    await flush();
+
+    h.handlers.get(signal)?.();
+    await flush();
+
+    expect(h.server.close).toHaveBeenCalledTimes(1);
+    expect(h.disconnectDb).toHaveBeenCalledTimes(1);
+    expect(h.exit).toHaveBeenCalledWith(0);
+  });
+
+  // Input: shutdown signal, but the DB fails to disconnect
+  // Expected behavior: process exits with 1
+  test('Shutdown exits with 1 when disconnect fails', async () => {
+    const h = boot({ disconnectDb: jest.fn().mockRejectedValue(new Error('stuck')) });
+    await flush();
+
+    h.handlers.get('SIGTERM')?.();
+    await flush();
+
+    expect(h.exit).toHaveBeenCalledWith(1);
+    expect(h.exit).not.toHaveBeenCalledWith(0);
+  });
+
+  // Input: DB connection fails with an Error
+  // Expected behavior: only the error message is logged; the server never listens; exit code 1
+  test('Startup failure with an Error exits with 1', async () => {
+    const h = boot({ connectDb: jest.fn().mockRejectedValue(new Error('no db')) });
+    await flush();
+
+    expect(h.consoleError).toHaveBeenCalledWith('Fatal startup error:', 'no db');
+    expect(h.listen).not.toHaveBeenCalled();
+    expect(h.exit).toHaveBeenCalledWith(1);
+  });
+
+  // Input: DB connection fails with a non-Error value
+  // Expected behavior: a generic message is logged instead of the raw value; exit code 1
+  test('Startup failure with a non-Error exits with 1', async () => {
+    const h = boot({ connectDb: jest.fn().mockRejectedValue('weird') });
+    await flush();
+
+    expect(h.consoleError).toHaveBeenCalledWith('Fatal startup error:', 'unknown');
+    expect(h.exit).toHaveBeenCalledWith(1);
+  });
+});
