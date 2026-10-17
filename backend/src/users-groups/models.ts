@@ -1,6 +1,6 @@
 import { type InferSchemaType, Schema, model } from 'mongoose';
 
-import { GROUP_ROLES } from '../common/types';
+import { GROUP_ROLES, MEETUP_STATUSES, PREFERENCES, TRAVEL_MODES } from '../common/types';
 import { jsonOptions } from '../db';
 
 // Define persisted user fields and enforce uniqueness for Google identities (i.e., one account per Google id)
@@ -41,3 +41,34 @@ groupSchema.index({ 'members.userId': 1 });
 
 export type GroupFields = InferSchemaType<typeof groupSchema>;
 export const GroupModel = model('Group', groupSchema);
+
+// One member's input for a meetup; resubmitting replaces the whole entry
+const participantSchema = new Schema(
+  {
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    startLocation: {
+      lat: { type: Number, required: true },
+      lng: { type: Number, required: true },
+      label: { type: String, default: '' },
+    },
+    travelMode: { type: String, enum: [...TRAVEL_MODES], required: true },
+    preferences: { type: [{ type: String, enum: [...PREFERENCES] }], default: [] },
+    calendarEventId: { type: String },
+  },
+  { _id: false },
+);
+
+const meetupSchema = new Schema(
+  {
+    groupId: { type: Schema.Types.ObjectId, ref: 'Group', required: true, index: true },
+    organizerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    title: { type: String, required: true },
+    scheduledAt: { type: Date, required: true },
+    status: { type: String, enum: [...MEETUP_STATUSES], default: 'SETUP' },
+    participants: { type: [participantSchema], default: [] },
+  },
+  { timestamps: true, toJSON: jsonOptions },
+);
+
+export type MeetupFields = InferSchemaType<typeof meetupSchema>;
+export const MeetupModel = model('Meetup', meetupSchema);
