@@ -13,15 +13,38 @@ import androidx.lifecycle.ViewModelProvider
 /** Every destination in the signed in app. New screens must also be added to [encode], [decodeRoute] and RouteContent. */
 sealed interface Route {
     data object GroupList : Route
+    data object CreateGroup : Route
+    data object JoinGroup : Route
+    data class GroupDetail(val groupId: String) : Route
 }
+
+// Route arguments are encoded as "name:arg"; Mongo hex ids never contain the separator
+private const val ARG_SEP = ":"
+private const val GROUPS = "groups"
+private const val CREATE_GROUP = "create_group"
+private const val JOIN_GROUP = "join_group"
+private const val GROUP = "group"
 
 /** Stable string form of a route, used only for saving the back stack. */
 fun Route.encode(): String = when (this) {
-    Route.GroupList -> "groups"
+    Route.GroupList -> GROUPS
+    Route.CreateGroup -> CREATE_GROUP
+    Route.JoinGroup -> JOIN_GROUP
+    is Route.GroupDetail -> "$GROUP$ARG_SEP$groupId"
 }
 
 /** Inverse of [encode]; returns null for unrecognised text so stale saved state is dropped (instead of crashing). */
-fun decodeRoute(text: String): Route? = if (text == "groups") Route.GroupList else null
+fun decodeRoute(text: String): Route? {
+    val parts = text.split(ARG_SEP, limit = 2)
+    val arg = parts.getOrNull(1)
+    return when (parts.first()) {
+        GROUPS -> Route.GroupList
+        CREATE_GROUP -> Route.CreateGroup
+        JOIN_GROUP -> Route.JoinGroup
+        GROUP -> arg?.let { Route.GroupDetail(it) }
+        else -> null
+    }
+}
 
 data class Entry(val id: Int, val route: Route)
 

@@ -5,6 +5,7 @@ import com.example.cpen321application.data.ApiClient
 import com.example.cpen321application.data.AuthInterceptor
 import com.example.cpen321application.data.AuthRepository
 import com.example.cpen321application.data.GoogleSignInHelper
+import com.example.cpen321application.data.GroupRepository
 import com.example.cpen321application.data.SessionStore
 import okhttp3.OkHttpClient
 
@@ -19,4 +20,5 @@ class AppContainer(context: Context) {
     )
 
     val authRepository = AuthRepository(api, sessionStore)
+    val groupRepository = GroupRepository(api)
 }
