@@ -35,8 +35,21 @@ object TestTags {
     const val LNG_INPUT = "lng_input"
     const val LABEL_INPUT = "label_input"
     const val PARTICIPATION_SUBMIT = "participation_submit"
+    const val OPEN_VOTING_BUTTON = "open_voting_button"
+    const val VOTING_STATUS_TEXT = "voting_status_text"
+    const val VOTER_COUNT_TEXT = "voter_count_text"
+    const val VOTING_LIVE_TEXT = "voting_live_text"
+    const val REFRESH_RESULTS_BUTTON = "refresh_results_button"
+    const val WINNER_TEXT = "winner_text"
+    const val CLOSE_VOTING_BUTTON = "close_voting_button"
+    const val CONFIRM_CLOSE_BUTTON = "confirm_close_button"
 
     // Chips are tagged per option name, e.g. modeChip("WALK")
     fun modeChip(mode: String) = "mode_chip_$mode"
     fun preferenceChip(preference: String) = "preference_chip_$preference"
+
+    // Voting rows are tagged per candidate id
+    fun candidateItem(candidateId: String) = "candidate_item_$candidateId"
+    fun voteButton(candidateId: String) = "vote_button_$candidateId"
+    fun pickWinnerButton(candidateId: String) = "pick_winner_button_$candidateId"
 }

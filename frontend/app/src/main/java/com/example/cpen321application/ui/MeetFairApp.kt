@@ -60,9 +60,10 @@ private fun MeetupRoutes(container: AppContainer, navigator: Navigator, route: R
             route.meetupId,
             onBack = navigator::pop,
             onEnterDetails = { navigator.push(Route.Participation(route.meetupId)) },
+            onOpenVoting = { navigator.push(Route.Voting(route.meetupId)) },
         )
         is Route.Participation -> ParticipationScreen(container, route.meetupId, onBack = navigator::pop)
-        is Route.Voting -> VotingScreen(container, route.sessionId)
+        is Route.Voting -> VotingScreen(container, route.meetupId, onBack = navigator::pop)
     }
 }
 

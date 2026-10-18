@@ -51,19 +51,25 @@ class MeetupViewModel(private val meetups: MeetupRepository, private val meetupI
 
 /** Status hub: shows the meetup and whatever the current status lets the user do next. */
 @Composable
-fun MeetupScreen(container: AppContainer, meetupId: String, onBack: () -> Unit, onEnterDetails: () -> Unit) {
+fun MeetupScreen(
+    container: AppContainer,
+    meetupId: String,
+    onBack: () -> Unit,
+    onEnterDetails: () -> Unit,
+    onOpenVoting: () -> Unit,
+) {
     val vm: MeetupViewModel = screenViewModel(MeetupViewModel.factory(container, meetupId))
     val state by vm.state.collectAsState()
     val userId = container.sessionStore.currentUserId()
     LaunchedEffect(Unit) { vm.load() }
 
     ScreenColumn("Meetup", onBack) {
-        UiStateContent(state, onRetry = vm::load, emptyMessage = "") { MeetupInfo(it, userId, onEnterDetails) }
+        UiStateContent(state, onRetry = vm::load, emptyMessage = "") { MeetupInfo(it, userId, onEnterDetails, onOpenVoting) }
     }
 }
 
 @Composable
-private fun MeetupInfo(meetup: Meetup, userId: String?, onEnterDetails: () -> Unit) {
+private fun MeetupInfo(meetup: Meetup, userId: String?, onEnterDetails: () -> Unit, onOpenVoting: () -> Unit) {
     val submitted = meetup.participants.any { it.userId == userId }
     val setup = meetup.status == MeetupStatus.SETUP
 
@@ -86,6 +92,12 @@ private fun MeetupInfo(meetup: Meetup, userId: String?, onEnterDetails: () -> Un
             }
         } else {
             Text("Details can no longer be changed.")
+        }
+        // A voting session exists from VOTING onwards; once finalized the screen shows the winner
+        if (meetup.status == MeetupStatus.VOTING || meetup.status == MeetupStatus.FINALIZED) {
+            Button(onClick = onOpenVoting, modifier = Modifier.testTag(TestTags.OPEN_VOTING_BUTTON)) {
+                Text(if (meetup.status == MeetupStatus.VOTING) "Vote on a spot" else "See voting results")
+            }
         }
     }
 }

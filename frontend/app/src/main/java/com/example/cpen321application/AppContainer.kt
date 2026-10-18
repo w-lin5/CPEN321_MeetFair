@@ -8,6 +8,7 @@ import com.example.cpen321application.data.GoogleSignInHelper
 import com.example.cpen321application.data.GroupRepository
 import com.example.cpen321application.data.MeetupRepository
 import com.example.cpen321application.data.SessionStore
+import com.example.cpen321application.data.VotingLiveUpdates
 import com.example.cpen321application.data.VotingRepository
 import okhttp3.OkHttpClient
 
@@ -25,4 +26,5 @@ class AppContainer(context: Context) {
     val groupRepository = GroupRepository(api)
     val meetupRepository = MeetupRepository(api)
     val votingRepository = VotingRepository(api)
+    val votingLiveUpdates = VotingLiveUpdates(BuildConfig.API_BASE_URL, sessionStore)
 }

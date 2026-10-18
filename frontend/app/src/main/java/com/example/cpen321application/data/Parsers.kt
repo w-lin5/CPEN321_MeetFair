@@ -1,5 +1,7 @@
 package com.example.cpen321application.data
 
+import com.example.cpen321application.model.Candidate
+import com.example.cpen321application.model.CandidateVoteTotal
 import com.example.cpen321application.model.Group
 import com.example.cpen321application.model.GroupMember
 import com.example.cpen321application.model.GroupRole
@@ -13,7 +15,7 @@ import com.example.cpen321application.model.User
 import com.example.cpen321application.model.Vote
 import com.example.cpen321application.model.VotingResults
 import com.example.cpen321application.model.VotingSession
-import com.example.cpen321application.model.CandidateVoteTotal
+import com.example.cpen321application.model.VotingStatus
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -71,50 +73,47 @@ internal fun parseMeetup(o: JSONObject) = Meetup(
     participants = o.getJSONArray("participants").mapObjects(::parseParticipant),
 )
 
-internal fun parseVotingSession(text: String): VotingSession {
-    val o = JSONObject(text)
-
-    val candidateIdsJson = o.getJSONArray("candidateIds")
-    val candidateIds = List(candidateIdsJson.length()) { index ->
-        candidateIdsJson.getString(index)
-    }
-
-    return VotingSession(
+internal fun parseCandidate(o: JSONObject): Candidate {
+    val location = o.getJSONObject("location")
+    return Candidate(
         id = o.getString("id"),
-        candidateIds = candidateIds,
-        createdBy = o.getString("createdBy"),
-        status = o.getString("status"),
+        placeId = o.getString("placeId"),
+        name = o.getString("name"),
+        address = o.stringOrNull("address").orEmpty(),
+        lat = location.getDouble("lat"),
+        lng = location.getDouble("lng"),
     )
 }
 
-internal fun parseVote(text: String): Vote {
-    val o = JSONObject(text)
+internal fun parseVotingSession(o: JSONObject) = VotingSession(
+    id = o.getString("id"),
+    meetupId = o.getString("meetupId"),
+    candidates = o.getJSONArray("candidates").mapObjects(::parseCandidate),
+    createdBy = o.getString("createdBy"),
+    status = VotingStatus.fromWire(o.stringOrNull("status")),
+    winnerCandidateId = o.stringOrNull("winnerCandidateId"),
+    myCandidateId = o.stringOrNull("myCandidateId"),
+)
 
-    return Vote(
-        id = o.getString("id"),
-        sessionId = o.getString("sessionId"),
-        userId = o.getString("userId"),
-        candidateId = o.getString("candidateId"),
-        weight = o.getDouble("weight"),
-    )
-}
+internal fun parseVote(o: JSONObject) = Vote(
+    id = o.getString("id"),
+    sessionId = o.getString("sessionId"),
+    userId = o.getString("userId"),
+    candidateId = o.getString("candidateId"),
+    weight = o.getDouble("weight"),
+)
 
-internal fun parseVotingResults(text: String): VotingResults {
-    val o = JSONObject(text)
-    val totalsJson = o.getJSONArray("totals")
+internal fun parseVoteTotal(o: JSONObject) = CandidateVoteTotal(
+    candidateId = o.getString("candidateId"),
+    voteCount = o.getInt("voteCount"),
+    totalWeight = o.getDouble("totalWeight"),
+)
 
-    val totals = List(totalsJson.length()) { index ->
-        val item = totalsJson.getJSONObject(index)
-
-        CandidateVoteTotal(
-            candidateId = item.getString("candidateId"),
-            voteCount = item.getInt("voteCount"),
-            totalWeight = item.getDouble("totalWeight"),
-        )
-    }
-
-    return VotingResults(
-        sessionId = o.getString("sessionId"),
-        totals = totals,
-    )
-}
+internal fun parseVotingResults(o: JSONObject) = VotingResults(
+    sessionId = o.getString("sessionId"),
+    status = VotingStatus.fromWire(o.stringOrNull("status")),
+    winnerCandidateId = o.stringOrNull("winnerCandidateId"),
+    voterCount = o.getInt("voterCount"),
+    eligibleVoterCount = o.getInt("eligibleVoterCount"),
+    totals = o.getJSONArray("totals").mapObjects(::parseVoteTotal),
+)

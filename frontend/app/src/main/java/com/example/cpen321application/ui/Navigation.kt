@@ -24,7 +24,7 @@ sealed interface Route {
     data class CreateMeetup(val groupId: String) : Meetups
     data class Meetup(val meetupId: String) : Meetups
     data class Participation(val meetupId: String) : Meetups
-    data class Voting(val sessionId: String) : Meetups
+    data class Voting(val meetupId: String) : Meetups
 }
 
 // Route arguments are encoded as "name:arg"; Mongo hex ids never contain the separator
@@ -47,7 +47,7 @@ fun Route.encode(): String = when (this) {
     is Route.CreateMeetup -> "$CREATE_MEETUP$ARG_SEP$groupId"
     is Route.Meetup -> "$MEETUP$ARG_SEP$meetupId"
     is Route.Participation -> "$PARTICIPATION$ARG_SEP$meetupId"
-    is Route.Voting -> "$VOTING$ARG_SEP$sessionId"
+    is Route.Voting -> "$VOTING$ARG_SEP$meetupId"
 }
 
 /** Inverse of [encode]; returns null for unrecognised text so stale saved state is dropped (instead of crashing). */

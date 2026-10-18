@@ -82,11 +82,36 @@ data class Meetup(
     val participants: List<Participant>,
 )
 
+enum class VotingStatus {
+    OPEN,
+    CLOSED,
+    ;
+
+    companion object {
+        // The backend sends lowercase "open" / "closed"
+        fun fromWire(value: String?): VotingStatus = if (value == "closed") CLOSED else OPEN
+    }
+}
+
+// One place the group can vote for; [id] is what votes refer to, [placeId] is the Google Places id
+data class Candidate(
+    val id: String,
+    val placeId: String,
+    val name: String,
+    val address: String,
+    val lat: Double,
+    val lng: Double,
+)
+
+// myCandidateId is the caller's current vote (null until they vote)
 data class VotingSession(
     val id: String,
-    val candidateIds: List<String>,
+    val meetupId: String,
+    val candidates: List<Candidate>,
     val createdBy: String,
-    val status: String,
+    val status: VotingStatus,
+    val winnerCandidateId: String?,
+    val myCandidateId: String?,
 )
 
 data class Vote(
@@ -103,7 +128,24 @@ data class CandidateVoteTotal(
     val totalWeight: Double,
 )
 
+// Weights are floating point; totals closer than this are treated as equal
+private const val WEIGHT_EPSILON = 1e-9
+
 data class VotingResults(
     val sessionId: String,
+    val status: VotingStatus,
+    val winnerCandidateId: String?,
+    val voterCount: Int,
+    val eligibleVoterCount: Int,
     val totals: List<CandidateVoteTotal>,
-)
+) {
+    val everyoneVoted: Boolean get() = voterCount >= eligibleVoterCount
+
+    fun totalFor(candidateId: String): CandidateVoteTotal? = totals.firstOrNull { it.candidateId == candidateId }
+
+    /** Candidates sharing the highest weighted total; all of them when nobody has voted. */
+    fun leaders(): List<String> {
+        val best = totals.maxOfOrNull { it.totalWeight } ?: return emptyList()
+        return totals.filter { best - it.totalWeight < WEIGHT_EPSILON }.map { it.candidateId }
+    }
+}
