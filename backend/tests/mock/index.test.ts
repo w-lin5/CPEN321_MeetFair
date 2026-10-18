@@ -5,11 +5,17 @@ interface FakeServer {
   close: jest.Mock<void, [Callback]>;
 }
 
+interface FakeIo {
+  close: jest.Mock<Promise<void>, [Callback]>;
+}
+
 interface Harness {
   connectDb: jest.Mock<Promise<void>, [string]>;
   disconnectDb: jest.Mock<Promise<void>, []>;
   listen: jest.Mock<FakeServer, [number, Callback]>;
   server: FakeServer;
+  io: FakeIo;
+  attachRealtime: jest.Mock<FakeIo, [FakeServer]>;
   handlers: Map<string, Callback>;
   exit: jest.SpyInstance;
   consoleLog: jest.SpyInstance;
@@ -33,6 +39,14 @@ function boot(overrides: Partial<Pick<Harness, 'connectDb' | 'disconnectDb'>> = 
     cb();
     return server;
   });
+  // Closing Socket.IO also closes the HTTP server it is attached to
+  const io: FakeIo = {
+    close: jest.fn((cb: Callback) => {
+      server.close(cb);
+      return Promise.resolve();
+    }),
+  };
+  const attachRealtime = jest.fn((_server: FakeServer): FakeIo => io);
   const connectDb = overrides.connectDb ?? jest.fn().mockResolvedValue(undefined);
   const disconnectDb = overrides.disconnectDb ?? jest.fn().mockResolvedValue(undefined);
 
@@ -50,10 +64,11 @@ function boot(overrides: Partial<Pick<Harness, 'connectDb' | 'disconnectDb'>> = 
     jest.doMock('../../src/app', () => ({ createApp: () => ({ listen }) }));
     jest.doMock('../../src/config', () => ({ env: { port: PORT, mongoUri: URI } }));
     jest.doMock('../../src/db', () => ({ connectDb, disconnectDb }));
+    jest.doMock('../../src/realtime/socket', () => ({ attachRealtime }));
     require('../../src/index');
   });
 
-  return { connectDb, disconnectDb, listen, server, handlers, exit, consoleLog, consoleError };
+  return { connectDb, disconnectDb, listen, server, io, attachRealtime, handlers, exit, consoleLog, consoleError };
 }
 
 afterEach(() => {
@@ -61,26 +76,29 @@ afterEach(() => {
   jest.dontMock('../../src/app');
   jest.dontMock('../../src/config');
   jest.dontMock('../../src/db');
+  jest.dontMock('../../src/realtime/socket');
 });
 
 // Interface: server bootstrap (src/index.ts)
 describe('Mocked: index bootstrap', () => {
   // Input: normal startup
   // Expected behavior: DB connected with the configured URI, app listens on the configured port,
-  //                    startup is logged, SIGINT and SIGTERM handlers are registered
+  //                    Socket.IO is attached to the HTTP server, startup is logged,
+  //                    SIGINT and SIGTERM handlers are registered
   test('Starts the server and registers shutdown handlers', async () => {
     const h = boot();
     await flush();
 
     expect(h.connectDb).toHaveBeenCalledWith(URI);
     expect(h.listen).toHaveBeenCalledWith(PORT, expect.any(Function));
+    expect(h.attachRealtime).toHaveBeenCalledWith(h.server);
     expect(h.consoleLog).toHaveBeenCalledWith(`Server listening on port ${PORT}`);
     expect([...h.handlers.keys()].sort()).toEqual(['SIGINT', 'SIGTERM']);
     expect(h.exit).not.toHaveBeenCalled();
   });
 
   // Input: SIGINT / SIGTERM after a successful startup, DB disconnects cleanly
-  // Expected behavior: server is closed, DB disconnected, process exits with 0
+  // Expected behavior: Socket.IO and the server are closed, DB disconnected, process exits with 0
   test.each<Signal>(['SIGINT', 'SIGTERM'])('%s shuts down gracefully', async (signal) => {
     const h = boot();
     await flush();
@@ -88,6 +106,7 @@ describe('Mocked: index bootstrap', () => {
     h.handlers.get(signal)?.();
     await flush();
 
+    expect(h.io.close).toHaveBeenCalledTimes(1);
     expect(h.server.close).toHaveBeenCalledTimes(1);
     expect(h.disconnectDb).toHaveBeenCalledTimes(1);
     expect(h.exit).toHaveBeenCalledWith(0);
