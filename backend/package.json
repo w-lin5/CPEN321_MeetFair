@@ -25,6 +25,7 @@
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
+    "@shelf/jest-mongodb": "^6.0.2",
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.20.0",
@@ -36,10 +37,10 @@
     "eslint-plugin-security": "^3.0.1",
     "eslint-plugin-security-node": "^1.1.4",
     "jest": "^30.4.2",
+    "socket.io-client": "^4.8.1",
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.12",
     "tsx": "^4.23.5",
-    "typescript": "~5.9",
-    "@shelf/jest-mongodb": "^6.0.2"
+    "typescript": "~5.9"
   }
 }
