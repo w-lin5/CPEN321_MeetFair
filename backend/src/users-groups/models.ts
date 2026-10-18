@@ -1,6 +1,6 @@
 import { type InferSchemaType, Schema, model } from 'mongoose';
 
-import { GROUP_ROLES, MEETUP_STATUSES, PREFERENCES, TRAVEL_MODES } from '../common/types';
+import { COMMUTE_SOURCES, GROUP_ROLES, MEETUP_STATUSES, PREFERENCES, TRAVEL_MODES } from '../common/types';
 import { jsonOptions } from '../db';
 
 // Define persisted user fields and enforce uniqueness for Google identities (i.e., one account per Google id)
@@ -10,6 +10,8 @@ const userSchema = new Schema(
     email: { type: String, required: true },
     name: { type: String, required: true },
     photoUrl: { type: String, default: null },
+    // Name the user chose in the app; null falls back to the Google name. Sign-in never overwrites it
+    displayName: { type: String, default: null },
   },
   { timestamps: true, toJSON: jsonOptions },
 );
@@ -72,3 +74,25 @@ const meetupSchema = new Schema(
 
 export type MeetupFields = InferSchemaType<typeof meetupSchema>;
 export const MeetupModel = model('Meetup', meetupSchema);
+
+// One member's commute for one finalized meetup. Fairness debt in a group is the sum of extraMinutes,
+// i.e. how much longer than the group average this user has travelled across past meetups
+const fairnessEntrySchema = new Schema(
+  {
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    groupId: { type: Schema.Types.ObjectId, ref: 'Group', required: true },
+    meetupId: { type: Schema.Types.ObjectId, ref: 'Meetup', required: true },
+    commuteMinutes: { type: Number, required: true },
+    groupAverageMinutes: { type: Number, required: true },
+    // commuteMinutes - groupAverageMinutes; negative when the user travelled less than average
+    extraMinutes: { type: Number, required: true },
+    source: { type: String, enum: [...COMMUTE_SOURCES], required: true },
+  },
+  { timestamps: true, toJSON: jsonOptions },
+);
+// At most one entry per user per meetup, so re-recording a commute replaces it instead of double counting
+fairnessEntrySchema.index({ userId: 1, meetupId: 1 }, { unique: true });
+fairnessEntrySchema.index({ userId: 1, groupId: 1, createdAt: -1 });
+
+export type FairnessEntryFields = InferSchemaType<typeof fairnessEntrySchema>;
+export const FairnessEntryModel = model('FairnessEntry', fairnessEntrySchema);

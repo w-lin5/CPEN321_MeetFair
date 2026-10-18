@@ -31,4 +31,9 @@ async function findByIds(ids: Types.ObjectId[]) {
   return UserModel.find({ _id: { $in: ids } });
 }
 
-export const userService = { upsertFromGoogle, signInWithGoogle, getById, findByIds };
+// The name other members should see: the user's own choice, else their Google name
+function displayNameOf(user: { name: string; displayName?: string | null | undefined }): string {
+  return user.displayName ?? user.name;
+}
+
+export const userService = { upsertFromGoogle, signInWithGoogle, getById, findByIds, displayNameOf };

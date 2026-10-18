@@ -35,8 +35,18 @@ object TestTags {
     const val LNG_INPUT = "lng_input"
     const val LABEL_INPUT = "label_input"
     const val PARTICIPATION_SUBMIT = "participation_submit"
+    const val PROFILE_BUTTON = "profile_button"
+    const val PROFILE_NAME_TEXT = "profile_name_text"
+    const val DISPLAY_NAME_INPUT = "display_name_input"
+    const val SAVE_DISPLAY_NAME_BUTTON = "save_display_name_button"
+    const val RESET_DISPLAY_NAME_BUTTON = "reset_display_name_button"
+    const val PROFILE_GROUPS_EMPTY = "profile_groups_empty"
+    const val FAIRNESS_DEBT_TEXT = "fairness_debt_text"
+    const val FAIRNESS_HISTORY_EMPTY = "fairness_history_empty"
+    const val FAIRNESS_ENTRY_ITEM = "fairness_entry_item"
 
     // Chips are tagged per option name, e.g. modeChip("WALK")
     fun modeChip(mode: String) = "mode_chip_$mode"
     fun preferenceChip(preference: String) = "preference_chip_$preference"
+    fun profileGroupItem(groupId: String) = "profile_group_item_$groupId"
 }

@@ -81,3 +81,43 @@ data class Meetup(
     val status: MeetupStatus,
     val participants: List<Participant>,
 )
+
+// One group on the profile, with the user's accumulated fairness debt there (minutes; negative = travelled less)
+data class ProfileGroup(
+    val groupId: String,
+    val name: String,
+    val role: GroupRole,
+    val fairnessDebt: Double,
+)
+
+// displayName is already resolved: the custom name if set, otherwise the Google name
+data class UserProfile(
+    val id: String,
+    val email: String,
+    val googleName: String,
+    val displayName: String,
+    val hasCustomDisplayName: Boolean,
+    val photoUrl: String?,
+    val groups: List<ProfileGroup>,
+)
+
+enum class CommuteSource {
+    TRACKED,
+    ESTIMATED,
+    ;
+
+    companion object {
+        fun fromWire(value: String?): CommuteSource = entries.firstOrNull { it.name == value } ?: ESTIMATED
+    }
+}
+
+data class FairnessEntry(
+    val meetupId: String,
+    val commuteMinutes: Double,
+    val groupAverageMinutes: Double,
+    val extraMinutes: Double,
+    val source: CommuteSource,
+    val recordedAt: String,
+)
+
+data class FairnessHistory(val groupId: String, val fairnessDebt: Double, val history: List<FairnessEntry>)

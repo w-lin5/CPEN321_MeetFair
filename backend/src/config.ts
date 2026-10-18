@@ -42,4 +42,9 @@ export const tuning = {
   maxPreferences: 5,
   maxLatitude: 90,
   maxLongitude: 180,
+
+  // Profile
+  displayNameMaxLength: 60,
+  // Upper bound on a single recorded commute (one day), to reject obviously broken measurements
+  maxCommuteMinutes: 24 * 60,
 } as const;

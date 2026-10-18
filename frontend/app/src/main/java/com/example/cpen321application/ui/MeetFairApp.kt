@@ -16,6 +16,8 @@ import com.example.cpen321application.ui.groups.JoinGroupScreen
 import com.example.cpen321application.ui.meetup.CreateMeetupScreen
 import com.example.cpen321application.ui.meetup.MeetupScreen
 import com.example.cpen321application.ui.meetup.ParticipationScreen
+import com.example.cpen321application.ui.profile.GroupFairnessScreen
+import com.example.cpen321application.ui.profile.ProfileScreen
 
 /** Token present -> app, token absent (sign-out or 401 status code) -> sign-in. */
 @Composable
@@ -44,6 +46,19 @@ private fun RouteContent(container: AppContainer, navigator: Navigator, route: R
     when (route) {
         is Route.Groups -> GroupRoutes(container, navigator, route)
         is Route.Meetups -> MeetupRoutes(container, navigator, route)
+        is Route.Profiles -> ProfileRoutes(container, navigator, route)
+    }
+}
+
+@Composable
+private fun ProfileRoutes(container: AppContainer, navigator: Navigator, route: Route.Profiles) {
+    when (route) {
+        Route.Profile -> ProfileScreen(
+            container,
+            onBack = navigator::pop,
+            onOpenGroupFairness = { navigator.push(Route.GroupFairness(it)) },
+        )
+        is Route.GroupFairness -> GroupFairnessScreen(container, route.groupId, onBack = navigator::pop)
     }
 }
 
@@ -72,6 +87,7 @@ private fun GroupRoutes(container: AppContainer, navigator: Navigator, route: Ro
             onCreate = { navigator.push(Route.CreateGroup) },
             onJoin = { navigator.push(Route.JoinGroup) },
             onOpen = { navigator.push(Route.GroupDetail(it)) },
+            onProfile = { navigator.push(Route.Profile) },
         )
         Route.CreateGroup -> CreateGroupScreen(container, onBack = navigator::pop, onCreated = {
             navigator.pop()

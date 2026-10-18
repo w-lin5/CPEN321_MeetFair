@@ -4,6 +4,7 @@ import { getUserId } from '../common/middleware/require-auth';
 import { parseInput } from '../common/middleware/validate';
 import { groupService } from './group.service';
 import { meetupService } from './meetup.service';
+import { profileService } from './profile.service';
 import {
   createGroupBody,
   createMeetupBody,
@@ -11,6 +12,7 @@ import {
   joinGroupBody,
   meetupParams,
   participationBody,
+  updateProfileBody,
 } from './schemas';
 import { userService } from './user.service';
 
@@ -19,6 +21,23 @@ export const usersGroupsRouter = Router();
 // Return authenticated user's profile
 usersGroupsRouter.get('/users/me', async (req, res) => {
   res.json(await userService.getById(getUserId(req)));
+});
+
+// Account info, groups and per-group fairness debt in one response
+usersGroupsRouter.get('/users/me/profile', async (req, res) => {
+  res.json(await profileService.getProfile(getUserId(req)));
+});
+
+// Replaces the editable profile fields (currently only displayName)
+usersGroupsRouter.put('/users/me/profile', async (req, res) => {
+  const input = parseInput(updateProfileBody, req.body);
+  res.json(await profileService.updateProfile(getUserId(req), input));
+});
+
+// The caller's fairness debt and commute history in one of their groups
+usersGroupsRouter.get('/users/me/groups/:groupId/fairness', async (req, res) => {
+  const { groupId } = parseInput(groupParams, req.params);
+  res.json(await profileService.getFairnessHistory(getUserId(req), groupId));
 });
 
 // Create a group; the caller becomes its organizer

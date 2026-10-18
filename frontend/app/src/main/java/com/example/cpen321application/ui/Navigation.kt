@@ -15,6 +15,7 @@ sealed interface Route {
     /** Feature grouping so MeetFairApp can render each feature's routes in its own function. */
     sealed interface Groups : Route
     sealed interface Meetups : Route
+    sealed interface Profiles : Route
 
     data object GroupList : Groups
     data object CreateGroup : Groups
@@ -24,6 +25,9 @@ sealed interface Route {
     data class CreateMeetup(val groupId: String) : Meetups
     data class Meetup(val meetupId: String) : Meetups
     data class Participation(val meetupId: String) : Meetups
+
+    data object Profile : Profiles
+    data class GroupFairness(val groupId: String) : Profiles
 }
 
 // Route arguments are encoded as "name:arg"; Mongo hex ids never contain the separator
@@ -35,6 +39,8 @@ private const val GROUP = "group"
 private const val CREATE_MEETUP = "create_meetup"
 private const val MEETUP = "meetup"
 private const val PARTICIPATION = "participation"
+private const val PROFILE = "profile"
+private const val GROUP_FAIRNESS = "group_fairness"
 
 /** Stable string form of a route, used only for saving the back stack. */
 fun Route.encode(): String = when (this) {
@@ -45,6 +51,8 @@ fun Route.encode(): String = when (this) {
     is Route.CreateMeetup -> "$CREATE_MEETUP$ARG_SEP$groupId"
     is Route.Meetup -> "$MEETUP$ARG_SEP$meetupId"
     is Route.Participation -> "$PARTICIPATION$ARG_SEP$meetupId"
+    Route.Profile -> PROFILE
+    is Route.GroupFairness -> "$GROUP_FAIRNESS$ARG_SEP$groupId"
 }
 
 /** Inverse of [encode]; returns null for unrecognised text so stale saved state is dropped (instead of crashing). */
@@ -59,6 +67,8 @@ fun decodeRoute(text: String): Route? {
         CREATE_MEETUP -> arg?.let { Route.CreateMeetup(it) }
         MEETUP -> arg?.let { Route.Meetup(it) }
         PARTICIPATION -> arg?.let { Route.Participation(it) }
+        PROFILE -> Route.Profile
+        GROUP_FAIRNESS -> arg?.let { Route.GroupFairness(it) }
         else -> null
     }
 }

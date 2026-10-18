@@ -1,5 +1,8 @@
 package com.example.cpen321application.data
 
+import com.example.cpen321application.model.CommuteSource
+import com.example.cpen321application.model.FairnessEntry
+import com.example.cpen321application.model.FairnessHistory
 import com.example.cpen321application.model.Group
 import com.example.cpen321application.model.GroupMember
 import com.example.cpen321application.model.GroupRole
@@ -7,9 +10,11 @@ import com.example.cpen321application.model.Meetup
 import com.example.cpen321application.model.MeetupStatus
 import com.example.cpen321application.model.Participant
 import com.example.cpen321application.model.Preference
+import com.example.cpen321application.model.ProfileGroup
 import com.example.cpen321application.model.StartLocation
 import com.example.cpen321application.model.TravelMode
 import com.example.cpen321application.model.User
+import com.example.cpen321application.model.UserProfile
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -65,4 +70,36 @@ internal fun parseMeetup(o: JSONObject) = Meetup(
     scheduledAt = o.getString("scheduledAt"),
     status = MeetupStatus.fromWire(o.stringOrNull("status")),
     participants = o.getJSONArray("participants").mapObjects(::parseParticipant),
+)
+
+internal fun parseProfileGroup(o: JSONObject) = ProfileGroup(
+    groupId = o.getString("groupId"),
+    name = o.getString("name"),
+    role = GroupRole.fromWire(o.stringOrNull("role")),
+    fairnessDebt = o.optDouble("fairnessDebt", 0.0),
+)
+
+internal fun parseUserProfile(o: JSONObject) = UserProfile(
+    id = o.getString("id"),
+    email = o.getString("email"),
+    googleName = o.getString("googleName"),
+    displayName = o.getString("displayName"),
+    hasCustomDisplayName = o.optBoolean("hasCustomDisplayName"),
+    photoUrl = o.stringOrNull("photoUrl"),
+    groups = o.getJSONArray("groups").mapObjects(::parseProfileGroup),
+)
+
+internal fun parseFairnessEntry(o: JSONObject) = FairnessEntry(
+    meetupId = o.getString("meetupId"),
+    commuteMinutes = o.getDouble("commuteMinutes"),
+    groupAverageMinutes = o.getDouble("groupAverageMinutes"),
+    extraMinutes = o.getDouble("extraMinutes"),
+    source = CommuteSource.fromWire(o.stringOrNull("source")),
+    recordedAt = o.stringOrNull("createdAt").orEmpty(),
+)
+
+internal fun parseFairnessHistory(o: JSONObject) = FairnessHistory(
+    groupId = o.getString("groupId"),
+    fairnessDebt = o.getDouble("fairnessDebt"),
+    history = o.getJSONArray("history").mapObjects(::parseFairnessEntry),
 )
