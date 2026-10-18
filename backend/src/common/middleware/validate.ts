@@ -100,28 +100,22 @@ export function objectId(f: Fields, key: string): string {
   return value;
 }
 
-export function objectIdArray(
-  f: Fields,
-  key: string,
-  exactItems: number,
-): string[] {
+// Optional ObjectId: absent or null yields undefined, anything else must be a valid id
+export function optionalObjectId(f: Fields, key: string): string | undefined {
+  const value = f.get(key);
+  if (value === undefined || value === null) return undefined;
+  return objectId(f, key);
+}
+
+// An array of exactly `exactItems` objects, each returned as Fields for further parsing
+export function objectList(f: Fields, key: string, exactItems: number): Fields[] {
   const value = f.get(key);
 
   if (!Array.isArray(value) || value.length !== exactItems) {
     return fail(`${key} must contain exactly ${exactItems} items`);
   }
 
-  const items = value.map((item) => {
-    if (typeof item !== 'string' || !OBJECT_ID.test(item)) {
-      return fail(`${key} has an invalid ObjectId`);
-    }
+  const items: unknown[] = value;
 
-    return item;
-  });
-
-  if (new Set(items).size !== items.length) {
-    return fail(`${key} must not contain duplicate items`);
-  }
-
-  return items;
+  return items.map((item, i) => fields(item, `${key}[${i}]`));
 }

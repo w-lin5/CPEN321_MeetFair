@@ -18,8 +18,8 @@ export function createApp(): Express {
   api.use('/auth', authRouter);
   api.use(requireAuth);
   api.use(usersGroupsRouter);
-  app.use('/api', api);
   api.use(votingRouter);
+  app.use('/api', api);
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'Not Found' });

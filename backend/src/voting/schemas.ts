@@ -1,10 +1,23 @@
-
 import {
   type Parser,
   fields,
+  numberInRange,
   objectId,
-  objectIdArray,
+  objectList,
+  optionalObjectId,
+  optionalText,
+  text,
 } from '../common/middleware/validate';
+import { ValidationError } from '../common/errors';
+import type { LatLng } from '../common/types';
+import { tuning } from '../config';
+
+export interface CandidateInput {
+  placeId: string;
+  name: string;
+  address: string;
+  location: LatLng;
+}
 
 // Check if the submitted candidateId is a valid ObjectId
 export const submitVoteBody: Parser<{ candidateId: string }> = (data) => ({
@@ -16,12 +29,32 @@ export const votingSessionParams: Parser<{ sessionId: string }> = (data) => ({
   sessionId: objectId(fields(data, 'params'), 'sessionId'),
 });
 
-export const createVotingSessionBody: Parser<{
-  candidateIds: string[];
-}> = (data) => ({
-  candidateIds: objectIdArray(
-    fields(data),
-    'candidateIds',
-    3,
-  ),
+function parseCandidate(f: ReturnType<typeof fields>): CandidateInput {
+  const loc = fields(f.get('location'), 'location');
+
+  return {
+    placeId: text(f, 'placeId', tuning.placeIdMaxLength),
+    name: text(f, 'name', tuning.placeNameMaxLength),
+    address: optionalText(f, 'address', tuning.placeAddressMaxLength),
+    location: {
+      lat: numberInRange(loc, 'lat', -tuning.maxLatitude, tuning.maxLatitude),
+      lng: numberInRange(loc, 'lng', -tuning.maxLongitude, tuning.maxLongitude),
+    },
+  };
+}
+
+// The recommender's top places; the same place must not appear twice
+export const createVotingSessionBody: Parser<{ candidates: CandidateInput[] }> = (data) => {
+  const candidates = objectList(fields(data), 'candidates', tuning.votingCandidateCount).map(parseCandidate);
+
+  if (new Set(candidates.map((c) => c.placeId)).size !== candidates.length) {
+    throw new ValidationError(['candidates must not contain the same placeId twice']);
+  }
+
+  return { candidates };
+};
+
+// The organizer may name the winner to break a tie, or when nobody voted
+export const closeVotingSessionBody: Parser<{ winnerCandidateId: string | undefined }> = (data) => ({
+  winnerCandidateId: optionalObjectId(fields(data ?? {}), 'winnerCandidateId'),
 });

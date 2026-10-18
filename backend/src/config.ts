@@ -42,4 +42,12 @@ export const tuning = {
   maxPreferences: 5,
   maxLatitude: 90,
   maxLongitude: 180,
+
+  // Voting: the recommender hands over exactly this many candidates
+  votingCandidateCount: 3,
+  placeIdMaxLength: 256,
+  placeNameMaxLength: 200,
+  placeAddressMaxLength: 300,
+  // Weighted totals closer than this count as a tie (guards against floating-point drift)
+  voteWeightEpsilon: 1e-9,
 } as const;
