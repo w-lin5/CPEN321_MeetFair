@@ -78,32 +78,41 @@ _(Placeholder for Jest coverage screenshot without mocks)_
 
 ---
 
-## 4. Front-end Test Specification
+### 4. Front-end Test Specification
 
 ### 4.1. Location in Git of Front-end Test Suite:
 
-`frontend/src/androidTest/java/com/studygroupfinder/`
+`frontend/app/src/androidTest/java/com/example/cpen321application/e2e/`
+
+The suite is run with `./scripts/run-frontend-e2e-tests.sh` (macOS/Linux) or `./scripts/run-frontend-e2e-tests.ps1` (Windows), with an emulator running, a Google test account added to the emulator, and the back end reachable at `API_BASE_URL`. UI elements are located by the test tags defined in `ui/common/TestTags.kt`; the Google account picker is a system window and is driven with UI Automator.
 
 ### 4.2. Tests
 
-- **Use Case: Login**
+- **Use Case: Sign In**
 
   - **Expected Behaviors:**
     | **Scenario Steps** | **Test Case Steps** |
     | ------------------ | ------------------- |
-    | 1. The user opens "Add Todo Items" screen. | Open "Add Todo Items" screen. |
-    | 2. The app shows an input text field and an "Add" button. The add button is disabled. | Check that the text field is present on screen.<br>Check that the button labelled "Add" is present on screen.<br>Check that the "Add" button is disabled. |
-    | 3a. The user inputs an ill-formatted string. | Input "_^_^^OQ#$" in the text field. |
-    | 3a1. The app displays an error message prompting the user for the expected format. | Check that a dialog is opened with the text: "Please use only alphanumeric characters ". |
-    | 3. The user inputs a new item for the list and the add button becomes enabled. | Input "buy milk" in the text field.<br>Check that the button labelled "add" is enabled. |
-    | 4. The user presses the "Add" button. | Click the button labelled "add ". |
-    | 5. The screen refreshes and the new item is at the bottom of the todo list. | Check that a text box with the text "buy milk" is present on screen.<br>Input "buy chocolate" in the text field.<br>Click the button labelled "add".<br>Check that two text boxes are present on the screen with "buy milk" on top and "buy chocolate" at the bottom. |
-    | 5a. The list exceeds the maximum todo-list size. | Repeat steps 3 to 5 ten times.<br>Check that a dialog is opened with the text: "You have too many items, try completing one first". |
+    | 1. The user opens the app while signed out. | Clear the saved session.<br>Launch the app. |
+    | 2. The app shows the sign-in screen with the app name, the tagline and a "Sign in with Google" button. | Check that a text "MeetFair" is present on screen.<br>Check that a text "Equal effort, this meetup and the next" is present on screen.<br>Check that the button with test tag `sign_in_button` and text "Sign in with Google" is present and enabled.<br>Check that no node with test tag `error_text` is present. |
+    | 3. The user taps "Sign in with Google". | Click the button with test tag `sign_in_button`. |
+    | 4. The app shows the Google account picker. | Check that the Google account picker is displayed. |
+    | 4a. The user dismisses the account picker without choosing an account. | Press the back button to dismiss the account picker. |
+    | 4a1. The app stays on the sign-in screen and shows an error message; the user can try again. | Check that a node with test tag `error_text` is displayed.<br>Check that the button with test tag `sign_in_button` is present and enabled. |
+    | 5. The user selects their Google account. | Select the Google test account in the account picker. |
+    | 6. The app sends the Google ID token to the back end; the sign-in button is disabled while the request is in progress. | Check that the button with test tag `sign_in_button` is disabled. |
+    | 6a. The back end rejects the Google ID token. | Start the back end with a `GOOGLE_CLIENT_ID` that does not match the app's client ID.<br>Repeat steps 3 and 5. |
+    | 6a1. The app stays on the sign-in screen and shows "Invalid Google ID token". | Check that a node with test tag `error_text` has the text "Invalid Google ID token".<br>Check that the button with test tag `sign_in_button` is enabled. |
+    | 6b. The device cannot reach the back end. | Stop the back end.<br>Repeat steps 3 and 5. |
+    | 6b1. The app stays on the sign-in screen and shows a network error message. | Check that a node with test tag `error_text` has text starting with "Network error".<br>Check that the button with test tag `sign_in_button` is enabled. |
+    | 7. The app saves the session and shows the group list with the user's name. | Check that a text "Signed in as <test account name>" is present on screen.<br>Check that the button with test tag `sign_out_button` is present.<br>Check that no node with test tag `sign_in_button` is present. |
+    | 8. The user closes and reopens the app and is still signed in. | Close and relaunch the app.<br>Check that a text "Signed in as <test account name>" is present on screen.<br>Check that no node with test tag `sign_in_button` is present. |
 
   - **Test Logs:**
     ```
     [Placeholder for Espresso test execution logs]
     ```
+
 
 - **Use Case: ...**
 

@@ -1,0 +1,91 @@
+package com.example.cpen321application.ui.meetup
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.cpen321application.AppContainer
+import com.example.cpen321application.data.MeetupRepository
+import com.example.cpen321application.model.Meetup
+import com.example.cpen321application.model.MeetupStatus
+import com.example.cpen321application.ui.common.ScreenColumn
+import com.example.cpen321application.ui.common.TestTags
+import com.example.cpen321application.ui.common.UiState
+import com.example.cpen321application.ui.common.UiStateContent
+import com.example.cpen321application.ui.common.toUiState
+import com.example.cpen321application.ui.screenViewModel
+import com.example.cpen321application.ui.theme.Dimens
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+/** Loads one meetup for the status hub. */
+class MeetupViewModel(private val meetups: MeetupRepository, private val meetupId: String) : ViewModel() {
+    private val _state = MutableStateFlow<UiState<Meetup>>(UiState.Loading)
+    val state: StateFlow<UiState<Meetup>> = _state.asStateFlow()
+
+    fun load() {
+        viewModelScope.launch {
+            _state.value = UiState.Loading
+            _state.value = meetups.get(meetupId).toUiState()
+        }
+    }
+
+    companion object {
+        fun factory(c: AppContainer, meetupId: String) =
+            viewModelFactory { initializer { MeetupViewModel(c.meetupRepository, meetupId) } }
+    }
+}
+
+/** Status hub: shows the meetup and whatever the current status lets the user do next. */
+@Composable
+fun MeetupScreen(container: AppContainer, meetupId: String, onBack: () -> Unit, onEnterDetails: () -> Unit) {
+    val vm: MeetupViewModel = screenViewModel(MeetupViewModel.factory(container, meetupId))
+    val state by vm.state.collectAsState()
+    val userId = container.sessionStore.currentUserId()
+    LaunchedEffect(Unit) { vm.load() }
+
+    ScreenColumn("Meetup", onBack) {
+        UiStateContent(state, onRetry = vm::load, emptyMessage = "") { MeetupInfo(it, userId, onEnterDetails) }
+    }
+}
+
+@Composable
+private fun MeetupInfo(meetup: Meetup, userId: String?, onEnterDetails: () -> Unit) {
+    val submitted = meetup.participants.any { it.userId == userId }
+    val setup = meetup.status == MeetupStatus.SETUP
+
+    Column(verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
+        Text(
+            meetup.title,
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.testTag(TestTags.MEETUP_TITLE_TEXT),
+        )
+        Text(isoToDisplay(meetup.scheduledAt))
+        Text("Status: ${meetup.status.name}", modifier = Modifier.testTag(TestTags.MEETUP_STATUS_TEXT))
+        Text(
+            if (submitted) "You have submitted your details." else "You have not submitted your details yet.",
+            modifier = Modifier.testTag(TestTags.PARTICIPATION_STATUS_TEXT),
+        )
+        Text("${meetup.participants.size} member(s) have submitted their details.")
+        if (setup) {
+            Button(onClick = onEnterDetails, modifier = Modifier.testTag(TestTags.PARTICIPATION_BUTTON)) {
+                Text(if (submitted) "Edit my details" else "Enter my details")
+            }
+        } else {
+            Text("Details can no longer be changed.")
+        }
+    }
+}

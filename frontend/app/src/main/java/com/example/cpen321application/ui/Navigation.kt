@@ -12,33 +12,59 @@ import androidx.lifecycle.ViewModelProvider
 
 /** Every destination in the signed in app. New screens must also be added to [encode], [decodeRoute] and RouteContent. */
 sealed interface Route {
-    data object GroupList : Route
+    /** Feature grouping so MeetFairApp can render each feature's routes in its own function. */
+    sealed interface Groups : Route
+    sealed interface Meetups : Route
 
-    data class Voting(
-        val sessionId: String,
-    ) : Route
+    data object GroupList : Groups
+    data object CreateGroup : Groups
+    data object JoinGroup : Groups
+    data class GroupDetail(val groupId: String) : Groups
+
+    data class CreateMeetup(val groupId: String) : Meetups
+    data class Meetup(val meetupId: String) : Meetups
+    data class Participation(val meetupId: String) : Meetups
+    data class Voting(val sessionId: String) : Meetups
 }
+
+// Route arguments are encoded as "name:arg"; Mongo hex ids never contain the separator
+private const val ARG_SEP = ":"
+private const val GROUPS = "groups"
+private const val CREATE_GROUP = "create_group"
+private const val JOIN_GROUP = "join_group"
+private const val GROUP = "group"
+private const val CREATE_MEETUP = "create_meetup"
+private const val MEETUP = "meetup"
+private const val PARTICIPATION = "participation"
+private const val VOTING = "voting"
 
 /** Stable string form of a route, used only for saving the back stack. */
 fun Route.encode(): String = when (this) {
-    Route.GroupList -> "groups"
-    is Route.Voting -> "voting:${sessionId}"
+    Route.GroupList -> GROUPS
+    Route.CreateGroup -> CREATE_GROUP
+    Route.JoinGroup -> JOIN_GROUP
+    is Route.GroupDetail -> "$GROUP$ARG_SEP$groupId"
+    is Route.CreateMeetup -> "$CREATE_MEETUP$ARG_SEP$groupId"
+    is Route.Meetup -> "$MEETUP$ARG_SEP$meetupId"
+    is Route.Participation -> "$PARTICIPATION$ARG_SEP$meetupId"
+    is Route.Voting -> "$VOTING$ARG_SEP$sessionId"
 }
 
 /** Inverse of [encode]; returns null for unrecognised text so stale saved state is dropped (instead of crashing). */
 fun decodeRoute(text: String): Route? {
-    if (text == "groups") {
-        return Route.GroupList
+    val parts = text.split(ARG_SEP, limit = 2)
+    val arg = parts.getOrNull(1)
+    return when (parts.first()) {
+        GROUPS -> Route.GroupList
+        CREATE_GROUP -> Route.CreateGroup
+        JOIN_GROUP -> Route.JoinGroup
+        GROUP -> arg?.let { Route.GroupDetail(it) }
+        CREATE_MEETUP -> arg?.let { Route.CreateMeetup(it) }
+        MEETUP -> arg?.let { Route.Meetup(it) }
+        PARTICIPATION -> arg?.let { Route.Participation(it) }
+        VOTING -> arg?.let { Route.Voting(it) }
+        else -> null
     }
-
-    if (text.startsWith("voting:")) {
-        val sessionId = text.removePrefix("voting:")
-        if (sessionId.isNotBlank()) {
-            return Route.Voting(sessionId)
-        }
-    }
-
-    return null
 }
 
 data class Entry(val id: Int, val route: Route)

@@ -27,4 +27,19 @@ export const tuning = {
   jwtTtlSeconds: 7 * 24 * 60 * 60,
   msPerSecond: 1000,
   idTokenMaxLength: 4096,
+
+  // Invite codes: unambiguous alphabet (no 0/O, 1/I/L)
+  inviteCodeLength: 6,
+  inviteCodeAlphabet: 'ABCDEFGHJKMNPQRSTUVWXYZ23456789',
+  inviteCodeMaxAttempts: 5,
+  inviteCodeInputMaxLength: 16,
+  mongoDuplicateKeyCode: 11000,
+
+  // Input limits
+  groupNameMaxLength: 60,
+  meetupTitleMaxLength: 100,
+  locationLabelMaxLength: 120,
+  maxPreferences: 5,
+  maxLatitude: 90,
+  maxLongitude: 180,
 } as const;
