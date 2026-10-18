@@ -1,4 +1,5 @@
 import { NotFound, Conflict } from '../common/errors';
+import type { MeetupStatus } from '../common/types';
 import { groupService } from './group.service';
 import { MeetupModel } from './models';
 import type { ParticipationInput } from './schemas';
@@ -19,14 +20,35 @@ async function listForGroup(groupId: string, userId: string) {
   return MeetupModel.find({ groupId }).sort({ scheduledAt: -1 });
 }
 
-// Load a meetup, ensuring it exists and the user belongs to its group (404 / 403 otherwise)
-async function getForMember(meetupId: string, userId: string) {
+// Load a meetup without an access check (404 if missing); callers check membership themselves
+async function getById(meetupId: string) {
   const meetup = await MeetupModel.findById(meetupId);
   if (!meetup) throw new NotFound('Meetup not found');
+  return meetup;
+}
+
+// Load a meetup, ensuring it exists and the user belongs to its group (404 / 403 otherwise)
+async function getForMember(meetupId: string, userId: string) {
+  const meetup = await getById(meetupId);
 
   await groupService.requireMembership(String(meetup.groupId), userId);
 
   return meetup;
+}
+
+// Atomic status change: only moves the meetup if it is still in `from`; returns whether it moved
+async function transitionStatus(meetupId: string, from: MeetupStatus, to: MeetupStatus): Promise<boolean> {
+  const moved = await MeetupModel.updateOne({ _id: meetupId, status: from }, { $set: { status: to } });
+  return moved.modifiedCount > 0;
+}
+
+// Remember the Google Calendar event created for one participant; returns false if one was already recorded
+async function recordCalendarEvent(meetupId: string, userId: string, eventId: string): Promise<boolean> {
+  const recorded = await MeetupModel.updateOne(
+    { _id: meetupId, participants: { $elemMatch: { userId, calendarEventId: { $exists: false } } } },
+    { $set: { 'participants.$.calendarEventId': eventId } },
+  );
+  return recorded.modifiedCount > 0;
 }
 
 // Add or replace the caller's participation entry (i.e., details and preferences); only allowed while the meetup is in SETUP
@@ -52,4 +74,12 @@ async function submitParticipation(meetupId: string, userId: string, input: Part
   return MeetupModel.findById(meetupId).orFail();
 }
 
-export const meetupService = { create, listForGroup, getForMember, submitParticipation };
+export const meetupService = {
+  create,
+  listForGroup,
+  getById,
+  getForMember,
+  submitParticipation,
+  transitionStatus,
+  recordCalendarEvent,
+};

@@ -12,6 +12,10 @@ export type MeetupStatus = (typeof MEETUP_STATUSES)[number];
 export const GROUP_ROLES = ['ORGANIZER', 'MEMBER'] as const;
 export type GroupRole = (typeof GROUP_ROLES)[number];
 
+// TRACKED: measured by live commute tracking; ESTIMATED: Google Maps fallback when tracking never started
+export const COMMUTE_SOURCES = ['TRACKED', 'ESTIMATED'] as const;
+export type CommuteSource = (typeof COMMUTE_SOURCES)[number];
+
 // Latitude and longitude
 export interface LatLng {
   lat: number;

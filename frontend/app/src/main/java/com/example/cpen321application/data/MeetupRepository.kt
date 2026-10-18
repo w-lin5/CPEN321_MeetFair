@@ -1,5 +1,6 @@
 package com.example.cpen321application.data
 
+import com.example.cpen321application.model.CalendarEventResult
 import com.example.cpen321application.model.Meetup
 import com.example.cpen321application.model.Preference
 import com.example.cpen321application.model.StartLocation
@@ -37,4 +38,12 @@ class MeetupRepository(private val api: ApiClient) {
             .put("preferences", JSONArray(preferences.map { it.name }))
         return api.put("meetups/$meetupId/participation", body).parse { parseMeetup(JSONObject(it)) }
     }
+
+    /**
+     * Adds a finalized meetup to the caller's own Google Calendar.
+     * [accessToken] is a short-lived calendar.events token from [CalendarAuthorizer]; the server never stores it.
+     */
+    suspend fun addToCalendar(meetupId: String, accessToken: String): ApiResult<CalendarEventResult> =
+        api.post("meetups/$meetupId/calendar-event", JSONObject().put("accessToken", accessToken))
+            .parse { parseCalendarEventResult(JSONObject(it)) }
 }

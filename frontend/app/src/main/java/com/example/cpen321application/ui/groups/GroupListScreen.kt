@@ -57,7 +57,13 @@ class GroupListViewModel(private val groups: GroupRepository) : ViewModel() {
 }
 
 @Composable
-fun GroupListScreen(container: AppContainer, onCreate: () -> Unit, onJoin: () -> Unit, onOpen: (String) -> Unit) {
+fun GroupListScreen(
+    container: AppContainer,
+    onCreate: () -> Unit,
+    onJoin: () -> Unit,
+    onOpen: (String) -> Unit,
+    onProfile: () -> Unit,
+) {
     val vm: GroupListViewModel = screenViewModel(GroupListViewModel.factory(container))
     val state by vm.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -77,10 +83,15 @@ fun GroupListScreen(container: AppContainer, onCreate: () -> Unit, onJoin: () ->
                 GroupList(it, onOpen)
             }
         }
-        OutlinedButton(
-            onClick = { scope.launch { container.authRepository.signOut() } },
-            modifier = Modifier.testTag(TestTags.SIGN_OUT_BUTTON),
-        ) { Text("Sign out") }
+        Row(horizontalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
+            OutlinedButton(onClick = onProfile, modifier = Modifier.testTag(TestTags.PROFILE_BUTTON)) {
+                Text("Profile")
+            }
+            OutlinedButton(
+                onClick = { scope.launch { container.authRepository.signOut() } },
+                modifier = Modifier.testTag(TestTags.SIGN_OUT_BUTTON),
+            ) { Text("Sign out") }
+        }
     }
 }
 

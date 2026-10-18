@@ -35,8 +35,33 @@ object TestTags {
     const val LNG_INPUT = "lng_input"
     const val LABEL_INPUT = "label_input"
     const val PARTICIPATION_SUBMIT = "participation_submit"
+    const val PROFILE_BUTTON = "profile_button"
+    const val PROFILE_NAME_TEXT = "profile_name_text"
+    const val DISPLAY_NAME_INPUT = "display_name_input"
+    const val SAVE_DISPLAY_NAME_BUTTON = "save_display_name_button"
+    const val RESET_DISPLAY_NAME_BUTTON = "reset_display_name_button"
+    const val PROFILE_GROUPS_EMPTY = "profile_groups_empty"
+    const val FAIRNESS_DEBT_TEXT = "fairness_debt_text"
+    const val FAIRNESS_HISTORY_EMPTY = "fairness_history_empty"
+    const val FAIRNESS_ENTRY_ITEM = "fairness_entry_item"
+    const val OPEN_VOTING_BUTTON = "open_voting_button"
+    const val VOTING_STATUS_TEXT = "voting_status_text"
+    const val VOTER_COUNT_TEXT = "voter_count_text"
+    const val VOTING_LIVE_TEXT = "voting_live_text"
+    const val REFRESH_RESULTS_BUTTON = "refresh_results_button"
+    const val WINNER_TEXT = "winner_text"
+    const val CLOSE_VOTING_BUTTON = "close_voting_button"
+    const val CONFIRM_CLOSE_BUTTON = "confirm_close_button"
+    const val ADD_TO_CALENDAR_BUTTON = "add_to_calendar_button"
+    const val CALENDAR_ADDED_TEXT = "calendar_added_text"
 
     // Chips are tagged per option name, e.g. modeChip("WALK")
     fun modeChip(mode: String) = "mode_chip_$mode"
     fun preferenceChip(preference: String) = "preference_chip_$preference"
+    fun profileGroupItem(groupId: String) = "profile_group_item_$groupId"
+
+    // Voting rows are tagged per candidate id
+    fun candidateItem(candidateId: String) = "candidate_item_$candidateId"
+    fun voteButton(candidateId: String) = "vote_button_$candidateId"
+    fun pickWinnerButton(candidateId: String) = "pick_winner_button_$candidateId"
 }

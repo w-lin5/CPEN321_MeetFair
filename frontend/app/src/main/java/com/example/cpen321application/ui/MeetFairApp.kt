@@ -9,6 +9,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.cpen321application.AppContainer
 import com.example.cpen321application.ui.auth.SignInScreen
+import com.example.cpen321application.ui.fairness.GroupFairnessScreen
 import com.example.cpen321application.ui.groups.CreateGroupScreen
 import com.example.cpen321application.ui.groups.GroupDetailScreen
 import com.example.cpen321application.ui.groups.GroupListScreen
@@ -16,6 +17,8 @@ import com.example.cpen321application.ui.groups.JoinGroupScreen
 import com.example.cpen321application.ui.meetup.CreateMeetupScreen
 import com.example.cpen321application.ui.meetup.MeetupScreen
 import com.example.cpen321application.ui.meetup.ParticipationScreen
+import com.example.cpen321application.ui.profile.ProfileScreen
+import com.example.cpen321application.ui.voting.VotingScreen
 
 /** Token present -> app, token absent (sign-out or 401 status code) -> sign-in. */
 @Composable
@@ -44,6 +47,19 @@ private fun RouteContent(container: AppContainer, navigator: Navigator, route: R
     when (route) {
         is Route.Groups -> GroupRoutes(container, navigator, route)
         is Route.Meetups -> MeetupRoutes(container, navigator, route)
+        is Route.Profiles -> ProfileRoutes(container, navigator, route)
+    }
+}
+
+@Composable
+private fun ProfileRoutes(container: AppContainer, navigator: Navigator, route: Route.Profiles) {
+    when (route) {
+        Route.Profile -> ProfileScreen(
+            container,
+            onBack = navigator::pop,
+            onOpenGroupFairness = { navigator.push(Route.GroupFairness(it)) },
+        )
+        is Route.GroupFairness -> GroupFairnessScreen(container, route.groupId, onBack = navigator::pop)
     }
 }
 
@@ -59,8 +75,10 @@ private fun MeetupRoutes(container: AppContainer, navigator: Navigator, route: R
             route.meetupId,
             onBack = navigator::pop,
             onEnterDetails = { navigator.push(Route.Participation(route.meetupId)) },
+            onOpenVoting = { navigator.push(Route.Voting(route.meetupId)) },
         )
         is Route.Participation -> ParticipationScreen(container, route.meetupId, onBack = navigator::pop)
+        is Route.Voting -> VotingScreen(container, route.meetupId, onBack = navigator::pop)
     }
 }
 
@@ -72,6 +90,7 @@ private fun GroupRoutes(container: AppContainer, navigator: Navigator, route: Ro
             onCreate = { navigator.push(Route.CreateGroup) },
             onJoin = { navigator.push(Route.JoinGroup) },
             onOpen = { navigator.push(Route.GroupDetail(it)) },
+            onProfile = { navigator.push(Route.Profile) },
         )
         Route.CreateGroup -> CreateGroupScreen(container, onBack = navigator::pop, onCreated = {
             navigator.pop()

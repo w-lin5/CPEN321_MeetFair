@@ -1,4 +1,5 @@
 import { GroupModel, MeetupModel } from '../../src/users-groups/models';
+import { VotingSessionModel } from '../../src/voting-fairness/models';
 import { createUser } from './auth';
 
 // Creates the nth distinct user (createUser alone always makes the same Google account)
@@ -46,3 +47,40 @@ export const PARTICIPATION = {
 } as const;
 
 export const MISSING_ID = '507f1f77bcf86cd799439011';
+
+// Three distinct places, as the recommender would hand them to POST /meetups/:id/voting-session
+export const CANDIDATES = [
+  { placeId: 'place-1', name: 'Koerner Library', address: '1958 Main Mall', location: { lat: 49.2667, lng: -123.2551 } },
+  { placeId: 'place-2', name: 'Loafe Cafe', address: '6163 University Blvd', location: { lat: 49.2654, lng: -123.2496 } },
+  { placeId: 'place-3', name: 'Nest Food Court', address: '6133 University Blvd', location: { lat: 49.2665, lng: -123.2499 } },
+];
+
+// A meetup already in VOTING with an open session over CANDIDATES, created directly in the DB
+export async function createVotingSession(meetupId: string, createdBy: string) {
+  await MeetupModel.updateOne({ _id: meetupId }, { $set: { status: 'VOTING' } });
+  return VotingSessionModel.create({ meetupId, createdBy, candidates: CANDIDATES });
+}
+
+// Candidate ids of a session, in candidate order
+export function candidateIds(session: { candidates: { _id: unknown }[] }): [string, string, string] {
+  const [a, b, c, ...rest] = session.candidates.map((candidate) => String(candidate._id));
+  if (a === undefined || b === undefined || c === undefined || rest.length > 0) {
+    throw new Error('Expected exactly three candidates');
+  }
+  return [a, b, c];
+}
+
+// A FINALIZED meetup whose participants entered PARTICIPATION, with a closed session won by CANDIDATES[0]
+export async function createFinalizedMeetup(groupId: string, organizerId: string, participantIds: string[]) {
+  const meetup = await createMeetup(groupId, organizerId, { status: 'FINALIZED' });
+  await MeetupModel.updateOne(
+    { _id: meetup._id },
+    { $set: { participants: participantIds.map((userId) => ({ userId, ...PARTICIPATION })) } },
+  );
+  const session = await VotingSessionModel.create({ meetupId: meetup.id, createdBy: organizerId, candidates: CANDIDATES });
+  await VotingSessionModel.updateOne(
+    { _id: session._id },
+    { $set: { status: 'closed', winnerCandidateId: session.candidates[0]?._id } },
+  );
+  return MeetupModel.findById(meetup._id).orFail();
+}

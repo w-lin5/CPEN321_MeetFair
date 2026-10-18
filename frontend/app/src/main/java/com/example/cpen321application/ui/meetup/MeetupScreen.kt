@@ -17,30 +17,48 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.cpen321application.AppContainer
 import com.example.cpen321application.data.MeetupRepository
+import com.example.cpen321application.model.CalendarEventResult
 import com.example.cpen321application.model.Meetup
 import com.example.cpen321application.model.MeetupStatus
+import com.example.cpen321application.ui.common.FormState
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.UiState
 import com.example.cpen321application.ui.common.UiStateContent
+import com.example.cpen321application.ui.common.toFormState
 import com.example.cpen321application.ui.common.toUiState
 import com.example.cpen321application.ui.screenViewModel
 import com.example.cpen321application.ui.theme.Dimens
+import com.example.cpen321application.ui.voting.AddToCalendarButton
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** Loads one meetup for the status hub. */
+/** Loads one meetup for the status hub and adds it to the user's Google Calendar once finalized. */
 class MeetupViewModel(private val meetups: MeetupRepository, private val meetupId: String) : ViewModel() {
     private val _state = MutableStateFlow<UiState<Meetup>>(UiState.Loading)
     val state: StateFlow<UiState<Meetup>> = _state.asStateFlow()
+
+    private val _calendar = MutableStateFlow(FormState<CalendarEventResult>())
+    val calendar: StateFlow<FormState<CalendarEventResult>> = _calendar.asStateFlow()
 
     fun load() {
         viewModelScope.launch {
             _state.value = UiState.Loading
             _state.value = meetups.get(meetupId).toUiState()
         }
+    }
+
+    /** [accessToken] is the short-lived calendar.events token from CalendarAuthorizer. */
+    fun addToCalendar(accessToken: String) {
+        if (_calendar.value.submitting) return
+        _calendar.value = FormState(submitting = true)
+        viewModelScope.launch { _calendar.value = meetups.addToCalendar(meetupId, accessToken).toFormState() }
+    }
+
+    fun setCalendarError(message: String) {
+        _calendar.value = FormState(error = message)
     }
 
     companion object {
@@ -51,21 +69,46 @@ class MeetupViewModel(private val meetups: MeetupRepository, private val meetupI
 
 /** Status hub: shows the meetup and whatever the current status lets the user do next. */
 @Composable
-fun MeetupScreen(container: AppContainer, meetupId: String, onBack: () -> Unit, onEnterDetails: () -> Unit) {
+fun MeetupScreen(
+    container: AppContainer,
+    meetupId: String,
+    onBack: () -> Unit,
+    onEnterDetails: () -> Unit,
+    onOpenVoting: () -> Unit,
+) {
     val vm: MeetupViewModel = screenViewModel(MeetupViewModel.factory(container, meetupId))
     val state by vm.state.collectAsState()
+    val calendar by vm.calendar.collectAsState()
     val userId = container.sessionStore.currentUserId()
     LaunchedEffect(Unit) { vm.load() }
 
     ScreenColumn("Meetup", onBack) {
-        UiStateContent(state, onRetry = vm::load, emptyMessage = "") { MeetupInfo(it, userId, onEnterDetails) }
+        UiStateContent(state, onRetry = vm::load, emptyMessage = "") { meetup ->
+            MeetupInfo(meetup, userId, onEnterDetails, onOpenVoting) {
+                val alreadyAdded = meetup.participants.any { it.userId == userId && it.calendarEventId != null }
+                AddToCalendarButton(
+                    container.calendarAuthorizer,
+                    calendar,
+                    alreadyAdded,
+                    onToken = vm::addToCalendar,
+                    onError = vm::setCalendarError,
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun MeetupInfo(meetup: Meetup, userId: String?, onEnterDetails: () -> Unit) {
+private fun MeetupInfo(
+    meetup: Meetup,
+    userId: String?,
+    onEnterDetails: () -> Unit,
+    onOpenVoting: () -> Unit,
+    calendarSection: @Composable () -> Unit,
+) {
     val submitted = meetup.participants.any { it.userId == userId }
     val setup = meetup.status == MeetupStatus.SETUP
+    val decided = meetup.status == MeetupStatus.FINALIZED || meetup.status == MeetupStatus.SETTLED
 
     Column(verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
         Text(
@@ -87,5 +130,13 @@ private fun MeetupInfo(meetup: Meetup, userId: String?, onEnterDetails: () -> Un
         } else {
             Text("Details can no longer be changed.")
         }
+        // A voting session exists from VOTING onwards; once finalized the screen shows the winner
+        if (meetup.status == MeetupStatus.VOTING || meetup.status == MeetupStatus.FINALIZED) {
+            Button(onClick = onOpenVoting, modifier = Modifier.testTag(TestTags.OPEN_VOTING_BUTTON)) {
+                Text(if (meetup.status == MeetupStatus.VOTING) "Vote on a spot" else "See voting results")
+            }
+        }
+        // Only participants have an entry to record the calendar event on (backend answers 403 otherwise)
+        if (decided && submitted) calendarSection()
     }
 }

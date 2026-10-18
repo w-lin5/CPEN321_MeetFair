@@ -42,4 +42,24 @@ export const tuning = {
   maxPreferences: 5,
   maxLatitude: 90,
   maxLongitude: 180,
+
+  // Profile
+  displayNameMaxLength: 60,
+  // Upper bound on a single recorded commute (one day), to reject obviously broken measurements
+  maxCommuteMinutes: 24 * 60,
+
+  // Voting: the recommender hands over exactly this many candidates
+  votingCandidateCount: 3,
+  placeIdMaxLength: 256,
+  placeNameMaxLength: 200,
+  placeAddressMaxLength: 300,
+  // Weighted totals closer than this count as a tie (guards against floating-point drift)
+  voteWeightEpsilon: 1e-9,
+
+  // Google Calendar
+  // Google OAuth access tokens are short-lived JWTs; 2048 chars is a safe upper bound
+  oauthAccessTokenMaxLength: 2048,
+  // Meetups only store a start time; the calendar event gets this length [TBD]
+  calendarEventDurationMinutes: 60,
+  secondsPerMinute: 60,
 } as const;

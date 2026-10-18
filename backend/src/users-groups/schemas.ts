@@ -65,3 +65,9 @@ export const participationBody: Parser<ParticipationInput> = (data) => {
     preferences: oneOfMany(f, 'preferences', PREFERENCES, tuning.maxPreferences),
   };
 };
+
+// displayName must be present: a non-empty string sets it, null resets to the Google name
+export const updateProfileBody: Parser<{ displayName: string | null }> = (data) => {
+  const f = fields(data);
+  return { displayName: f.get('displayName') === null ? null : text(f, 'displayName', tuning.displayNameMaxLength) };
+};

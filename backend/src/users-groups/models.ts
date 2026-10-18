@@ -10,6 +10,8 @@ const userSchema = new Schema(
     email: { type: String, required: true },
     name: { type: String, required: true },
     photoUrl: { type: String, default: null },
+    // Name the user chose in the app; null falls back to the Google name. Sign-in never overwrites it
+    displayName: { type: String, default: null },
   },
   { timestamps: true, toJSON: jsonOptions },
 );

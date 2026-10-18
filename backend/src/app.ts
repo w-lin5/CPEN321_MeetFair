@@ -4,6 +4,7 @@ import { errorHandler } from './common/middleware/error-handler';
 import { requireAuth } from './common/middleware/require-auth';
 import { authRouter } from './users-groups/auth.routes';
 import { usersGroupsRouter } from './users-groups/routes';
+import { votingFairnessRouter } from './voting-fairness/routes';
 
 export function createApp(): Express {
   const app = express();
@@ -17,6 +18,7 @@ export function createApp(): Express {
   api.use('/auth', authRouter);
   api.use(requireAuth);
   api.use(usersGroupsRouter);
+  api.use(votingFairnessRouter);
   app.use('/api', api);
 
   app.use((_req, res) => {
