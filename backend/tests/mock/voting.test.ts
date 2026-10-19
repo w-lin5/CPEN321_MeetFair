@@ -1,20 +1,13 @@
 import request from 'supertest';
 
 import { createApp } from '../../src/app';
+import { recommendationService } from '../../src/recommendation/recommendation.service';
 import { MeetupModel } from '../../src/users-groups/models';
-import { VoteModel, VotingSessionModel } from '../../src/voting-fairness/models';
 import { fairCreditService } from '../../src/voting-fairness/fair-credit.service';
+import { VoteModel } from '../../src/voting-fairness/models';
 import { bearer } from '../helpers/auth';
 import { clearDb, startDb, stopDb } from '../helpers/db';
-import {
-  CANDIDATES,
-  addMember,
-  candidateIds,
-  createGroup,
-  createMeetup,
-  createUserN,
-  createVotingSession,
-} from '../helpers/factories';
+import { PLACE_1, PLACE_2, addMember, createGroup, createUserN, createVotingMeetup } from '../helpers/factories';
 
 beforeAll(startDb);
 afterEach(async () => {
@@ -30,148 +23,106 @@ function quietConsole() {
 
 async function setup() {
   const organizer = await createUserN(1);
-  const member = await createUserN(2);
+  const ada = await createUserN(2);
   const group = await createGroup(organizer.id);
-  await addMember(group.id, member.id);
-  const meetup = await createMeetup(group.id, organizer.id);
-  return { organizer, member, meetup };
+  await addMember(group.id, ada.id);
+  const meetup = await createVotingMeetup(group.id, organizer.id, [organizer.id, ada.id]);
+  return { organizer, ada, meetup };
 }
 
-async function setupVoting() {
-  const ctx = await setup();
-  const session = await createVotingSession(ctx.meetup.id, ctx.organizer.id);
-  return { ...ctx, session, ids: candidateIds(session) };
-}
+const app = () => request(createApp());
 
-// Interface POST /api/meetups/:meetupId/voting-session
-describe('Mocked: POST /api/meetups/:meetupId/voting-session', () => {
-  // Input: valid body from the organizer
+// Interface PUT /api/meetups/:meetupId/vote
+describe('Mocked: PUT /api/meetups/:meetupId/vote', () => {
+  // Input: valid vote from a participant
   // Expected status code: 500
-  // Expected behavior: the meetup is moved back to SETUP so voting can be retried
-  // Mocked behavior: VotingSessionModel.create rejects
-  test('Database failure while saving rolls the meetup back to SETUP', async () => {
-    quietConsole();
-    const { organizer, meetup } = await setup();
-    jest.spyOn(VotingSessionModel, 'create').mockRejectedValue(new Error('db down') as never);
-
-    const res = await request(createApp())
-      .post(`/api/meetups/${meetup.id}/voting-session`)
-      .set('Authorization', bearer(organizer.id))
-      .send({ candidates: CANDIDATES });
-
-    expect(res.status).toBe(500);
-    expect((await MeetupModel.findById(meetup.id))?.status).toBe('SETUP');
-  });
-
-  // Input: valid body from the organizer
-  // Expected status code: 409
-  // Expected behavior: meetup rolled back to SETUP
-  // Mocked behavior: VotingSessionModel.create rejects with a duplicate-key error (a stale session exists)
-  test('Duplicate session', async () => {
-    const { organizer, meetup } = await setup();
-    jest.spyOn(VotingSessionModel, 'create').mockRejectedValue(Object.assign(new Error('dup'), { code: 11000 }) as never);
-
-    const res = await request(createApp())
-      .post(`/api/meetups/${meetup.id}/voting-session`)
-      .set('Authorization', bearer(organizer.id))
-      .send({ candidates: CANDIDATES });
-
-    expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: 'This meetup already has a voting session' });
-    expect((await MeetupModel.findById(meetup.id))?.status).toBe('SETUP');
-  });
-});
-
-// Interface POST /api/voting-sessions/:sessionId/vote
-describe('Mocked: POST /api/voting-sessions/:sessionId/vote', () => {
-  // Input: valid vote
-  // Expected status code: 500
+  // Expected output: { error: "Internal Server Error" }
   // Mocked behavior: VoteModel.findOneAndUpdate throws
   test('Database failure while saving the vote', async () => {
     quietConsole();
-    const { member, session, ids } = await setupVoting();
+    const { ada, meetup } = await setup();
     jest.spyOn(VoteModel, 'findOneAndUpdate').mockImplementation(() => {
       throw new Error('db down');
     });
 
-    const res = await request(createApp())
-      .post(`/api/voting-sessions/${session.id}/vote`)
-      .set('Authorization', bearer(member.id))
-      .send({ candidateId: ids[0] });
+    const res = await app().put(`/api/meetups/${meetup.id}/vote`).set('Authorization', bearer(ada.id)).send({ placeId: PLACE_1 });
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: 'Internal Server Error' });
   });
+});
 
-  // Input: valid vote
-  // Expected status code: 400
-  // Expected behavior: nothing stored
-  // Mocked behavior: Fair Credit returns a negative weight
-  test.each([-1, Number.NaN, Number.POSITIVE_INFINITY])('Invalid Fair Credit weight %p', async (weight) => {
-    const { member, session, ids } = await setupVoting();
-    jest.spyOn(fairCreditService, 'getFairCredit').mockResolvedValue(weight);
-
-    const res = await request(createApp())
-      .post(`/api/voting-sessions/${session.id}/vote`)
-      .set('Authorization', bearer(member.id))
-      .send({ candidateId: ids[0] });
-
-    expect(res.status).toBe(400);
-    expect(await VoteModel.countDocuments()).toBe(0);
-  });
-
-  // Input: valid vote
-  // Expected behavior: the stored weight is whatever Fair Credit returns
-  // Mocked behavior: Fair Credit returns 2.5
+// Interface POST /api/meetups/:meetupId/vote/lock
+describe('Mocked: POST /api/meetups/:meetupId/vote/lock', () => {
+  // Input: participant with an unlocked vote
+  // Expected status code: 200
+  // Expected behavior: the weight is snapshotted from Fair Credit in the meetup's group
+  // Mocked behavior: fairCreditService.getVoteWeight resolves 2.5
   test('Stores the Fair Credit weight', async () => {
-    const { member, session, ids } = await setupVoting();
-    jest.spyOn(fairCreditService, 'getFairCredit').mockResolvedValue(2.5);
+    const { ada, meetup } = await setup();
+    const credit = jest.spyOn(fairCreditService, 'getVoteWeight').mockResolvedValue(2.5);
+    await app().put(`/api/meetups/${meetup.id}/vote`).set('Authorization', bearer(ada.id)).send({ placeId: PLACE_2 });
 
-    const res = await request(createApp())
-      .post(`/api/voting-sessions/${session.id}/vote`)
-      .set('Authorization', bearer(member.id))
-      .send({ candidateId: ids[0] });
+    const res = await app().post(`/api/meetups/${meetup.id}/vote/lock`).set('Authorization', bearer(ada.id));
 
+    expect(res.status).toBe(200);
     expect(res.body.weight).toBe(2.5);
+    expect(credit).toHaveBeenCalledWith(ada.id, String(meetup.groupId));
   });
 });
 
-// Interface PATCH /api/voting-sessions/:sessionId/close
-describe('Mocked: PATCH /api/voting-sessions/:sessionId/close', () => {
-  // Input: creator closes after a vote
-  // Expected status code: 500
-  // Expected behavior: session is reopened with no winner so the organizer can retry
-  // Mocked behavior: finalizing the meetup (MeetupModel.updateOne) rejects
-  test('Finalize failure reopens the session', async () => {
-    quietConsole();
-    const { organizer, member, session, ids } = await setupVoting();
-    await VoteModel.create({ sessionId: session.id, userId: member.id, candidateId: ids[0], weight: 1 });
-    jest.spyOn(MeetupModel, 'updateOne').mockRejectedValue(new Error('db down') as never);
+// Interface POST /api/meetups/:meetupId/finalize
+describe('Mocked: POST /api/meetups/:meetupId/finalize', () => {
+  async function withLockedVote() {
+    const ctx = await setup();
+    await VoteModel.create({ meetupId: ctx.meetup.id, userId: ctx.ada.id, placeId: PLACE_1, locked: true, weight: 1 });
+    return ctx;
+  }
 
-    const res = await request(createApp())
-      .patch(`/api/voting-sessions/${session.id}/close`)
-      .set('Authorization', bearer(organizer.id))
-      .send({});
+  // Input: organizer finalizes with a clear winner
+  // Expected status code: 409
+  // Expected behavior: a concurrent finalize already moved the meetup, so this one reports a conflict
+  // Mocked behavior: MeetupModel.findOneAndUpdate resolves null
+  test('Concurrent finalize', async () => {
+    const { organizer, meetup } = await withLockedVote();
+    jest.spyOn(MeetupModel, 'findOneAndUpdate').mockResolvedValue(null as never);
 
-    expect(res.status).toBe(500);
-    const stored = await VotingSessionModel.findById(session.id);
-    expect(stored?.status).toBe('open');
-    expect(stored?.winnerCandidateId).toBeNull();
+    expect((await app().post(`/api/meetups/${meetup.id}/finalize`).set('Authorization', bearer(organizer.id))).status)
+      .toBe(409);
   });
 
-  // Input: creator closes
-  // Expected status code: 409
-  // Mocked behavior: another request closed the session between the check and the update
-  test('Concurrent close', async () => {
-    const { organizer, member, session, ids } = await setupVoting();
-    await VoteModel.create({ sessionId: session.id, userId: member.id, candidateId: ids[0], weight: 1 });
-    jest.spyOn(VotingSessionModel, 'findOneAndUpdate').mockResolvedValue(null as never);
+  // Input: organizer finalizes with a clear winner
+  // Expected status code: 500
+  // Expected behavior: the meetup stays in VOTING without a winner
+  // Mocked behavior: MeetupModel.findOneAndUpdate rejects
+  test('Database failure while finalizing', async () => {
+    quietConsole();
+    const { organizer, meetup } = await withLockedVote();
+    jest.spyOn(MeetupModel, 'findOneAndUpdate').mockRejectedValue(new Error('db down') as never);
 
-    const res = await request(createApp())
-      .patch(`/api/voting-sessions/${session.id}/close`)
-      .set('Authorization', bearer(organizer.id))
-      .send({});
+    const res = await app().post(`/api/meetups/${meetup.id}/finalize`).set('Authorization', bearer(organizer.id));
 
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(500);
+    jest.restoreAllMocks();
+    const saved = await MeetupModel.findById(meetup.id).orFail();
+    expect(saved.status).toBe('VOTING');
+    expect(saved.winner).toBeUndefined();
+  });
+
+  // Input: organizer finalizes with a clear winner
+  // Expected status code: 404
+  // Expected output: { error: "Winning candidate not found" }; the meetup stays in VOTING
+  // Mocked behavior: recommendationService.getByMeetupId resolves a candidate without a location
+  test('Winning candidate has no location', async () => {
+    const { organizer, meetup } = await withLockedVote();
+    jest.spyOn(recommendationService, 'getByMeetupId').mockResolvedValue({
+      candidates: [{ placeId: PLACE_1, name: 'Koerner Library', address: '' }],
+    } as never);
+
+    const res = await app().post(`/api/meetups/${meetup.id}/finalize`).set('Authorization', bearer(organizer.id));
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'Winning candidate not found' });
+    expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('VOTING');
   });
 });

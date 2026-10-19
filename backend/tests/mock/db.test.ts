@@ -17,6 +17,20 @@ describe('Mocked: database connection', () => {
     expect(connect).toHaveBeenCalledWith('mongodb://example/meetfair');
   });
 
+  // Input: a MongoDB URI with models registered
+  // Expected behavior: connectDb resolves only after every model has built its indexes
+  // Mocked behavior: mongoose.connect resolves; one registered model whose init resolves
+  test('connectDb waits for model indexes', async () => {
+    jest.spyOn(mongoose, 'connect').mockResolvedValue(mongoose);
+    const init = jest.fn().mockResolvedValue(undefined);
+    jest.spyOn(mongoose, 'modelNames').mockReturnValue(['Vote']);
+    jest.spyOn(mongoose, 'model').mockReturnValue({ init } as never);
+
+    await connectDb('mongodb://example/meetfair');
+
+    expect(init).toHaveBeenCalledTimes(1);
+  });
+
   // Input: unreachable database
   // Expected behavior: the failure propagates so startup can abort
   // Mocked behavior: mongoose.connect rejects

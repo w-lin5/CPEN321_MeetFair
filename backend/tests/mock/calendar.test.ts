@@ -2,12 +2,12 @@ import { google } from 'googleapis';
 import request from 'supertest';
 
 import { createApp } from '../../src/app';
-import { Unauthorized, UpstreamError } from '../../src/common/errors';
+import { UpstreamError } from '../../src/common/errors';
 import { calendarClient } from '../../src/integrations/calendar.client';
 import { MeetupModel } from '../../src/users-groups/models';
 import { bearer } from '../helpers/auth';
 import { clearDb, startDb, stopDb } from '../helpers/db';
-import { createFinalizedMeetup, createGroup, createUserN } from '../helpers/factories';
+import { addParticipants, createFinalizedMeetup, createGroup, createMeetup, createUserN } from '../helpers/factories';
 
 jest.mock('googleapis', () => ({
   google: {
@@ -52,14 +52,16 @@ describe('Mocked: POST /api/meetups/:meetupId/calendar-event', () => {
   // Mocked behavior: calendarClient.createEvent resolves with a created event
   test('Adds the meetup to the caller calendar', async () => {
     const { user, meetup } = await setup();
+    const eventId = `meetfair${meetup.id}${user.id}`;
     const createEvent = jest.spyOn(calendarClient, 'createEvent')
-      .mockResolvedValue({ externalId: 'google-event-1', htmlLink: 'https://calendar.google.com/event/1' });
+      .mockResolvedValue({ externalId: eventId, htmlLink: 'https://calendar.google.com/event/1', duplicate: false });
 
     const res = await addToCalendar(meetup.id, user.id);
 
     expect(res.status).toBe(201);
-    expect(res.body).toEqual({ eventId: 'google-event-1', htmlLink: 'https://calendar.google.com/event/1' });
+    expect(res.body).toEqual({ eventId, htmlLink: 'https://calendar.google.com/event/1' });
     expect(createEvent).toHaveBeenCalledWith('google-access-token', {
+      eventId,
       title: 'Library session',
       description: 'Planned with MeetFair',
       startTime: '2026-11-05T22:30:00.000Z',
@@ -69,7 +71,7 @@ describe('Mocked: POST /api/meetups/:meetupId/calendar-event', () => {
       attendeeEmails: [],
     });
     const saved = await MeetupModel.findById(meetup.id).orFail();
-    expect(saved.participants[0]?.calendarEventId).toBe('google-event-1');
+    expect(saved.participants[0]?.calendarEventId).toBe(eventId);
   });
 
   // Input: participant of a FINALIZED meetup
@@ -88,24 +90,47 @@ describe('Mocked: POST /api/meetups/:meetupId/calendar-event', () => {
     expect(saved.participants[0]?.calendarEventId).toBeUndefined();
   });
 
-  // Input: participant of a FINALIZED meetup
+  // Input: participant of a FINALIZED meetup with no event recorded yet
   // Expected status code: 409
-  // Expected behavior: a concurrent request already recorded an event, so this one is reported as a duplicate
-  // Mocked behavior: calendarClient.createEvent resolves; MeetupModel.updateOne records nothing
-  test('Concurrent duplicate request', async () => {
+  // Expected behavior: Google already has this meetup's event (a concurrent request, or an earlier one whose
+  //                    DB write failed), so no second event exists and the id is recorded for next time
+  // Mocked behavior: calendarClient.createEvent reports a duplicate event id
+  test('Duplicate event in Google', async () => {
     const { user, meetup } = await setup();
-    jest.spyOn(calendarClient, 'createEvent').mockResolvedValue({ externalId: 'google-event-2', htmlLink: null });
-    jest.spyOn(MeetupModel, 'updateOne').mockResolvedValue({ modifiedCount: 0 } as never);
+    const eventId = `meetfair${meetup.id}${user.id}`;
+    jest.spyOn(calendarClient, 'createEvent').mockResolvedValue({ externalId: eventId, htmlLink: null, duplicate: true });
 
     const res = await addToCalendar(meetup.id, user.id);
 
     expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: 'This meetup is already in your calendar' });
+    const saved = await MeetupModel.findById(meetup.id).orFail();
+    expect(saved.participants[0]?.calendarEventId).toBe(eventId);
+  });
+
+  // Input: participant of a FINALIZED meetup that has no winner stored
+  // Expected status code: 201
+  // Expected behavior: the event is still created, with an empty location
+  // Mocked behavior: calendarClient.createEvent resolves with a created event
+  test('Meetup without a winner gets an empty location', async () => {
+    const user = await createUserN(1);
+    const group = await createGroup(user.id);
+    const meetup = await createMeetup(group.id, user.id, { status: 'FINALIZED' });
+    await addParticipants(meetup.id, [user.id]);
+    const createEvent = jest.spyOn(calendarClient, 'createEvent')
+      .mockResolvedValue({ externalId: 'event-1', htmlLink: null, duplicate: false });
+
+    const res = await addToCalendar(meetup.id, user.id);
+
+    expect(res.status).toBe(201);
+    expect(createEvent).toHaveBeenCalledWith('google-access-token', expect.objectContaining({ location: '' }));
   });
 });
 
 // Interface calendarClient.createEvent (the only Google Calendar call)
 describe('Mocked: calendarClient.createEvent', () => {
   const event = {
+    eventId: 'meetfair0123456789abcdef',
     title: 'Design review',
     description: 'Review the new flow',
     location: 'Meeting room 4',
@@ -134,6 +159,7 @@ describe('Mocked: calendarClient.createEvent', () => {
     await expect(calendarClient.createEvent('oauth-token', event)).resolves.toEqual({
       externalId: 'google-event-123',
       htmlLink: 'https://calendar.google.com/event/123',
+      duplicate: false,
     });
 
     expect(mockSetCredentials).toHaveBeenCalledWith({ access_token: 'oauth-token' });
@@ -141,6 +167,7 @@ describe('Mocked: calendarClient.createEvent', () => {
     expect(mockInsert).toHaveBeenCalledWith({
       calendarId: 'primary',
       requestBody: {
+        id: event.eventId,
         summary: event.title,
         description: event.description,
         location: event.location,
@@ -159,7 +186,7 @@ describe('Mocked: calendarClient.createEvent', () => {
     mockInsert.mockResolvedValue({ data: { id: 'google-event-456' } });
 
     await expect(calendarClient.createEvent('oauth-token', noExtras))
-      .resolves.toEqual({ externalId: 'google-event-456', htmlLink: null });
+      .resolves.toEqual({ externalId: 'google-event-456', htmlLink: null, duplicate: false });
 
     expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ sendUpdates: 'none' }));
     const requestBody = mockInsert.mock.calls[0]?.[0].requestBody;
@@ -176,18 +203,32 @@ describe('Mocked: calendarClient.createEvent', () => {
     await expect(calendarClient.createEvent('oauth-token', noExtras)).rejects.toBeInstanceOf(UpstreamError);
   });
 
-  // Input: revoked token
-  // Expected behavior: Google's 401 is mapped to Unauthorized
-  // Mocked behavior: googleapis calendar.events.insert rejects with status 401
-  test('Maps invalid Google credentials to Unauthorized', async () => {
-    mockInsert.mockRejectedValue({ status: 401 });
+  // Input: an event id Google already has
+  // Expected output: { duplicate: true } with the requested id instead of an error
+  // Mocked behavior: googleapis calendar.events.insert rejects with status 409
+  test('Reports an existing event id as a duplicate', async () => {
+    mockInsert.mockRejectedValue({ status: 409 });
 
-    await expect(calendarClient.createEvent('revoked-token', noExtras)).rejects.toBeInstanceOf(Unauthorized);
+    await expect(calendarClient.createEvent('oauth-token', noExtras))
+      .resolves.toEqual({ externalId: noExtras.eventId, htmlLink: null, duplicate: true });
+  });
+
+  // Input: revoked token, or a token without the calendar.events scope
+  // Expected behavior: mapped to UpstreamError (502), never 401, which would sign the user out of MeetFair
+  // Mocked behavior: googleapis calendar.events.insert rejects with status 401, then 403 insufficientPermissions
+  test('Maps invalid Google credentials to UpstreamError', async () => {
+    mockInsert.mockRejectedValueOnce({ status: 401 });
+    await expect(calendarClient.createEvent('revoked-token', noExtras))
+      .rejects.toEqual(expect.objectContaining({ status: 502, message: expect.stringContaining('re-authorize') }));
+
+    mockInsert.mockRejectedValueOnce({ status: 403, errors: [{ reason: 'insufficientPermissions' }] });
+    await expect(calendarClient.createEvent('oauth-token', noExtras))
+      .rejects.toEqual(expect.objectContaining({ status: 502, message: expect.stringContaining('re-authorize') }));
   });
 
   // Input: any event
   // Expected behavior: rate limits and unexpected failures become UpstreamError (502)
-  // Mocked behavior: googleapis calendar.events.insert rejects with status 429, then with a network error
+  // Mocked behavior: googleapis calendar.events.insert rejects with 429, 403 userRateLimitExceeded, a network error
   test('Maps Google rate limits and unexpected create failures to UpstreamError', async () => {
     mockInsert.mockRejectedValueOnce({ status: 429 });
     await expect(calendarClient.createEvent('oauth-token', noExtras))
@@ -195,6 +236,10 @@ describe('Mocked: calendarClient.createEvent', () => {
         constructor: UpstreamError,
         message: expect.stringContaining('rate limit'),
       }));
+
+    mockInsert.mockRejectedValueOnce({ status: 403, errors: [{ reason: 'userRateLimitExceeded' }] });
+    await expect(calendarClient.createEvent('oauth-token', noExtras))
+      .rejects.toEqual(expect.objectContaining({ message: expect.stringContaining('rate limit') }));
 
     mockInsert.mockRejectedValueOnce(new Error('network failure'));
     await expect(calendarClient.createEvent('oauth-token', noExtras))

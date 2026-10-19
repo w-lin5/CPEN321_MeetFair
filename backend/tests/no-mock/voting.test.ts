@@ -3,532 +3,352 @@ import request from 'supertest';
 import { createApp } from '../../src/app';
 import { setTransport } from '../../src/realtime/publisher';
 import { MeetupModel } from '../../src/users-groups/models';
-import { VoteModel, VotingSessionModel } from '../../src/voting-fairness/models';
+import { VoteModel } from '../../src/voting-fairness/models';
 import { bearer } from '../helpers/auth';
 import { clearDb, startDb, stopDb } from '../helpers/db';
 import {
-  CANDIDATES,
   MISSING_ID,
+  PLACE_1,
+  PLACE_2,
+  PLACE_3,
   addMember,
-  candidateIds,
   createGroup,
   createMeetup,
   createUserN,
-  createVotingSession,
+  createVotingMeetup,
 } from '../helpers/factories';
 
+interface Published {
+  room: string;
+  event: string;
+  payload: unknown;
+}
+
+let published: Published[] = [];
+
 beforeAll(startDb);
+beforeEach(() => {
+  published = [];
+  setTransport((room, event, payload) => published.push({ room, event, payload: JSON.parse(JSON.stringify(payload)) }));
+});
 afterEach(async () => {
   setTransport(null);
   await clearDb();
 });
 afterAll(stopDb);
 
-// Organizer, two members, an outsider; one meetup in SETUP owned by the organizer
+// Organizer, two other participants and a member who never entered details, in a meetup in VOTING
 async function setup() {
   const organizer = await createUserN(1);
-  const member = await createUserN(2);
-  const member2 = await createUserN(3);
-  const outsider = await createUserN(4);
+  const ada = await createUserN(2);
+  const grace = await createUserN(3);
+  const bystander = await createUserN(4);
   const group = await createGroup(organizer.id);
-  await addMember(group.id, member.id);
-  await addMember(group.id, member2.id);
-  const meetup = await createMeetup(group.id, organizer.id);
-  return { organizer, member, member2, outsider, group, meetup };
+  for (const user of [ada, grace, bystander]) await addMember(group.id, user.id);
+  const meetup = await createVotingMeetup(group.id, organizer.id, [organizer.id, ada.id, grace.id]);
+  return { organizer, ada, grace, bystander, group, meetup };
 }
 
-// setup() plus an open voting session on the meetup
-async function setupVoting() {
-  const ctx = await setup();
-  const session = await createVotingSession(ctx.meetup.id, ctx.organizer.id);
-  return { ...ctx, session, ids: candidateIds(session) };
+const app = () => request(createApp());
+
+function vote(meetupId: string, userId: string, placeId: unknown) {
+  return app().put(`/api/meetups/${meetupId}/vote`).set('Authorization', bearer(userId)).send({ placeId });
 }
 
-function vote(sessionId: string, userId: string, candidateId: unknown) {
-  return request(createApp())
-    .post(`/api/voting-sessions/${sessionId}/vote`)
-    .set('Authorization', bearer(userId))
-    .send({ candidateId });
+function lock(meetupId: string, userId: string) {
+  return app().post(`/api/meetups/${meetupId}/vote/lock`).set('Authorization', bearer(userId));
 }
 
-function close(sessionId: string, userId: string, body: object = {}) {
-  return request(createApp())
-    .patch(`/api/voting-sessions/${sessionId}/close`)
-    .set('Authorization', bearer(userId))
-    .send(body);
+function finalize(meetupId: string, userId: string, body?: object) {
+  const req = app().post(`/api/meetups/${meetupId}/finalize`).set('Authorization', bearer(userId));
+  return body === undefined ? req : req.send(body);
 }
 
-// Interface POST /api/meetups/:meetupId/voting-session
-describe('Unmocked: POST /api/meetups/:meetupId/voting-session', () => {
-  // Input: three candidates from the meetup organizer while the meetup is in SETUP
-  // Expected status code: 201
-  // Expected behavior: session stored as open; meetup moves to VOTING
-  // Expected output: session with id, meetupId, createdBy, status "open", candidates each with an id, name and address
-  test('Organizer starts voting', async () => {
-    const { organizer, meetup } = await setup();
+// A locked vote with an explicit weight, written directly (weights from Fair Credit are still a placeholder)
+async function lockedVote(meetupId: string, userId: string, placeId: string, weight: number) {
+  await VoteModel.create({ meetupId, userId, placeId, locked: true, weight });
+}
 
-    const res = await request(createApp())
-      .post(`/api/meetups/${meetup.id}/voting-session`)
-      .set('Authorization', bearer(organizer.id))
-      .send({ candidates: CANDIDATES });
+// Interface PUT /api/meetups/:meetupId/vote
+describe('Unmocked: PUT /api/meetups/:meetupId/vote', () => {
+  // Input: participant picks a candidate
+  // Expected status code: 200
+  // Expected behavior: one unlocked vote is stored and vote:updated is published with the new tally
+  // Expected output: the vote
+  test('Creates a vote', async () => {
+    const { ada, meetup } = await setup();
 
-    expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({
-      meetupId: meetup.id,
-      createdBy: organizer.id,
-      status: 'open',
-      winnerCandidateId: null,
+    const res = await vote(meetup.id, ada.id, PLACE_2);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ meetupId: meetup.id, userId: ada.id, placeId: PLACE_2, locked: false, weight: null });
+    expect(published).toHaveLength(1);
+    expect(published[0]).toMatchObject({
+      room: `meetup:${meetup.id}`,
+      event: 'vote:updated',
+      payload: { meetupId: meetup.id, lockedCount: 0, participantCount: 3, totalWeight: 0 },
     });
-    expect(res.body.candidates).toHaveLength(3);
-    expect(res.body.candidates[0]).toMatchObject({
-      id: expect.stringMatching(/^[0-9a-f]{24}$/),
-      placeId: 'place-1',
-      name: 'Koerner Library',
-      address: '1958 Main Mall',
-      location: { lat: 49.2667, lng: -123.2551 },
-    });
-    expect((await MeetupModel.findById(meetup.id))?.status).toBe('VOTING');
   });
 
-  // Input: valid body from a group member who is not the meetup organizer
-  // Expected status code: 403
-  // Expected behavior: nothing stored; meetup stays in SETUP
-  test('Non-organizer member', async () => {
-    const { member, meetup } = await setup();
+  // Input: participant changes their pick, then sends the same pick again
+  // Expected status code: 200 each time
+  // Expected behavior: the single vote is updated; the unchanged resend publishes nothing
+  test('Changing a vote updates the existing vote', async () => {
+    const { ada, meetup } = await setup();
+    await vote(meetup.id, ada.id, PLACE_1);
 
-    const res = await request(createApp())
-      .post(`/api/meetups/${meetup.id}/voting-session`)
-      .set('Authorization', bearer(member.id))
-      .send({ candidates: CANDIDATES });
+    const changed = await vote(meetup.id, ada.id, PLACE_3);
+    const resent = await vote(meetup.id, ada.id, PLACE_3);
 
-    expect(res.status).toBe(403);
-    expect(await VotingSessionModel.countDocuments()).toBe(0);
-    expect((await MeetupModel.findById(meetup.id))?.status).toBe('SETUP');
+    expect(changed.status).toBe(200);
+    expect(resent.status).toBe(200);
+    expect(await VoteModel.countDocuments({ meetupId: meetup.id })).toBe(1);
+    expect((await VoteModel.findOne({ meetupId: meetup.id }).orFail()).placeId).toBe(PLACE_3);
+    expect(published).toHaveLength(2);
   });
 
-  // Input: valid body from a user outside the group
-  // Expected status code: 403
-  test('Outsider', async () => {
-    const { outsider, meetup } = await setup();
+  // Input: placeId that is not a candidate; missing placeId; malformed meetup id
+  // Expected status code: 400
+  test.each([
+    ['unknown place', 'place-9', undefined],
+    ['missing placeId', undefined, undefined],
+    ['malformed meetup id', PLACE_1, 'not-an-id'],
+  ])('Rejects %s', async (_label, placeId, meetupIdOverride) => {
+    const { ada, meetup } = await setup();
 
-    const res = await request(createApp())
-      .post(`/api/meetups/${meetup.id}/voting-session`)
-      .set('Authorization', bearer(outsider.id))
-      .send({ candidates: CANDIDATES });
-
-    expect(res.status).toBe(403);
+    expect((await vote(meetupIdOverride ?? meetup.id, ada.id, placeId)).status).toBe(400);
+    expect(published).toHaveLength(0);
   });
 
-  // Input: valid body, but voting already started for this meetup
+  // Input: participant whose vote is already locked
   // Expected status code: 409
-  // Expected behavior: still only one session
-  test('Meetup no longer in SETUP', async () => {
-    const { organizer, meetup } = await setupVoting();
+  // Expected behavior: the locked vote is unchanged
+  test('Locked vote cannot change', async () => {
+    const { ada, meetup } = await setup();
+    await vote(meetup.id, ada.id, PLACE_1);
+    const locked = await lock(meetup.id, ada.id);
+    expect(locked.body).toMatchObject({ locked: true });
 
-    const res = await request(createApp())
-      .post(`/api/meetups/${meetup.id}/voting-session`)
-      .set('Authorization', bearer(organizer.id))
-      .send({ candidates: CANDIDATES });
+    const res = await vote(meetup.id, ada.id, PLACE_2);
 
     expect(res.status).toBe(409);
-    expect(await VotingSessionModel.countDocuments()).toBe(1);
+    expect((await VoteModel.findOne({ meetupId: meetup.id }).orFail()).placeId).toBe(PLACE_1);
   });
 
-  // Input: meetup id that does not exist
-  // Expected status code: 404
-  test('Missing meetup', async () => {
-    const { organizer } = await setup();
+  // Input: meetup still in SETUP
+  // Expected status code: 409
+  test('Voting not open', async () => {
+    const { organizer, group } = await setup();
+    const meetup = await createMeetup(group.id, organizer.id);
 
-    const res = await request(createApp())
-      .post(`/api/meetups/${MISSING_ID}/voting-session`)
-      .set('Authorization', bearer(organizer.id))
-      .send({ candidates: CANDIDATES });
-
-    expect(res.status).toBe(404);
+    expect((await vote(meetup.id, organizer.id, PLACE_1)).status).toBe(409);
   });
 
-  // Input: wrong candidate count, duplicate place, missing name, out-of-range coordinates, non-object items
-  // Expected status code: 400
-  // Expected behavior: nothing stored; meetup stays in SETUP
-  test.each([
-    ['no candidates', {}],
-    ['two candidates', { candidates: CANDIDATES.slice(0, 2) }],
-    ['four candidates', { candidates: [...CANDIDATES, { ...CANDIDATES[0], placeId: 'place-4' }] }],
-    ['duplicate placeId', { candidates: [CANDIDATES[0], CANDIDATES[0], CANDIDATES[1]] }],
-    ['missing name', { candidates: [{ ...CANDIDATES[0], name: '' }, CANDIDATES[1], CANDIDATES[2]] }],
-    ['bad latitude', { candidates: [{ ...CANDIDATES[0], location: { lat: 91, lng: 0 } }, CANDIDATES[1], CANDIDATES[2]] }],
-    ['non-object item', { candidates: ['a', 'b', 'c'] }],
-  ])('Invalid body: %s', async (_label, body) => {
-    const { organizer, meetup } = await setup();
+  // Input: group member who is not a participant; outsider; missing meetup
+  // Expected status code: 403; 403; 404
+  test('Non-participant, outsider and missing meetup', async () => {
+    const { bystander, meetup } = await setup();
+    const outsider = await createUserN(9);
 
-    const res = await request(createApp())
-      .post(`/api/meetups/${meetup.id}/voting-session`)
-      .set('Authorization', bearer(organizer.id))
-      .send(body);
-
-    expect(res.status).toBe(400);
-    expect(await VotingSessionModel.countDocuments()).toBe(0);
-    expect((await MeetupModel.findById(meetup.id))?.status).toBe('SETUP');
+    expect((await vote(meetup.id, bystander.id, PLACE_1)).status).toBe(403);
+    expect((await vote(meetup.id, outsider.id, PLACE_1)).status).toBe(403);
+    expect((await vote(MISSING_ID, outsider.id, PLACE_1)).status).toBe(404);
   });
 
   // Input: no Authorization header
   // Expected status code: 401
   test('Unauthenticated', async () => {
-    const { meetup } = await setup();
-
-    const res = await request(createApp())
-      .post(`/api/meetups/${meetup.id}/voting-session`)
-      .send({ candidates: CANDIDATES });
-
-    expect(res.status).toBe(401);
+    expect((await app().put(`/api/meetups/${MISSING_ID}/vote`).send({ placeId: PLACE_1 })).status).toBe(401);
   });
 });
 
-// Interface GET /api/meetups/:meetupId/voting-session
-describe('Unmocked: GET /api/meetups/:meetupId/voting-session', () => {
-  // Input: group member, after voting started and after they voted
+// Interface POST /api/meetups/:meetupId/vote/lock
+describe('Unmocked: POST /api/meetups/:meetupId/vote/lock', () => {
+  // Input: participant with an unlocked vote
   // Expected status code: 200
-  // Expected output: the session with myCandidateId set to the caller's choice
-  test('Member loads the session for a meetup', async () => {
-    const { member, meetup, session, ids } = await setupVoting();
-    await vote(session.id, member.id, ids[1]);
+  // Expected behavior: the vote is locked with its Fair Credit weight and the tally counts it
+  // Expected output: the locked vote
+  test('Locks the vote with its weight', async () => {
+    const { ada, meetup } = await setup();
+    await vote(meetup.id, ada.id, PLACE_2);
+    published = [];
 
-    const res = await request(createApp())
-      .get(`/api/meetups/${meetup.id}/voting-session`)
-      .set('Authorization', bearer(member.id));
+    const res = await lock(meetup.id, ada.id);
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ id: session.id, status: 'open', myCandidateId: ids[1] });
+    expect(res.body).toMatchObject({ placeId: PLACE_2, locked: true, weight: 1 });
+    expect(published[0]?.payload).toMatchObject({ lockedCount: 1, totalWeight: 1 });
   });
 
-  // Input: meetup still in SETUP
-  // Expected status code: 404
-  test('Voting not started', async () => {
-    const { member, meetup } = await setup();
+  // Input: participant without a vote; then locking twice
+  // Expected status code: 404; 409
+  test('No vote, then already locked', async () => {
+    const { ada, meetup } = await setup();
 
-    const res = await request(createApp())
-      .get(`/api/meetups/${meetup.id}/voting-session`)
-      .set('Authorization', bearer(member.id));
-
-    expect(res.status).toBe(404);
+    expect((await lock(meetup.id, ada.id)).status).toBe(404);
+    await vote(meetup.id, ada.id, PLACE_1);
+    expect((await lock(meetup.id, ada.id)).status).toBe(200);
+    expect((await lock(meetup.id, ada.id)).status).toBe(409);
   });
 
-  // Input: user outside the group
-  // Expected status code: 403
-  test('Outsider', async () => {
-    const { outsider, meetup } = await setupVoting();
+  // Input: meetup still in SETUP; non-participant
+  // Expected status code: 409; 403
+  test('Voting not open and non-participant', async () => {
+    const { organizer, bystander, group, meetup } = await setup();
+    const setupMeetup = await createMeetup(group.id, organizer.id);
 
-    const res = await request(createApp())
-      .get(`/api/meetups/${meetup.id}/voting-session`)
-      .set('Authorization', bearer(outsider.id));
-
-    expect(res.status).toBe(403);
+    expect((await lock(setupMeetup.id, organizer.id)).status).toBe(409);
+    expect((await lock(meetup.id, bystander.id)).status).toBe(403);
   });
 });
 
-// Interface GET /api/voting-sessions/:sessionId
-describe('Unmocked: GET /api/voting-sessions/:sessionId', () => {
-  // Input: group member who has not voted
+// Interface GET /api/meetups/:meetupId/votes
+describe('Unmocked: GET /api/meetups/:meetupId/votes', () => {
+  // Input: one locked and one unlocked vote, requested by a member who has not voted
   // Expected status code: 200
-  // Expected output: session with candidates and myCandidateId null
-  test('Member loads the session', async () => {
-    const { member, session } = await setupVoting();
+  // Expected output: tally per candidate (locked weight, share, all picks) and the caller's vote (null)
+  test('Returns the tally and the caller vote', async () => {
+    const { ada, grace, bystander, meetup } = await setup();
+    await lockedVote(meetup.id, ada.id, PLACE_1, 2);
+    await vote(meetup.id, grace.id, PLACE_1);
 
-    const res = await request(createApp())
-      .get(`/api/voting-sessions/${session.id}`)
-      .set('Authorization', bearer(member.id));
-
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ id: session.id, myCandidateId: null });
-    expect(res.body.candidates.map((c: { name: string }) => c.name)).toEqual(CANDIDATES.map((c) => c.name));
-  });
-
-  // Input: outsider / missing session / malformed id
-  // Expected status code: 403 / 404 / 400
-  test('Outsider, missing and malformed ids', async () => {
-    const { outsider, member, session } = await setupVoting();
-    const app = createApp();
-
-    const forbidden = await request(app).get(`/api/voting-sessions/${session.id}`).set('Authorization', bearer(outsider.id));
-    const missing = await request(app).get(`/api/voting-sessions/${MISSING_ID}`).set('Authorization', bearer(member.id));
-    const malformed = await request(app).get('/api/voting-sessions/not-an-id').set('Authorization', bearer(member.id));
-
-    expect(forbidden.status).toBe(403);
-    expect(missing.status).toBe(404);
-    expect(malformed.status).toBe(400);
-  });
-});
-
-// Interface POST /api/voting-sessions/:sessionId/vote
-describe('Unmocked: POST /api/voting-sessions/:sessionId/vote', () => {
-  // Input: member votes for a candidate in an open session
-  // Expected status code: 200
-  // Expected behavior: one vote stored with the placeholder Fair Credit weight
-  // Expected output: the vote
-  test('Creates a vote', async () => {
-    const { member, session, ids } = await setupVoting();
-
-    const res = await vote(session.id, member.id, ids[0]);
-
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ sessionId: session.id, userId: member.id, candidateId: ids[0], weight: 1 });
-    expect(await VoteModel.countDocuments()).toBe(1);
-  });
-
-  // Input: same member votes twice for different candidates
-  // Expected status code: 200
-  // Expected behavior: the existing vote is updated, never duplicated
-  test('Changing a vote updates the existing vote', async () => {
-    const { member, session, ids } = await setupVoting();
-
-    const first = await vote(session.id, member.id, ids[0]);
-    const second = await vote(session.id, member.id, ids[2]);
-
-    expect(second.status).toBe(200);
-    expect(second.body.id).toBe(first.body.id);
-    expect(second.body.candidateId).toBe(ids[2]);
-    expect(await VoteModel.countDocuments()).toBe(1);
-  });
-
-  // Input: candidate id that is valid but not in this session / not an ObjectId / missing
-  // Expected status code: 400
-  // Expected behavior: no vote stored
-  test.each([
-    ['foreign candidate', MISSING_ID],
-    ['malformed candidate', 'abc'],
-    ['missing candidate', undefined],
-  ])('Rejects %s', async (_label, candidateId) => {
-    const { member, session } = await setupVoting();
-
-    const res = await vote(session.id, member.id, candidateId);
-
-    expect(res.status).toBe(400);
-    expect(await VoteModel.countDocuments()).toBe(0);
-  });
-
-  // Input: vote on a closed session
-  // Expected status code: 409
-  test('Closed session', async () => {
-    const { member, session, ids } = await setupVoting();
-    await VotingSessionModel.updateOne({ _id: session.id }, { $set: { status: 'closed' } });
-
-    const res = await vote(session.id, member.id, ids[0]);
-
-    expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: 'Voting session is closed' });
-  });
-
-  // Input: outsider / missing session
-  // Expected status code: 403 / 404
-  test('Outsider and missing session', async () => {
-    const { outsider, member, session, ids } = await setupVoting();
-
-    expect((await vote(session.id, outsider.id, ids[0])).status).toBe(403);
-    expect((await vote(MISSING_ID, member.id, ids[0])).status).toBe(404);
-    expect(await VoteModel.countDocuments()).toBe(0);
-  });
-});
-
-// Interface GET /api/voting-sessions/:sessionId/votes
-describe('Unmocked: GET /api/voting-sessions/:sessionId/votes', () => {
-  // Input: two members voted for the first candidate, the organizer for the third
-  // Expected status code: 200
-  // Expected output: per-candidate raw count and weighted total, voter and eligible voter counts
-  test('Returns totals for every candidate', async () => {
-    const { organizer, member, member2, session, ids } = await setupVoting();
-    await vote(session.id, member.id, ids[0]);
-    await vote(session.id, member2.id, ids[0]);
-    await vote(session.id, organizer.id, ids[2]);
-
-    const res = await request(createApp())
-      .get(`/api/voting-sessions/${session.id}/votes`)
-      .set('Authorization', bearer(member.id));
+    const res = await app().get(`/api/meetups/${meetup.id}/votes`).set('Authorization', bearer(bystander.id));
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
-      sessionId: session.id,
-      status: 'open',
-      winnerCandidateId: null,
-      voterCount: 3,
-      eligibleVoterCount: 3,
-      totals: [
-        { candidateId: ids[0], voteCount: 2, totalWeight: 2 },
-        { candidateId: ids[1], voteCount: 0, totalWeight: 0 },
-        { candidateId: ids[2], voteCount: 1, totalWeight: 1 },
+      meetupId: meetup.id,
+      candidates: [
+        { placeId: PLACE_1, voteCount: 2, weight: 2, share: 1 },
+        { placeId: PLACE_2, voteCount: 0, weight: 0, share: 0 },
+        { placeId: PLACE_3, voteCount: 0, weight: 0, share: 0 },
       ],
+      totalWeight: 2,
+      lockedCount: 1,
+      participantCount: 3,
+      myVote: null,
     });
   });
 
-  // Input: votes with different stored weights
-  // Expected output: totalWeight sums weights while voteCount counts voters
-  test('Weighted totals use each vote weight', async () => {
-    const { organizer, member, session, ids } = await setupVoting();
-    await VoteModel.create({ sessionId: session.id, userId: member.id, candidateId: ids[1], weight: 2.5 });
-    await VoteModel.create({ sessionId: session.id, userId: organizer.id, candidateId: ids[1], weight: 0.5 });
-
-    const res = await request(createApp())
-      .get(`/api/voting-sessions/${session.id}/votes`)
-      .set('Authorization', bearer(member.id));
-
-    expect(res.body.totals[1]).toEqual({ candidateId: ids[1], voteCount: 2, totalWeight: 3 });
-  });
-
-  // Input: outsider
-  // Expected status code: 403
-  test('Outsider', async () => {
-    const { outsider, session } = await setupVoting();
-
-    const res = await request(createApp())
-      .get(`/api/voting-sessions/${session.id}/votes`)
-      .set('Authorization', bearer(outsider.id));
-
-    expect(res.status).toBe(403);
-  });
-});
-
-// Interface PATCH /api/voting-sessions/:sessionId/close
-describe('Unmocked: PATCH /api/voting-sessions/:sessionId/close', () => {
-  // Input: creator closes after a clear weighted majority
+  // Input: a locked vote stored without a weight snapshot, requested by a member
   // Expected status code: 200
-  // Expected behavior: session closed with the winner recorded; meetup moves to FINALIZED
-  test('Closes with the weighted winner and finalizes the meetup', async () => {
-    const { organizer, member, member2, meetup, session, ids } = await setupVoting();
-    await vote(session.id, member.id, ids[1]);
-    await vote(session.id, member2.id, ids[1]);
-    await vote(session.id, organizer.id, ids[0]);
+  // Expected output: the vote counts as a pick and as locked, but adds no weight
+  test('Locked vote without a weight adds no weight', async () => {
+    const { ada, bystander, meetup } = await setup();
+    await VoteModel.create({ meetupId: meetup.id, userId: ada.id, placeId: PLACE_2, locked: true });
 
-    const res = await close(session.id, organizer.id);
+    const res = await app().get(`/api/meetups/${meetup.id}/votes`).set('Authorization', bearer(bystander.id));
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ status: 'closed', winnerCandidateId: ids[1], myCandidateId: ids[0] });
-    expect((await MeetupModel.findById(meetup.id))?.status).toBe('FINALIZED');
+    expect(res.body.candidates[1]).toEqual({ placeId: PLACE_2, voteCount: 1, weight: 0, share: 0 });
+    expect(res.body).toMatchObject({ totalWeight: 0, lockedCount: 1 });
   });
 
-  // Input: tie on weighted total; one side has a voter with a higher individual weight
-  // Expected behavior: that side wins without asking the organizer
-  test('Tie broken by highest individual weight', async () => {
-    const { organizer, member, member2, session, ids } = await setupVoting();
-    await VoteModel.create({ sessionId: session.id, userId: member.id, candidateId: ids[0], weight: 1 });
-    await VoteModel.create({ sessionId: session.id, userId: member2.id, candidateId: ids[0], weight: 1 });
-    await VoteModel.create({ sessionId: session.id, userId: organizer.id, candidateId: ids[2], weight: 2 });
+  // Input: participant who voted
+  // Expected output: myVote is their vote
+  test('Includes the caller vote', async () => {
+    const { ada, meetup } = await setup();
+    await vote(meetup.id, ada.id, PLACE_3);
 
-    const res = await close(session.id, organizer.id);
+    const res = await app().get(`/api/meetups/${meetup.id}/votes`).set('Authorization', bearer(ada.id));
 
-    expect(res.status).toBe(200);
-    expect(res.body.winnerCandidateId).toBe(ids[2]);
+    expect(res.body.myVote).toMatchObject({ placeId: PLACE_3, locked: false });
   });
 
-  // Input: an unbreakable tie, first without a pick, then with a pick among the tied candidates
-  // Expected status code: 409, then 200
-  // Expected behavior: the organizer's pick decides
-  test('Unbreakable tie needs a manual pick', async () => {
-    const { organizer, member, session, ids } = await setupVoting();
-    await vote(session.id, member.id, ids[0]);
-    await vote(session.id, organizer.id, ids[1]);
+  // Input: outsider; meetup without recommendations
+  // Expected status code: 403; 404
+  test('Outsider and no recommendations', async () => {
+    const { organizer, group, meetup } = await setup();
+    const outsider = await createUserN(9);
+    const setupMeetup = await createMeetup(group.id, organizer.id);
 
-    const blocked = await close(session.id, organizer.id);
-    const outsideTie = await close(session.id, organizer.id, { winnerCandidateId: ids[2] });
-    const picked = await close(session.id, organizer.id, { winnerCandidateId: ids[1] });
-
-    expect(blocked.status).toBe(409);
-    expect(blocked.body.error).toContain('Tie');
-    expect(outsideTie.status).toBe(409);
-    expect(picked.status).toBe(200);
-    expect(picked.body.winnerCandidateId).toBe(ids[1]);
-  });
-
-  // Input: no votes at all, first without a pick, then with one
-  // Expected status code: 409, then 200
-  test('Zero votes require a manual pick', async () => {
-    const { organizer, session, ids } = await setupVoting();
-
-    const blocked = await close(session.id, organizer.id);
-    const picked = await close(session.id, organizer.id, { winnerCandidateId: ids[2] });
-
-    expect(blocked.status).toBe(409);
-    expect(blocked.body.error).toContain('zero votes');
-    expect(picked.status).toBe(200);
-    expect(picked.body.winnerCandidateId).toBe(ids[2]);
-  });
-
-  // Input: a pick that would overrule a clear winner / a pick from another session / malformed pick
-  // Expected status code: 409 / 400 / 400
-  // Expected behavior: session stays open
-  test('Rejects invalid manual picks', async () => {
-    const { organizer, member, session, ids } = await setupVoting();
-    await vote(session.id, member.id, ids[0]);
-
-    expect((await close(session.id, organizer.id, { winnerCandidateId: ids[1] })).status).toBe(409);
-    expect((await close(session.id, organizer.id, { winnerCandidateId: MISSING_ID })).status).toBe(400);
-    expect((await close(session.id, organizer.id, { winnerCandidateId: 'x' })).status).toBe(400);
-    expect((await VotingSessionModel.findById(session.id))?.status).toBe('open');
-  });
-
-  // Input: a member who did not create the session
-  // Expected status code: 403
-  test('Only the creator can close', async () => {
-    const { member, session, ids } = await setupVoting();
-    await vote(session.id, member.id, ids[0]);
-
-    const res = await close(session.id, member.id);
-
-    expect(res.status).toBe(403);
-    expect((await VotingSessionModel.findById(session.id))?.status).toBe('open');
-  });
-
-  // Input: closing twice, then voting
-  // Expected status code: 409 for both
-  test('Already closed', async () => {
-    const { organizer, member, session, ids } = await setupVoting();
-    await vote(session.id, member.id, ids[0]);
-    await close(session.id, organizer.id);
-
-    expect((await close(session.id, organizer.id)).status).toBe(409);
-    expect((await vote(session.id, member.id, ids[1])).status).toBe(409);
+    expect((await app().get(`/api/meetups/${meetup.id}/votes`).set('Authorization', bearer(outsider.id))).status).toBe(403);
+    expect((await app().get(`/api/meetups/${setupMeetup.id}/votes`).set('Authorization', bearer(organizer.id))).status)
+      .toBe(404);
   });
 });
 
-// Interface: live updates published by the voting service
-describe('Unmocked: voting broadcasts', () => {
-  // Input: create a vote, repeat the same vote, change it, then close the session
-  // Expected behavior: results are published only for the create and the change (not the repeat);
-  //                    closing publishes one "closed" event carrying the winner
-  test('Publishes only when a vote is created or changed', async () => {
-    const { organizer, member, session, ids } = await setupVoting();
-    // Round-trip through JSON like Socket.IO does on the wire
-    const published: { room: string; event: string; payload: unknown }[] = [];
-    setTransport((room, event, payload) => published.push({ room, event, payload: JSON.parse(JSON.stringify(payload)) }));
+// Interface POST /api/meetups/:meetupId/finalize
+describe('Unmocked: POST /api/meetups/:meetupId/finalize', () => {
+  // Input: locked votes where one candidate has the highest weight; an unlocked pick elsewhere
+  // Expected status code: 200
+  // Expected behavior: the meetup is FINALIZED with that winner, unlocked picks are ignored,
+  //                    meetup:status is published with the winner
+  // Expected output: the meetup with its winner
+  test('Finalizes with the weighted winner', async () => {
+    const { organizer, ada, grace, meetup } = await setup();
+    await lockedVote(meetup.id, ada.id, PLACE_2, 1.5);
+    await lockedVote(meetup.id, organizer.id, PLACE_1, 1);
+    await vote(meetup.id, grace.id, PLACE_1);
+    published = [];
 
-    await vote(session.id, member.id, ids[0]);
-    await vote(session.id, member.id, ids[0]);
-    await vote(session.id, member.id, ids[1]);
-    await close(session.id, organizer.id);
+    const res = await finalize(meetup.id, organizer.id);
 
-    expect(published.map((p) => p.event)).toEqual(['voting:results', 'voting:results', 'voting:closed']);
-    expect(published.every((p) => p.room === `voting:${session.id}`)).toBe(true);
-    expect(published[1]?.payload).toMatchObject({
-      voterCount: 1,
-      totals: [
-        { candidateId: ids[0], voteCount: 0 },
-        { candidateId: ids[1], voteCount: 1 },
-        { candidateId: ids[2], voteCount: 0 },
-      ],
-    });
-    expect(published[2]?.payload).toMatchObject({
-      session: { status: 'closed', winnerCandidateId: ids[1] },
-      results: { status: 'closed', winnerCandidateId: ids[1] },
-    });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: 'FINALIZED', winner: { placeId: PLACE_2, name: 'Loafe Cafe' } });
+    expect(published).toEqual([{
+      room: `meetup:${meetup.id}`,
+      event: 'meetup:status',
+      payload: { meetupId: meetup.id, status: 'FINALIZED', winner: expect.objectContaining({ placeId: PLACE_2 }) },
+    }]);
   });
 
-  // Input: rejected votes (closed session, foreign candidate)
-  // Expected behavior: nothing is published
-  test('Rejected votes publish nothing', async () => {
-    const { member, session } = await setupVoting();
-    const publish = jest.fn();
-    setTransport(publish);
+  // Input: equal totals; one side has the single heaviest voter
+  // Expected status code: 200
+  // Expected output: that side wins
+  test('Tie broken by highest individual weight', async () => {
+    const { organizer, ada, grace, meetup } = await setup();
+    await lockedVote(meetup.id, ada.id, PLACE_1, 1);
+    await lockedVote(meetup.id, grace.id, PLACE_1, 1);
+    await lockedVote(meetup.id, organizer.id, PLACE_3, 2);
 
-    await vote(session.id, member.id, MISSING_ID);
+    const res = await finalize(meetup.id, organizer.id);
 
-    expect(publish).not.toHaveBeenCalled();
+    expect(res.body.winner.placeId).toBe(PLACE_3);
+  });
+
+  // Input: unbreakable tie, then the organizer picks a non-tied and a tied candidate
+  // Expected status code: 409, 409, then 200
+  test('Unbreakable tie needs a manual pick', async () => {
+    const { organizer, ada, meetup } = await setup();
+    await lockedVote(meetup.id, ada.id, PLACE_1, 1);
+    await lockedVote(meetup.id, organizer.id, PLACE_2, 1);
+
+    expect((await finalize(meetup.id, organizer.id)).status).toBe(409);
+    expect((await finalize(meetup.id, organizer.id, { placeId: PLACE_3 })).status).toBe(409);
+    const picked = await finalize(meetup.id, organizer.id, { placeId: PLACE_2 });
+    expect(picked.status).toBe(200);
+    expect(picked.body.winner.placeId).toBe(PLACE_2);
+  });
+
+  // Input: no locked votes, without and with a manual pick
+  // Expected status code: 409, then 200
+  test('No locked votes require a manual pick', async () => {
+    const { organizer, ada, meetup } = await setup();
+    await vote(meetup.id, ada.id, PLACE_1);
+
+    expect((await finalize(meetup.id, organizer.id)).status).toBe(409);
+    expect((await finalize(meetup.id, organizer.id, { placeId: PLACE_3 })).body.winner.placeId).toBe(PLACE_3);
+  });
+
+  // Input: clear winner, but the organizer names a different one; then a place that is not a candidate
+  // Expected status code: 409; 400
+  test('Rejects invalid manual picks', async () => {
+    const { organizer, ada, meetup } = await setup();
+    await lockedVote(meetup.id, ada.id, PLACE_1, 1);
+
+    expect((await finalize(meetup.id, organizer.id, { placeId: PLACE_2 })).status).toBe(409);
+    expect((await finalize(meetup.id, organizer.id, { placeId: 'place-9' })).status).toBe(400);
+  });
+
+  // Input: participant who is not the organizer; then finalizing twice
+  // Expected status code: 403; 200 then 409
+  test('Only the organizer, only once', async () => {
+    const { organizer, ada, meetup } = await setup();
+    await lockedVote(meetup.id, ada.id, PLACE_1, 1);
+
+    expect((await finalize(meetup.id, ada.id)).status).toBe(403);
+    expect((await finalize(meetup.id, organizer.id)).status).toBe(200);
+    expect((await finalize(meetup.id, organizer.id)).status).toBe(409);
+    expect((await MeetupModel.findById(meetup.id).orFail()).winner?.placeId).toBe(PLACE_1);
   });
 });
