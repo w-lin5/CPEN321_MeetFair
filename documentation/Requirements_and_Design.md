@@ -4,7 +4,15 @@
 
 | **Change Date**   | **Modified Sections** | **Rationale** |
 | ----------------- | --------------------- | ------------- |
-| _Nothing to show_ |
+| 2026-10-14 | 3.2, 3.4, 3.5 | Added the use case diagram, the use case descriptions and the formal use case template for CP1. |
+| 2026-10-15 | 3.1, 3.3, 3.5 | Added the features, the actors and the formal specification of "Finalize Meetup". |
+| 2026-10-16 | 3.5 | Added the formal specification of "Create or Join Group". |
+| 2026-10-18 | 4.1, 4.2, 4.3, 4.4 | Added the design specification: components and their interfaces, database, external modules, frameworks and libraries. |
+| 2026-10-19 | 2, 3.5, 3.7, 4.7 | Added the project description, the remaining formal use case specifications, the non-functional requirements and their design. |
+| 2026-10-19 | 3.1 | Aligned the features with the implementation: travel times come from the Google Routes API, the replacement for the Distance Matrix API; meetup preferences are a fixed set; each member adds the finalized meetup to their own Google Calendar; recorded which features are implemented at CP1. |
+| 2026-10-19 | 3.3, 3.4 | Described every actor in the use case diagram (Organizer, Member and the three Google services). Removed "Import Calendar", because the group agrees on the meetup time before using MeetFair, so availability is out of scope. Added the use cases the app implements but the list was missing (Lock Vote, Add Meetup to Google Calendar, Edit Profile). |
+| 2026-10-19 | 3.5, 4.6 | Replaced "Sign In" with "Vote on a Candidate" as Use Case 1, because the formal use cases must exclude authentication. Matched "Create or Join Group" and "Finalize Meetup" to the implemented behavior. |
+| 2026-10-19 | 4.4, 4.5 | Added the dependency diagram. |
 
 ---
 
@@ -17,33 +25,39 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 ## 3. Requirements Specification
 
 ### **3.1. List of Features**
-1. **Sign in with Google**: Users log in with their Google account.
-2. **Groups and meetups**: Any user can create a group and invite others; each user enters start location, meeting purpose (meal, study, coffee chat, outdoors, fun) and optional place types.
-3. **Fair spot recommendation**: Backend collects candidate places (Places API), gets each user's travel time (Distance Matrix), then scores every candidate with our own fairness + preference algorithm and returns the top 3 (if there exist 3).
-4. **Weighted voting**: Users vote on the top 3, weighted by each user's fairness debt (how much extra they actually travelled in past meetups). Votes appear live; the winner becomes a Google Calendar event.
-5. **Live commute tracking**: On meetup day, members tap "I'm leaving" and share live location; the group sees who is on the way. The commute ends when they tap "I'm here," or automatically when their location reaches the venue. The actual commute time updates their fairness debt for the next meetup. If someone never starts tracking, we fall back to the Google Maps estimate.
+1. **Sign in with Google**: Users sign in with their Google account. The back end verifies the Google ID token and issues a MeetFair session that lasts 7 days or until the user signs out.
+2. **Groups and meetups**: Any user can create a group and invite others with its 6-character invite code. Any member can create a meetup with a title and the time the group already agreed on. Each member enters their start location, travel mode (walk, transit or drive) and the type of meetup they prefer (study, coffee, food, outdoors, social).
+3. **Fair spot recommendation**: The back end collects candidate places (Google Places API), gets each member's travel time to each candidate (Google Routes API), then scores every candidate with our own fairness and preference algorithm and returns the top 3 (if there are 3). *Status at CP1: until the Google Maps integration is complete, the organizer enters the three candidate places by hand to open voting.*
+4. **Weighted voting**: Members vote on the top 3 and lock their vote. A locked vote is weighted by the member's Fair Credit in the group (how much more than the group average they travelled in past meetups): 1 + 0.1 per hour of credit, between 1 and 1.5. Votes appear live; the organizer finalizes the vote, and each member can add the meetup at the winning place to their own Google Calendar.
+5. **Live commute tracking**: On meetup day, members tap "I'm leaving" and share live location; the group sees who is on the way. The commute ends when they tap "I'm here," or automatically when their location reaches the venue. The actual commute time updates their Fair Credit for the next meetup. If someone never starts tracking, we fall back to the Google Maps estimate. *Status at CP1: planned.*
 ### **3.2. Use Case Diagram**
-![Use Case Diagram](images\Use_Case_Diagram.jpg)
+![Use Case Diagram](images/Use_Case_Diagram.jpg)
 
 ### **3.3. Actors Description**
-1. **User**: A signed-in user who creates or joins a meetup, enters start location and preferences, votes, and shares live location on the way so their actual commute time is recorded.
+1. **Member**: A signed-in user who belongs to a group. A member creates or joins groups, creates meetups, enters their start location and preferences, votes, adds finalized meetups to their calendar and shares their live location on the way so their actual commute time is recorded.
+2. **Organizer**: The member who created a meetup. Besides everything a member can do, the organizer starts voting on the meetup's recommended places and finalizes the vote.
+3. **Google Sign-In**: Google's identity service. It authenticates the user for sign-in and, with the user's consent, issues the short-lived access token used to add events to their Google Calendar.
+4. **Google Maps Platform**: Finds candidate places (Places API) and returns every member's travel time to every candidate (Routes API).
+5. **Google Calendar**: Stores the finalized meetup as an event in the member's own calendar.
 
 ### **3.4. Use Case Description**
 - Use cases for feature 1: Sign In
 1. **Sign In**: A user authenticates into the app using their Google account to access their groups and past fairness history.
 2. **Sign out**: A user securely ends their active session on the device.
+3. **Edit Profile**: A member changes the name other members see, or goes back to their Google name.
 - Use cases for feature 2: Groups and Meetups
-1. **Create Group**: An Organizer creates a new group in the app and generates a code to invite other members.
-2. **Create Meetup**: An organizer creates a new meetup associated with their group, allowing members to add their preferences.
+1. **Create Group**: A member creates a new group in the app and receives a code to invite other members.
+2. **Create Meetup**: A member creates a new meetup in their group with a title and the agreed time, and becomes its organizer; members can then add their details.
 3. **Join Group**: A member uses a code to associate their account with an existing group.
-4. **Enter Start Location & Preferences**: A member inputs their starting address, transit mode, and meetup preferences (e.g., cafe, library) for an upcoming meetup.
-4. **Import Calendar**: A member syncs their Google Calendar with ther user profile to automatically block out busy periods.
+4. **Enter Start Location & Preferences**: A member enters their start location, travel mode and meetup preferences (e.g., study, coffee) for a meetup that is still being set up.
 - Use cases for feature 3: Fair Spot Recommendation
-1. **Get Recommendations**: The system collects all group member's locations and preferences, calculates commute fairness, and outputs the top 3 candidate locations.
+1. **Get Recommendations**: The organizer starts voting; the system collects the members' locations and preferences, calculates commute fairness, and outputs the top 3 candidate locations.
 - Use cases for feature 4: Voting and Fairness
-1. **Vote on a Candidate**: A member casts a vote for their preferred spot from the top 3 recommendations, with their vote's weight adjusted by their current fairness debt.
-2. **Finalize Meetup**: The organizer closes the voting, the system logs the winning location as a Google Calendar event.
-3. **View Fairness History**: A member checks their profile for a specific group to see their accumulated fairness debt and past travel sacrifices.
+1. **Vote on a Candidate**: A member casts a vote for their preferred spot from the top 3 recommendations and may change it; every member sees the tally update live.
+2. **Lock Vote**: A member makes their vote final; it then counts with a weight based on their current Fair Credit.
+3. **Finalize Meetup**: The organizer closes the voting and the system determines the winning location.
+4. **Add Meetup to Google Calendar**: A member adds the finalized meetup at the winning location to their own Google Calendar.
+5. **View Fairness History**: A member checks their profile and, for a specific group, every member's Fair Credit and their own past credit changes.
 - Use cases for feature 5: Live Location
 1. **Share Live Location**: A member opts in on the day of the event to broadcast their real-time device location to the group via WebSockets and to keep track of their actual commute time.
 2. **View Members' Location**: A member opens the live map to check the current transit progress of other group members heading to the finalized spot.
@@ -51,35 +65,39 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 ### **3.5. Formal Use Case Specifications (5 Most Major Use Cases)**
 <a name="uc1"></a>
 
-#### Use Case 1: Sign In
+#### Use Case 1: Vote on a Candidate
 
-**Description**: A user signs in with their Google account to access MeetFair groups, meetups, voting, and fairness information
+**Description**: A member votes for one of the three candidate places of a meetup and may change the vote until they lock it. A locked vote counts with a weight from the member's Fair Credit, and every member sees the tally update live.
 
-**Primary actor(s)**: User
+**Primary actor(s)**: Member
     
 **Main success scenario**:
-1. The user opens MeetFair and selects "Sign in with Google."
-2. The system displays the Google account selection interface.
-3. The user selects an account and completes any required Google authentication.
-4. The system creates or updates the user's account and returns a MeetFair session token.
-5. The app stores the session and displays the user's group list.
+1. The member opens a meetup in VOTING and selects "Vote on a spot".
+2. The app shows the three places, each with its number of picks, locked weight and share, and how many participants have locked their vote. While live updates are connected it shows "Live: votes update automatically".
+3. The member selects "Vote" on one place.
+4. The system records the vote and sends the updated tally to every member who has the voting screen open.
+5. The member may select "Change vote" on another place; the system replaces the vote and step 4 repeats.
+6. The member selects "Lock my vote".
+7. The system sets the vote's weight from the member's Fair Credit in the group (1 + 0.1 per hour of credit, between 1 and 1.5), locks the vote and sends the updated tally to every member who has the voting screen open.
+8. The app shows "Your vote is locked" with the vote's weight.
 
 **Failure scenario(s)**:
-- 1a. The user cancels Google sign-in.
-    - 1a1. The system leaves the user on the sign-in screen.
-    - 1a2. The user may start another sign-in attempt.
+- 1a. The member has not entered their details for this meetup.
+    - 1a1. The app shows the places and the tally without vote buttons, with "Only members who entered their details can vote."
 
-- 1b. Google authentication fails.
-    - 1b1. The system displays the authentication error.
-    - 1b2. The user remains signed out and may retry.
-                
-- 2a. The user's device has no network connection.
-    - 2a1. The system displays a network error.
-    - 2a2. The user may retry when connectivity is restored.
+- 2a. Live updates cannot be connected.
+    - 2a1. The app shows a "Refresh results" button instead of the live indicator.
+    - 2a2. The tally is refreshed after each of the member's own votes and whenever they select "Refresh results".
 
-- 3a. The Google ID token is invalid, expired, or intended for a different client.
-    - 3a1. The backend rejects the authentication request.
-    - 3a2. The system displays an error and requires another sign-in attempt.
+- 3a. The organizer finalized the meetup before the vote arrived.
+    - 3a1. The app shows "Voting is not open for this meetup" and reloads the meetup, which shows that voting is closed.
+
+- 3b. The member's device has no network connection.
+    - 3b1. The app shows a "Network error" message and the member's previous vote stays unchanged.
+    - 3b2. The member may vote again when connectivity is restored.
+
+- 6a. The vote was already locked, for example from another device.
+    - 6a1. The app shows "Your vote is already locked".
 
 <a name="uc2"></a>
 
@@ -87,47 +105,42 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
 **Description**: A user creates a new group and receives an invite code to share, or joins an existing group by entering an invite code, associating their account with that group so they can participate in future meetups.
 
-**Primary actor(s)**: User
+**Primary actor(s)**: Member
 
 **Main success scenario (Create)**:
-1. The user selects the option to create a group.
-2. The user enters a group name.
-3. The system creates the group in the database and assigns the user as a member.
-4. The system generates a unique invite code that serves as the group's identifier.
-5. The system displays the group page with the invite code for sharing.
+1. The user selects "Create group" on the group list.
+2. The user enters a group name and selects "Create".
+3. The system creates the group in the database with the user as its only member and organizer.
+4. The system generates a unique 6-character invite code for the group.
+5. The system displays the group page with the group name, the invite code for sharing and the member list.
 
 **Main success scenario (Join)**:
-1. The user selects the option to join a group.
-2. The user enters the invite code shared by the group creator.
-3. The system validates the invite code against the database.
+1. The user selects "Join group" on the group list.
+2. The user enters the invite code shared by a group member and selects "Join".
+3. The system finds the group with this invite code in the database (letter case does not matter).
 4. The system adds the user to the group's member list.
-5. If the user already has a group with the same name, the system displays both groups as "Group Name (distinct member name)" to differentiate them.
-6. The system displays the group page with existing members and any active meetups.
+5. The system displays the group page with all members and the group's meetups.
 
 **Failure scenario(s)**:
-- Create 2a. The user enters an empty group name.
-    - 2a1. The system displays an error message and prompts the user to enter a valid name.
+- Create 2a. The user enters an empty group name (or only spaces).
+    - 2a1. The "Create" button stays disabled until the name contains a non-space character.
 
-- Create 2b. The user already has a group with the same name.
-    - 2b1. The system creates the group and displays both groups as "Group Name (distinct member name)" to differentiate them.
+- Create 2b. The user enters a group name longer than 60 characters.
+    - 2b1. The system displays "Invalid request: name must be a non-empty string of at most 60 characters".
+    - 2b2. The user shortens the name and selects "Create" again.
 
 - Create 3a. The user's device has no network connection.
-    - 3a1. The system displays a "No network connection" error and prompts the user to try again when reconnected.
+    - 3a1. The system displays a "Network error" message and stays on the form so the user can try again when reconnected.
 
-- Join 2a. The user enters an invalid invite code.
-    - 2a1. The system displays an error message indicating the code is invalid.
-    - 2a2. The system prompts the user to re-enter a valid code.
+- Join 2a. The user enters an invite code that does not belong to any group.
+    - 2a1. The system displays "Invalid invite code".
+    - 2a2. The user stays on the join screen and may enter another code.
 
 - Join 3a. The user is already a member of this group.
-    - 3a1. The system displays a message informing the user they are already in the group.
-    - 3a2. The system navigates the user to the existing group page.
+    - 3a1. The system displays "Already a member of this group" and the member list is unchanged.
 
 - Join 3b. The user's device has no network connection.
-    - 3b1. The system displays a "No network connection" error and prompts the user to try again when reconnected.
-
-- Join 4a. The group has reached its maximum member limit.
-    - 4a1. The system displays an error message that the group is full.
-    - 4a2. The system returns the user to the join group screen.
+    - 3b1. The system displays a "Network error" message and stays on the form so the user can try again when reconnected.
 
 <a name="uc3"></a>
 
@@ -135,75 +148,81 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
 **Description**: The meetup organizer requests candidate meeting locations based on participants' starting locations, travel modes, preferences, and Fair Credit. The system provides candidate locations and opens voting.
 
-**Primary actor(s)**: User
+**Primary actor(s)**: Organizer, Google Maps Platform
     
 **Main success scenario (Planned)**:
 
-1. The system loads participants' starting locations, travel modes, preferences, and group-specific Fair Credit.
-2. The system searches for suitable candidate places using Google Places.
-3. The system obtains estimated travel times for the participants and candidates using Google Routes.
-4. The system evaluates feasible candidates using the fairness and preference scoring rules.
-5. The system selects up to three highest-ranked candidates.
-6. The system stores the recommendations and moves the meetup to VOTING.
+1. The organizer opens a meetup in SETUP and selects "Start voting".
+2. The system loads participants' starting locations, travel modes, preferences, and group-specific Fair Credit.
+3. The system searches for suitable candidate places using Google Places.
+4. The system obtains estimated travel times for the participants and candidates using Google Routes.
+5. The system evaluates feasible candidates using the fairness and preference scoring rules.
+6. The system selects up to three highest-ranked candidates.
+7. The system stores the recommendations, moves the meetup to VOTING and publishes the change to the meetup's live updates; the organizer's app opens the voting screen with the candidates.
 
 **Failure scenario(s)**:
- - 1a. No participant has submitted valid participation details.
-    - 1a1. The system does not generate recommendations.
-    - 1a2. The organizer is prompted to ask members to submit their details.
-
-- 2a. The place search returns no suitable candidates.
-    - 2a1. The system explains that no suitable locations were found.
-    - 2a2. The meetup remains in SETUP so participants can revise their inputs.
-
-- 3a. The external service fails or returns insufficient usable travel-time data.
-    - 3a1. The system reports that recommendations could not be generated.
-    - 3a2. The meetup remains in SETUP, and the organizer may retry.
-
-- 4a. The submitted candidates are incomplete, duplicated, invalid, or do not contain exactly three locations.
-    - 4a1. The system rejects the request and displays a validation error.
-    - 4a2. The organizer corrects the candidates and resubmits them.
+- 1a. The user is not the meetup's organizer.
+    - 1a1. The app does not offer "Start voting", and the system rejects such a request with "Only the meetup organizer can generate recommendations".
 
 - 1b. The meetup is no longer in SETUP.
-    - 1b1. The system rejects the request to prevent replacing candidates after voting has started.
-    - 1b2. The user may reload the meetup to view its current state.
+    - 1b1. The system rejects the request with "Recommendations can only be generated while the meetup is in SETUP" to prevent replacing candidates after voting has started.
+    - 1b2. The organizer may reload the meetup to view its current state.
 
-- 2a. Candidate storage fails.
-    - 2b1. The system reports an error.
-    - 2b2. In the current implementation, the system attempts to return the meetup from VOTING to SETUP so the organizer can retry.
+- 2a. No participant has submitted valid participation details.
+    - 2a1. The system does not generate recommendations.
+    - 2a2. The organizer is prompted to ask members to submit their details.
+
+- 3a. The place search returns no suitable candidates.
+    - 3a1. The system explains that no suitable locations were found.
+    - 3a2. The meetup remains in SETUP so participants can revise their inputs.
+
+- 4a. The external service fails or returns insufficient usable travel-time data.
+    - 4a1. The system reports that recommendations could not be generated.
+    - 4a2. The meetup remains in SETUP, and the organizer may retry.
+
+- 7a. Storing the recommendations fails.
+    - 7a1. The system reports an error and returns the meetup from VOTING to SETUP so the organizer can retry.
+
+*Status at CP1: steps 2–6 and failures 2a, 3a and 4a are planned. Until the Google Maps integration is complete, after step 1 the organizer enters the three candidate places (name, optional address, latitude and longitude) and selects "Start voting"; if an entry is incomplete or invalid, the app shows the validation error and the organizer corrects it. Step 7 and failures 1a, 1b and 7a are implemented.*
 
 
 <a name="uc4"></a>
 
 #### Use Case 4: Finalize Meetup
 
-**Description**: The Organizer closes the voting process, allowing the system to determine the winning location, update each member's fairness debt based on their finalized commute, and export the event to the members' calendars.
+**Description**: The Organizer closes the voting process, allowing the system to determine the winning location from the locked, weighted votes. Each member can then add the finalized meetup at the winning location to their own Google Calendar.
 
-**Primary actor(s)**: Organizer (User)
+**Primary actor(s)**: Organizer, Member, Google Calendar
     
 **Main success scenario**:
-1. The Organizer selects the option to close voting and finalize the meetup.
-2. The system tallies the weighted votes and determines the winning location.
-3. The system saves the winning location as the finalized destination in the database.
-4. The system sends the meetup details (location, time, attendees) to the Google Calendar API to create a calendar event.
-5. The system marks the meetup as finalized and sends a notification to all group members with the final result.
+1. The Organizer selects "Finalize meetup" on the voting screen.
+2. The system tallies the locked, weighted votes and determines the winning location (the largest share of locked vote weight).
+3. The system saves the winning location as the finalized destination in the database and marks the meetup as finalized.
+4. The system sends the result to every member who has the voting screen open, which then shows "Voting is closed" and marks the winner; the meetup page shows "Meeting at: <winning location>".
+5. A member who entered their details selects "Add to Google Calendar" on the meetup page.
+6. The app obtains a short-lived Google Calendar access token for the member from Google, asking for the member's consent the first time, and sends it to the system.
+7. The system sends the meetup details (title, time, winning location) to the Google Calendar API, which creates the event in the member's primary calendar; the token is not stored.
+8. The app displays "Added to your Google Calendar".
 
 **Failure scenario(s)**:
-- 1a. The Organizer attempts to finalize with zero votes cast.
-    - 1a1. The system blocks finalization and displays an error prompt, requiring the Organizer to either cast a vote themselves or manually select a winner to proceed.
-- 1b. The Organizer attempts to finalize meetup before all members have voted.
-    - 1b1. The system presents a warning prompt asking the Organizer to confirm they want to force-close the poll early. If confirmed, the system proceeds to step 2. If cancelled, the system returns to the active voting screen.
-- 1c. The Organizer's device has no network connection.
-    - 1c1. The system displays a "No network connection" error and leaves the poll open, prompting the Organizer to try again when reconnected.
-- 2a. A tie occurs in the weighted voting tally.
-    - 2a1. The system reviews the members who voted for the tied locations and selects the candidate chosen by the member with the highest individual fairness debt.
-    - 2a2. If there is more than one member with the same fairness debt, the system prompts the Organizer to manually select the final winner to break the tie.
-- 3a. The data fails to upload to the database.
-    - 3a1. The system aborts the finalization, rolls back any partial database changes to prevent data corruption, and alerts the Organizer to retry.
-- 4a. The external calendar sync fails for one or more members.
-    - 4a1. The system successfully creates the calendar event for all other authorized members and sends a targeted notification to the affected member with a prompt to re-authenticate and sync manually.
-    - 4a2. The finalized event remains in the user's database and is available for a manual sync later.
-- 5a. Push notification service fails.
-    - 5a1. The system updates the meetup status to "Finalized" within the app UI so active users see it, queues the notification payload, and silently retries sending the push notification in the background.
+- 1a. Not every participant has locked their vote.
+    - 1a1. The system presents a "Finalize early?" prompt explaining that unlocked votes do not count. If the Organizer selects "Finalize anyway", the system proceeds to step 2. If they select "Keep voting", the system returns to the active voting screen.
+- 1b. The Organizer's device has no network connection.
+    - 1b1. The system displays a "Network error" message and leaves the poll open so the Organizer can try again when reconnected.
+- 2a. Nobody has locked a vote.
+    - 2a1. The system displays "Cannot finalize with no locked votes; pick a winner" and shows all three locations under "Pick the winner".
+    - 2a2. The Organizer picks a location and the system proceeds to step 3 with it.
+- 2b. A tie occurs in the weighted voting tally.
+    - 2b1. The system selects, among the tied locations, the one whose single heaviest locked vote has the highest weight, which favours the members with more Fair Credit.
+    - 2b2. If the locations are still tied, the system shows only the tied locations under "Pick the winner"; the Organizer picks one and the system proceeds to step 3.
+- 3a. The meetup was already finalized, for example from another device at the same time.
+    - 3a1. The system displays "Only a meetup in VOTING can be finalized" and keeps the first result.
+- 6a. The member does not grant Google Calendar permission.
+    - 6a1. The app displays "Google Calendar permission request was canceled." and keeps the "Add to Google Calendar" button so the member can try again.
+- 7a. The Google Calendar API rejects the request or is unavailable (for example, the permission was revoked or the rate limit was reached).
+    - 7a1. The system displays the reason, e.g. "Google Calendar API rate limit reached. Please retry in a few minutes.", and records nothing; the member may try again.
+- 7b. The meetup is already in the member's calendar.
+    - 7b1. The system displays "This meetup is already in your calendar" and does not create a second event.
 
 <a name="uc5"></a>
 
@@ -211,7 +230,7 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
 **Description**: On the meetup day, a participant shares their location while travelling. The system shows their progress to other group members and records commute duration for later Fair Credit settlement.
 
-**Primary actor(s)**: User
+**Primary actor(s)**: Member
     
 **Main success scenario (Planned)**:
 1. The participant opens the finalized meetup on the meetup day.
@@ -225,18 +244,19 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 9. During settlement, the system compares each participant's travel burden with the group average and updates Fair Credit.
 
 **Failure scenario(s)**:
-- 1a. The participant denies location permission.
-    - 1a1. The system explains that live tracking requires permission.
-    - 1a2. The participant may grant permission later.
+- 4a. The participant denies location permission.
+    - 4a1. The system explains that live tracking requires permission.
+    - 4a2. The participant may grant permission later.
 
-- 2a. The network or realtime connection is lost.
-    - 2a1. The system indicates that live updates are unavailable.
-    - 2a2. The system attempts to reconnect and resumes sharing while the trip is still active.
+- 6a. The network or realtime connection is lost.
+    - 6a1. The system indicates that live updates are unavailable.
+    - 6a2. The system attempts to reconnect and resumes sharing while the trip is still active.
 
-- 1b. Settlement is requested more than once.
-    - 1b1. The system prevents duplicate Fair Credit changes for the same participant and meetup.
+- 9a. Settlement is requested more than once.
+    - 9a1. The system prevents duplicate Fair Credit changes for the same participant and meetup.
     
 ### **3.6. Screen Mock-ups**
+None. The screens are standard Material Design 3 forms and lists and are described in the use cases above.
 
 
 ### **3.7. Non-Functional Requirements**
@@ -399,38 +419,38 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 11. **play-services-auth (Identity AuthorizationClient), kotlinx-coroutines-play-services**
     - **Purpose**: Gets the Google Calendar access token and awaits Play Services tasks from coroutines.
     - **Reason**: The official way to request an OAuth scope on Android without handling credentials ourselves.
-12. **Docker Compose, GitHub Actions**
-    - **Purpose**: Runs the back end with MongoDB on the cloud VM; runs every back-end test on each push to main.
-    - **Reason**: One-command deployment for the team and TAs; the course requires CI.
+12. **Docker Compose**
+    - **Purpose**: Runs the back end with MongoDB on the cloud VM.
+    - **Reason**: One-command deployment for the team and TAs.
 
 
 ### **4.5. Dependencies Diagram**
+![Dependencies diagram](images/Dependency_Diagram.png)
+
+Solid arrows are implemented; dashed arrows are planned (features 3 and 5). The Mermaid source is [`res/Dependency_Diagram.mmd`](res/Dependency_Diagram.mmd).
 
 
 ### **4.6. Use Case Sequence Diagram (5 Most Major Use Cases)**
-1. [**Sign In**](#uc1)
-    [Sign In sequence diagram](images/UC1_Sign_In_Sequence_Diagram.png)
+1. [**Vote on a Candidate**](#uc1)\
+![Vote on a Candidate sequence diagram](images/SD_UC1_Vote_on_a_Candidate.png)
+2. [**Create or Join Group**](#uc2)\
+**Create Group**\
+![Create Group sequence diagram](images/SD_UC2_Create_Group.png)\
+**Join Group**\
+![Join Group sequence diagram](images/SD_UC2_Join_Group.png)
+3. [**Get Recommendations**](#uc3)\
+![Get Recommendations sequence diagram](images/SD_UC3_Get_Recommendations.png)
+4. [**Finalize Meetup**](#uc4)\
+![Finalize Meetup sequence diagram](images/SD_UC4_Finalize_Meetup.png)
+5. [**Share Live Location**](#uc5)\
+![Share Live Location sequence diagram](images/SD_UC5_Share_Live_Location.png)
 
-2. [**Create or Join Group**](#uc2)
-
-    **Create Group**
-
-    ![Create Group sequence diagram](images/UC2_Create_Group_Sequence_Diagram.jpg)
-
-    **Join Group**
-
-    ![Join Group sequence diagram](images/UC2_Join_Group_Sequence_Diagram.png)
-
-3. [**Get Recommendations**](#uc3)
-    ![Get_Recommendations sequence diagram](images/UC3_Get_Recommendations_Sequence_Diagram.png)
-
-4. [**Share Live Location**](#uc5)
-    ![Share Live Location](images\UC5_Share_Live_Location_Sequence_Diagram.png)
+The Mermaid sources of these diagrams are in [`res/`](res/).
 
 ### **4.7. Design of Non-Functional Requirements**
 
 1. [**Security and Access Control**](#nfr1)
-    - **Implementation**: Deploy the public API behind an HTTPS endpoint. The Android app sends the MeetFair session token with protected API requests; the backend verifies the token and checks group or meetup membership before accessing protected resources. Organizer-only operations perform an additional role check. Google Calendar access tokens are used for individual requests and are not stored in the database.
+    - **Implementation**: The back end serves HTTPS (and Socket.IO over WSS) on its port when a TLS certificate and private key are installed in `backend/certs/`; for deployment, the app's `API_BASE_URL` is set to the server's `https://` address. The Android app sends the MeetFair session token with protected API requests; the backend verifies the token and checks group or meetup membership before accessing protected resources. Organizer-only operations perform an additional role check. Google Calendar access tokens are used for individual requests and are not stored in the database.
 
 2. [**Location Privacy**](#nfr2)
     - **Implementation (planned)**: Request Android location permission only when a participant starts sharing their commute. Send location updates through an authenticated Socket.IO connection and restrict each meetup room to authorized group members. Show when sharing is active, stop updates when the trip ends, and avoid retaining a continuous location history beyond the data needed to calculate travel time.

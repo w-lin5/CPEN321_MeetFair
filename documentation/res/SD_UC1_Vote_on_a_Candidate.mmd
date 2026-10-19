@@ -1,0 +1,60 @@
+﻿%% Use Case 1: Vote on a Candidate (Requirements_and_Design.md section 4.6)
+sequenceDiagram
+    actor M as Member
+    participant FE as Front-end
+    participant UG as Users & Groups
+    participant REC as Recommendation Engine
+    participant VF as Voting & Fairness
+    participant RT as Realtime Gateway
+    participant DB as MongoDB
+
+    M->>FE: tap "Vote on a spot"
+    FE->>UG: GET /api/meetups/:meetupId
+    UG-->>FE: 200 Meetup
+    FE->>REC: GET /api/meetups/:meetupId/recommendations
+    REC-->>FE: 200 Recommendation (3 places)
+    FE->>VF: GET /api/meetups/:meetupId/votes
+    VF-->>FE: 200 tally + myVote
+    FE->>RT: meetup:join {meetupId} + session token
+    RT->>UG: getForMember(meetupId, userId)
+    alt live updates unavailable
+        RT-->>FE: connection error
+        FE-->>M: show places, tally and "Refresh results"
+    else joined
+        RT-->>FE: ack {ok: true}
+        FE-->>M: show places, tally and "Live: votes update automatically"
+    end
+
+    M->>FE: tap "Vote" on a place
+    FE->>VF: PUT /api/meetups/:meetupId/vote {placeId}
+    VF->>UG: getForMember(meetupId, userId)
+    UG-->>VF: Meetup (status, participants)
+    alt meetup not in VOTING
+        VF-->>FE: 409 "Voting is not open for this meetup"
+        FE-->>M: show error, reload meetup
+    else caller has not entered details
+        VF-->>FE: 403 "Only participants can do this"
+    else vote accepted
+        VF->>REC: getByMeetupId(meetupId)
+        REC-->>VF: candidate placeIds
+        VF->>DB: upsert the caller's unlocked vote
+        VF->>RT: publish(meetup room, vote:updated, tally)
+        RT-->>FE: vote:updated (every member in the room)
+        VF-->>FE: 200 Vote
+        FE-->>M: mark "Your vote", update tally
+    end
+
+    M->>FE: tap "Lock my vote"
+    FE->>VF: POST /api/meetups/:meetupId/vote/lock
+    VF->>UG: getForMember(meetupId, userId)
+    VF->>VF: getVoteWeight(userId, groupId)
+    VF->>DB: lock the unlocked vote with its weight
+    alt vote already locked
+        VF-->>FE: 409 "Your vote is already locked"
+        FE-->>M: show error
+    else locked
+        VF->>RT: publish(meetup room, vote:updated, tally)
+        RT-->>FE: vote:updated (every member in the room)
+        VF-->>FE: 200 Vote {locked, weight}
+        FE-->>M: "Your vote is locked (weight ...)"
+    end

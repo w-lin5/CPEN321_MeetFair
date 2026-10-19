@@ -1,0 +1,34 @@
+﻿%% Use Case 2: Create or Join Group, join path (Requirements_and_Design.md section 4.6)
+sequenceDiagram
+    actor M as Member
+    participant FE as Front-end
+    participant UG as Users & Groups
+    participant DB as MongoDB
+
+    M->>FE: tap "Join group"
+    FE-->>M: invite code form ("Join" disabled while the code is blank)
+    M->>FE: enter invite code, tap "Join"
+    FE->>UG: POST /api/groups/join {inviteCode} + session token
+    alt device cannot reach the server
+        FE-->>M: "Network error: ..." (stays on the form)
+    else request reaches the server
+        UG->>UG: normalize the code to upper case
+        UG->>DB: find group by invite code
+        alt no group has this code
+            UG-->>FE: 404 "Invalid invite code"
+            FE-->>M: show error, member may enter another code
+        else group found
+            UG->>DB: add caller to members, only if not already a member
+            alt caller is already a member
+                UG-->>FE: 409 "Already a member of this group"
+                FE-->>M: show error
+            else caller added
+                UG-->>FE: 200 Group
+                FE->>UG: GET /api/groups/:groupId
+                UG-->>FE: 200 GroupDetail
+                FE->>UG: GET /api/groups/:groupId/meetups
+                UG-->>FE: 200 List of Meetup
+                FE-->>M: group page with all members and meetups
+            end
+        end
+    end

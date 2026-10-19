@@ -1,0 +1,45 @@
+﻿%% Use Case 5: Share Live Location (Requirements_and_Design.md section 4.6). Planned feature.
+sequenceDiagram
+    actor M as Member
+    participant FE as Front-end
+    participant VF as Voting & Fairness
+    participant UG as Users & Groups
+    participant RT as Realtime Gateway
+    participant DB as MongoDB
+
+    M->>FE: tap "I'm leaving"
+    FE-->>M: request location permission (first time)
+    alt permission denied
+        FE-->>M: explain that live tracking needs permission
+    else permission granted
+        FE->>VF: POST /api/meetups/:meetupId/trip/start
+        VF->>UG: getForMember(meetupId, userId)
+        VF->>DB: create trip (startedAt)
+        VF-->>FE: 201 Trip
+        FE->>RT: meetup:join {meetupId}
+        RT->>UG: getForMember(meetupId, userId)
+        RT-->>FE: ack {ok: true}
+        loop while the trip is active
+            FE->>RT: location:update {meetupId, lat, lng, accuracyM, timestamp}
+            RT->>VF: recordLocation(meetupId, userId, position)
+            RT-->>FE: location:updated (other members in the room)
+        end
+        M->>FE: tap "I'm here"
+        FE->>VF: POST /api/meetups/:meetupId/trip/arrive
+        VF->>DB: set arrivedAt
+        VF->>RT: publish(meetup room, trip:arrived)
+        RT-->>FE: trip:arrived (every member in the room)
+        VF-->>FE: 200 Trip (commute duration)
+        FE-->>M: stop sharing location
+    end
+
+    opt every participant arrived, or organizer settles
+        VF->>VF: settleMeetup(groupId, meetupId, trips)
+        alt meetup already settled
+            VF-->>VF: reject, no duplicate Fair Credit change
+        else first settlement
+            VF->>DB: write ledger entries, then balances
+            VF->>UG: transitionStatus(meetupId, FINALIZED, SETTLED)
+            VF->>RT: publish(meetup room, meetup:status SETTLED)
+        end
+    end

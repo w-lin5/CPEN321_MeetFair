@@ -1,0 +1,46 @@
+﻿%% Use Case 3: Get Recommendations (Requirements_and_Design.md section 4.6). Google Maps steps are planned.
+sequenceDiagram
+    actor O as Organizer
+    participant FE as Front-end
+    participant REC as Recommendation Engine
+    participant UG as Users & Groups
+    participant VF as Voting & Fairness
+    participant MAPS as Google Maps Platform
+    participant RT as Realtime Gateway
+    participant DB as MongoDB
+
+    O->>FE: tap "Start voting"
+    FE->>REC: POST /api/meetups/:meetupId/recommendations
+    REC->>UG: getForMember(meetupId, userId)
+    UG-->>REC: Meetup (organizer, participants, status)
+    alt caller is not the organizer
+        REC-->>FE: 403 "Only the meetup organizer can generate recommendations"
+        FE-->>O: show error
+    else organizer
+        REC->>UG: transitionStatus(meetupId, SETUP, VOTING)
+        alt meetup no longer in SETUP
+            UG-->>REC: false
+            REC-->>FE: 409 "Recommendations can only be generated while the meetup is in SETUP"
+            FE-->>O: show error
+        else claimed
+            UG-->>REC: true
+            REC->>VF: getBalance(userId, groupId) for each participant
+            VF-->>REC: Fair Credit balances
+            REC->>MAPS: Places searchNearby(search area, place types)
+            MAPS-->>REC: candidate places
+            REC->>MAPS: Routes computeRouteMatrix(origins, places), one per travel mode
+            MAPS-->>REC: travel times
+            alt Google Maps fails or no suitable place
+                REC->>UG: transitionStatus(meetupId, VOTING, SETUP)
+                REC-->>FE: error (502 or no places found)
+                FE-->>O: show error, organizer may retry
+            else results
+                REC->>REC: score places, keep the top 3
+                REC->>DB: store recommendation
+                REC->>RT: publish(meetup room, recommendations:ready and meetup:status VOTING)
+                RT-->>FE: recommendations:ready, meetup:status (members in the room)
+                REC-->>FE: 201 Recommendation
+                FE-->>O: open voting screen with the 3 places
+            end
+        end
+    end

@@ -1,0 +1,30 @@
+﻿%% Use Case 2: Create or Join Group, create path (Requirements_and_Design.md section 4.6)
+sequenceDiagram
+    actor M as Member
+    participant FE as Front-end
+    participant UG as Users & Groups
+    participant DB as MongoDB
+
+    M->>FE: tap "Create group"
+    FE-->>M: group name form ("Create" disabled while the name is blank)
+    M->>FE: enter group name, tap "Create"
+    FE->>UG: POST /api/groups {name} + session token
+    alt device cannot reach the server
+        FE-->>M: "Network error: ..." (stays on the form)
+    else name longer than 60 characters
+        UG-->>FE: 400 "Invalid request: name must be a non-empty string of at most 60 characters"
+        FE-->>M: show error, member edits the name
+    else valid name
+        loop until the generated invite code is unique
+            UG->>UG: generate 6-character invite code
+            UG->>DB: insert group {name, inviteCode, organizer and only member = caller}
+        end
+        UG-->>FE: 201 Group {id, inviteCode}
+        FE->>UG: GET /api/groups/:groupId
+        UG->>UG: requireMembership(groupId, userId)
+        UG->>DB: load group and member names
+        UG-->>FE: 200 GroupDetail
+        FE->>UG: GET /api/groups/:groupId/meetups
+        UG-->>FE: 200 List of Meetup
+        FE-->>M: group page with name, invite code and member list
+    end

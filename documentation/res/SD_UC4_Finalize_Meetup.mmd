@@ -1,0 +1,65 @@
+﻿%% Use Case 4: Finalize Meetup (Requirements_and_Design.md section 4.6)
+sequenceDiagram
+    actor O as Organizer
+    actor M as Member
+    participant FE as Front-end
+    participant GSI as Google Identity Services
+    participant VF as Voting & Fairness
+    participant UG as Users & Groups
+    participant REC as Recommendation Engine
+    participant RT as Realtime Gateway
+    participant CAL as Google Calendar API
+    participant DB as MongoDB
+
+    O->>FE: tap "Finalize meetup"
+    opt not every participant locked a vote
+        FE-->>O: "Finalize early?" dialog
+        O->>FE: tap "Finalize anyway"
+    end
+    FE->>VF: POST /api/meetups/:meetupId/finalize
+    VF->>UG: getForMember(meetupId, userId)
+    VF->>REC: getByMeetupId(meetupId)
+    VF->>DB: load the meetup's votes
+    VF->>VF: decide winner by locked weight, then heaviest single voter
+    alt no locked votes or a tie remains
+        VF-->>FE: 409 "...pick a winner"
+        FE-->>O: "Pick the winner" with the allowed places
+        O->>FE: pick a place
+        FE->>VF: POST /api/meetups/:meetupId/finalize {placeId}
+    end
+    VF->>UG: finalize(meetupId, winner)
+    alt meetup was finalized concurrently
+        UG-->>VF: null
+        VF-->>FE: 409 "Only a meetup in VOTING can be finalized"
+    else finalized
+        UG-->>VF: Meetup (FINALIZED, winner)
+        VF->>RT: publish(meetup room, meetup:status FINALIZED with winner)
+        RT-->>FE: meetup:status (every member in the room)
+        VF-->>FE: 200 Meetup
+        FE-->>O: "Voting is closed", winner marked
+    end
+
+    M->>FE: tap "Add to Google Calendar" on the meetup page
+    FE->>GSI: authorize calendar.events scope
+    alt permission declined
+        GSI-->>FE: canceled
+        FE-->>M: "Google Calendar permission request was canceled."
+    else granted
+        GSI-->>FE: short-lived access token
+        FE->>VF: POST /api/meetups/:meetupId/calendar-event {accessToken}
+        VF->>UG: getForMember(meetupId, userId)
+        VF->>CAL: events.insert(primary calendar, title, time, winning place)
+        alt Google rejects or fails
+            CAL-->>VF: error
+            VF-->>FE: 502 with the reason
+            FE-->>M: show error, member may retry
+        else event exists already
+            CAL-->>VF: 409 duplicate event id
+            VF-->>FE: 409 "This meetup is already in your calendar"
+        else created
+            CAL-->>VF: event {id, htmlLink}
+            VF->>UG: recordCalendarEvent(meetupId, userId, eventId)
+            VF-->>FE: 201 {eventId, htmlLink}
+            FE-->>M: "Added to your Google Calendar"
+        end
+    end
