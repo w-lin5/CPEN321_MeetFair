@@ -220,32 +220,140 @@
 
 ## 4. Designs Specification
 ### **4.1. Main Components**
-1. **[WRITE_NAME_HERE]**
-    - **Purpose**: ...
+1. **Users & Groups**
+    - **Purpose**: Owns users, groups and meetups (the `users`, `groups` and `meetups` collections): Google sign-in and MeetFair sessions, profiles, groups and invite codes, meetups, each member's participation entry and the meetup status (SETUP -> VOTING -> FINALIZED -> SETTLED). We kept users, groups and meetups in one component rather than three, because every membership check needs all three and splitting them would create circular dependencies. Every other component depends on this one for access control.
     - **Interfaces**: 
-        1. ...
-            - **Purpose**: ...
-        2. ...
-2. ...
+        1. `POST /api/auth/google` — body `{ idToken: String }` -> `200 { token: String, user: User }`
+            - **Purpose**: Verifies the Google ID token, creates or updates the user and returns a 7-day MeetFair session token.
+        2. `GET /api/users/me` -> `200 User`
+            - **Purpose**: Returns the signed-in user's account.
+        3. `POST /api/groups` — body `{ name: String }` -> `201 Group`
+            - **Purpose**: Creates a group with the caller as organizer and a unique 6-character invite code.
+        4. `GET /api/groups` -> `200 List<Group>`
+            - **Purpose**: Lists the caller's groups, newest first.
+        5. `GET /api/groups/:groupId` -> `200 GroupDetail`
+            - **Purpose**: Returns one group with each member's display name and role (members only).
+        6. `POST /api/groups/join` — body `{ inviteCode: String }` -> `200 Group`
+            - **Purpose**: Adds the caller to the group with that invite code.
+        7. `POST /api/groups/:groupId/meetups` — body `{ title: String, scheduledAt: ISO-8601 String }` -> `201 Meetup`
+            - **Purpose**: Creates a meetup in SETUP; the caller becomes its organizer.
+        8. `GET /api/groups/:groupId/meetups` -> `200 List<Meetup>`
+            - **Purpose**: Lists the group's meetups.
+        9. `GET /api/meetups/:meetupId` -> `200 Meetup`
+            - **Purpose**: Returns one meetup with its participants, status and winner.
+        10. `PUT /api/meetups/:meetupId/participation` — body `{ startLocation: { lat, lng, label }, travelMode: WALK | TRANSIT | DRIVE, preferences: List<Preference> }` -> `200 Meetup`
+            - **Purpose**: Adds or replaces the caller's participation entry while the meetup is in SETUP.
+        11. `Group requireMembership(String groupId, String userId)`
+            - **Purpose**: Loads a group and checks that the user belongs to it (not found / forbidden otherwise); the access check used by every component.
+        12. `Meetup getForMember(String meetupId, String userId)`
+            - **Purpose**: Loads a meetup and checks that the user belongs to its group.
+        13. `boolean transitionStatus(String meetupId, MeetupStatus from, MeetupStatus to)`
+            - **Purpose**: Atomically moves a meetup from one status to the next; returns false if it was no longer in `from`, so concurrent requests cannot both succeed.
+        14. `Meetup finalize(String meetupId, Place winner)`
+            - **Purpose**: Atomically stores the winner and moves the meetup from VOTING to FINALIZED; returns null if it was no longer in VOTING.
+        15. `boolean recordCalendarEvent(String meetupId, String userId, String eventId)`
+            - **Purpose**: Records the Google Calendar event created for one participant; returns false if one was already recorded.
+        16. `List<User> findByIds(List<String> userIds)` / `String displayNameOf(User user)`
+            - **Purpose**: Resolves members' names for other components.
+        17. `Profile getProfile(String userId)` / `Profile updateProfile(String userId, String displayName)`
+            - **Purpose**: Account information and groups for the profile screen; a null display name returns to the Google name.
+2. **Recommendation Engine**
+    - **Purpose**: Owns the `recommendations` collection. It builds the meetup's candidate places from Google Places and Google Routes, scores them with our fairness algorithm, stores the top 3 and opens voting. All slow and failure-prone Google Maps calls are kept in this one component, and the scoring itself is pure functions (search area, preference mapping, scoring) that can be tested without Google.
+    - **Interfaces**:
+        1. `POST /api/meetups/:meetupId/recommendations` -> `201 Recommendation`
+            - **Purpose**: Organizer only; generates and stores the top 3 candidates and moves the meetup from SETUP to VOTING. *At CP1 the request body carries the organizer's three places: `{ candidates: [ { placeId, name, address, location: { lat, lng } } ×3 ] }`.*
+        2. `GET /api/meetups/:meetupId/recommendations` -> `200 Recommendation`
+            - **Purpose**: Returns the meetup's candidates with their score breakdown (members only).
+        3. `Recommendation getByMeetupId(String meetupId)`
+            - **Purpose**: Gives Voting & Fairness the candidates a vote must refer to and the data of the winning place.
+3. **Voting & Fairness**
+    - **Purpose**: Owns the `votes`, `fairCredits`, `fairCreditEntries` and `trips` collections: casting, changing and locking votes, the weighted tally, finalizing, adding the meetup to Google Calendar, commute trips, and Fair Credit (balances plus a ledger explaining every change). Vote weights come from Fair Credit and settlement changes Fair Credit, so keeping both in one component keeps all fairness rules in one place. The rules themselves (vote weight, tally, credit change, arrival) are pure functions.
+    - **Interfaces**:
+        1. `PUT /api/meetups/:meetupId/vote` — body `{ placeId: String }` -> `200 Vote`
+            - **Purpose**: Creates or changes the caller's vote while it is unlocked and the meetup is in VOTING.
+        2. `POST /api/meetups/:meetupId/vote/lock` -> `200 Vote`
+            - **Purpose**: Locks the caller's vote and stores its weight from their Fair Credit.
+        3. `GET /api/meetups/:meetupId/votes` -> `200 { meetupId, candidates: [ { placeId, voteCount, weight, share } ], totalWeight, lockedCount, participantCount, myVote }`
+            - **Purpose**: The current tally plus the caller's own vote.
+        4. `POST /api/meetups/:meetupId/finalize` — optional body `{ placeId: String }` -> `200 Meetup`
+            - **Purpose**: Organizer only; picks the winner by locked weight (the body names the winner only when nobody locked a vote or a tie remains) and moves the meetup to FINALIZED.
+        5. `POST /api/meetups/:meetupId/calendar-event` — body `{ accessToken: String }` -> `201 { eventId, htmlLink }`
+            - **Purpose**: Creates the finalized meetup in the caller's primary Google Calendar using their short-lived token, which is never stored.
+        6. `GET /api/users/me/profile` / `PUT /api/users/me/profile` — body `{ displayName: String | null }` -> `200 Profile`
+            - **Purpose**: The profile with the caller's Fair Credit in each group; updating changes the display name.
+        7. `GET /api/groups/:groupId/fairness` -> `200 { groupId, members: [ { userId, name, balance } ], ledger: List<FairCreditEntry> }`
+            - **Purpose**: Every member's Fair Credit in the group and the group's ledger, newest first.
+        8. *(planned)* `POST /api/meetups/:meetupId/trip/start`, `POST /api/meetups/:meetupId/trip/arrive`, `GET /api/meetups/:meetupId/trips`, `POST /api/meetups/:meetupId/settle`
+            - **Purpose**: Start and end the caller's trip, list the meetup's trips, and let the organizer settle the meetup.
+        9. `double getVoteWeight(String userId, String groupId)` / `double getBalance(String userId, String groupId)`
+            - **Purpose**: A member's Fair Credit in a group and the resulting vote weight; the Recommendation Engine uses the balance for fairness scoring.
+        10. `List<FairCreditEntry> settleMeetup(String groupId, String meetupId, List<Trip> trips)`
+            - **Purpose**: Turns each member's actual trip time into a credit change against the group average; a meetup can be settled only once.
+        11. *(planned)* `Trip recordLocation(String meetupId, String userId, LatLng position)`
+            - **Purpose**: Called by the Realtime Gateway for each live location; detects arrival within the arrival radius.
+4. **Realtime Gateway**
+    - **Purpose**: The Socket.IO server on the same host and port as the REST API. It authenticates each connection with the MeetFair session token, lets only group members join a meetup's room, and delivers the other components' updates to the members of that room. We chose a persistent socket over polling (slower and more wasteful) and over Firebase push notifications, which change the phone's state rather than the app's and may not be used for major functionality. Components publish through a small publisher interface, so they do not depend on Socket.IO.
+    - **Interfaces**:
+        1. Client -> server `meetup:join` / `meetup:leave` — `{ meetupId }`, acknowledged with `{ ok: true }` or `{ ok: false, error }`
+            - **Purpose**: Start or stop receiving a meetup's live updates (members of its group only).
+        2. *(planned)* Client -> server `location:update` — `{ meetupId, lat, lng, accuracyM, timestamp }`
+            - **Purpose**: A member's live position during an active trip.
+        3. Server -> client `vote:updated` (the tally), `meetup:status` (`{ meetupId, status, winner? }`), `recommendations:ready` (`{ meetupId }`), *(planned)* `location:updated`, `trip:arrived`
+            - **Purpose**: Live changes pushed to everyone in the meetup's room.
+        4. `void publish(String room, String event, Object payload)`
+            - **Purpose**: Lets the other components send an update to a meetup's room.
 
 
 ### **4.2. Databases**
-1. **[WRITE_NAME_HERE]**
-    - **Purpose**: ...
-2. ...
-
+1. **MongoDB 7** (self-hosted, the `mongo` service in `docker-compose.yml`)
+    - **Purpose**: Stores users, groups, meetups (with participants and winner), recommendations, votes, Fair Credit balances, the Fair Credit ledger and trips. Unique indexes enforce one vote per member per meetup, one recommendation per meetup, unique invite codes and settling a meetup at most once. MongoDB's nested documents (members in a group, participants in a meetup, candidates in a recommendation) match our data better than relational tables, and Mongoose provides schemas and validation.
 
 ### **4.3. External Modules**
-1. **[WRITE_NAME_HERE]** 
-- **Purpose**: ...
-2. ...
+1. **Google Sign-In / Google Identity Services**
+    - **Purpose**: Signs users in. The Android Credential Manager returns a Google ID token, which the back end verifies with `google-auth-library`. The Identity `AuthorizationClient` also gives the app a short-lived `calendar.events` access token. We use Google because every target user has a Google account and we need the same account for Google Calendar.
+2. **Google Maps Platform (Places API (New), Routes API)**
+    - **Purpose**: Nearby Search finds candidate places that match the meetup type; Routes `computeRouteMatrix` returns every member's travel time to every candidate in one batched request per travel mode. It provides travel times for all three modes, including transit.
+3. **Google Calendar API**
+    - **Purpose**: `events.insert` adds the finalized meetup to the member's own primary calendar, using the member's token, so MeetFair never needs calendar credentials of its own.
 
 
 ### **4.4. Frameworks and Libraries**
-1. **[WRITE_NAME_HERE]**
-    - **Purpose**: ...
-    - **Reason**: ...
-2. ...
+1. **Express 5**
+    - **Purpose**: HTTP server and routing for the REST API.
+    - **Reason**: Minimal and widely used. Version 5 forwards errors from async handlers to our error handler, so routes need no try/catch.
+2. **Mongoose**
+    - **Purpose**: MongoDB access, schemas and indexes.
+    - **Reason**: Schemas and validation over a schemaless database; atomic conditional updates for status changes.
+3. **Socket.IO** (server) and **socket.io-client** (Android, Java client)
+    - **Purpose**: Live updates over WebSockets with rooms per meetup.
+    - **Reason**: Rooms, acknowledgements and automatic reconnection, on the same port as the REST API.
+4. **google-auth-library**
+    - **Purpose**: Verifies Google ID tokens (signature, expiry, audience).
+    - **Reason**: Google's official library, so we do not implement token verification ourselves.
+5. **googleapis** (Calendar only)
+    - **Purpose**: Calls Google Calendar `events.insert`.
+    - **Reason**: Google's official client: typed requests and error codes.
+6. **dotenv**
+    - **Purpose**: Loads `backend/.env`.
+    - **Reason**: Keeps secrets out of the code.
+7. **Jest, ts-jest, Supertest, @shelf/jest-mongodb**
+    - **Purpose**: Back-end unit and API tests against a real in-memory MongoDB.
+    - **Reason**: Required by the course; jest-mongodb removes the need for a separate test database.
+8. **Kotlin, Jetpack Compose, Material Design 3**
+    - **Purpose**: Android UI.
+    - **Reason**: Required by the course; declarative UI with unidirectional data flow.
+9. **OkHttp**
+    - **Purpose**: HTTP client for the REST API (JSON built and parsed with the Android SDK's `org.json`).
+    - **Reason**: Small and reliable; an interceptor adds the session token and signs the user out on 401.
+10. **androidx.credentials, credentials-play-services-auth, googleid**
+    - **Purpose**: Google Sign-In with Credential Manager.
+    - **Reason**: Google's current recommended sign-in API.
+11. **play-services-auth (Identity AuthorizationClient), kotlinx-coroutines-play-services**
+    - **Purpose**: Gets the Google Calendar access token and awaits Play Services tasks from coroutines.
+    - **Reason**: The official way to request an OAuth scope on Android without handling credentials ourselves.
+12. **Docker Compose, GitHub Actions**
+    - **Purpose**: Runs the back end with MongoDB on the cloud VM; runs every back-end test on each push to main.
+    - **Reason**: One-command deployment for the team and TAs; the course requires CI.
 
 
 ### **4.5. Dependencies Diagram**
