@@ -10,7 +10,7 @@
 
 ## 2. Project Description
 
-[WRITE_PROJECT_DESCRIPTION_HERE]
+MeetFair is a group meetup planning app designed to make repeated meetups more convenient and fair. It recommends feasible meeting locations using travel-time estimates and user preferences, lets the group vote on the final choice, and tracks actual travel burden during the meetup. Over time, the app converts that burden into Fair Credit, giving users who previously travelled more greater influence in future decisions.
 
 ---
 
@@ -53,26 +53,33 @@
 
 #### Use Case 1: Sign In
 
-**Description**: ...
+**Description**: A user signs in with their Google account to access MeetFair groups, meetups, voting, and fairness information
 
-**Primary actor(s)**: ... 
+**Primary actor(s)**: User
     
 **Main success scenario**:
-1. ...
-2. ...
+1. The user opens MeetFair and selects "Sign in with Google."
+2. The system displays the Google account selection interface.
+3. The user selects an account and completes any required Google authentication.
+4. The system creates or updates the user's account and returns a MeetFair session token.
+5. The app stores the session and displays the user's group list.
 
 **Failure scenario(s)**:
-- 1a. ...
-    - 1a1. ...
-    - 1a2. ...
+- 1a. The user cancels Google sign-in.
+    - 1a1. The system leaves the user on the sign-in screen.
+    - 1a2. The user may start another sign-in attempt.
 
-- 1b. ...
-    - 1b1. ...
-    - 1b2. ...
+- 1b. Google authentication fails.
+    - 1b1. The system displays the authentication error.
+    - 1b2. The user remains signed out and may retry.
                 
-- 2a. ...
-    - 2a1. ...
-    - 2a2. ...
+- 2a. The user's device has no network connection.
+    - 2a1. The system displays a network error.
+    - 2a2. The user may retry when connectivity is restored.
+
+- 3a. The Google ID token is invalid, expired, or intended for a different client.
+    - 3a1. The backend rejects the authentication request.
+    - 3a2. The system displays an error and requires another sign-in attempt.
 
 <a name="uc2"></a>
 
@@ -126,26 +133,44 @@
 
 #### Use Case 3: Get Recommendations
 
-**Description**: ...
+**Description**: The meetup organizer requests candidate meeting locations based on participants' starting locations, travel modes, preferences, and Fair Credit. The system provides candidate locations and opens voting.
 
-**Primary actor(s)**: ... 
+**Primary actor(s)**: User
     
-**Main success scenario**:
-1. ...
-2. ...
+**Main success scenario (Planned)**:
+
+1. The system loads participants' starting locations, travel modes, preferences, and group-specific Fair Credit.
+2. The system searches for suitable candidate places using Google Places.
+3. The system obtains estimated travel times for the participants and candidates using Google Routes.
+4. The system evaluates feasible candidates using the fairness and preference scoring rules.
+5. The system selects up to three highest-ranked candidates.
+6. The system stores the recommendations and moves the meetup to VOTING.
 
 **Failure scenario(s)**:
-- 1a. ...
-    - 1a1. ...
-    - 1a2. ...
+ - 1a. No participant has submitted valid participation details.
+    - 1a1. The system does not generate recommendations.
+    - 1a2. The organizer is prompted to ask members to submit their details.
 
-- 1b. ...
-    - 1b1. ...
-    - 1b2. ...
-                
-- 2a. ...
-    - 2a1. ...
-    - 2a2. ...
+- 2a. The place search returns no suitable candidates.
+    - 2a1. The system explains that no suitable locations were found.
+    - 2a2. The meetup remains in SETUP so participants can revise their inputs.
+
+- 3a. The external service fails or returns insufficient usable travel-time data.
+    - 3a1. The system reports that recommendations could not be generated.
+    - 3a2. The meetup remains in SETUP, and the organizer may retry.
+
+- 4a. The submitted candidates are incomplete, duplicated, invalid, or do not contain exactly three locations.
+    - 4a1. The system rejects the request and displays a validation error.
+    - 4a2. The organizer corrects the candidates and resubmits them.
+
+- 1b. The meetup is no longer in SETUP.
+    - 1b1. The system rejects the request to prevent replacing candidates after voting has started.
+    - 1b2. The user may reload the meetup to view its current state.
+
+- 2a. Candidate storage fails.
+    - 2b1. The system reports an error.
+    - 2b2. In the current implementation, the system attempts to return the meetup from VOTING to SETUP so the organizer can retry.
+
 
 <a name="uc4"></a>
 
@@ -184,26 +209,32 @@
 
 #### Use Case 5: Share Live Location
 
-**Description**: ...
+**Description**: On the meetup day, a participant shares their location while travelling. The system shows their progress to other group members and records commute duration for later Fair Credit settlement.
 
-**Primary actor(s)**: ... 
+**Primary actor(s)**: User
     
-**Main success scenario**:
-1. ...
-2. ...
+**Main success scenario (Planned)**:
+1. The participant opens the finalized meetup on the meetup day.
+2. The participant selects "I'm leaving."
+3. The system requests location permission if it has not already been granted.
+4. The participant grants permission.
+5. The system records the commute start time and begins receiving location updates.
+6. The system verifies the participant's access and shares location updates with authorized group members viewing the meetup.
+7. Other group members view the participant's latest location and travel status.
+8. The participant selects "I'm here," and  the system records the arrival time, calculates commute duration, and stops location sharing.
+9. During settlement, the system compares each participant's travel burden with the group average and updates Fair Credit.
 
 **Failure scenario(s)**:
-- 1a. ...
-    - 1a1. ...
-    - 1a2. ...
+- 1a. The participant denies location permission.
+    - 1a1. The system explains that live tracking requires permission.
+    - 1a2. The participant may grant permission later.
 
-- 1b. ...
-    - 1b1. ...
-    - 1b2. ...
-                
-- 2a. ...
-    - 2a1. ...
-    - 2a2. ...
+- 2a. The network or realtime connection is lost.
+    - 2a1. The system indicates that live updates are unavailable.
+    - 2a2. The system attempts to reconnect and resumes sharing while the trip is still active.
+
+- 1b. Settlement is requested more than once.
+    - 1b1. The system prevents duplicate Fair Credit changes for the same participant and meetup.
     
 ### **3.6. Screen Mock-ups**
 
@@ -211,10 +242,27 @@
 ### **3.7. Non-Functional Requirements**
 <a name="nfr1"></a>
 
-1. **[WRITE_NAME_HERE]**
-    - **Description**: ...
-    - **Justification**: ...
-2. ...
+1. **Security and Access Control**
+    - **Description**: All requests containing user data must use HTTPS in deployment. The backend must verify the user's session token and check group or meetup membership before returning protected data or accepting changes. Only the meetup organizer may start or finalize voting. Google access tokens must not be stored in the database.
+    - **Justification**: MeetFair handles account information, group membership, travel details, and potentially live locations. Unauthorized users must not be able to view or change this information.
+
+<a name="nfr2"></a>
+
+2. **Location Privacy**
+    - **Description**: Live location sharing must require the user's explicit action and device permission. Only authorized members of the relevant group may receive location updates. Sharing must stop when the trip ends, and the app must make the sharing state visible to the user.
+    - **Justification**: A person's current location is sensitive. Users need control over when it is shared and who can see it.
+
+<a name="nfr3"></a>
+
+3. **Response Time**
+    - **Description**: Under normal network conditions, at least 95% of ordinary API requests, such as loading groups, meetups, and vote totals, should complete within 2 seconds. A vote update should appear on other connected members' screens within 3 seconds. Recommendation generation may take longer because it depends on external Google services; the app should show progress while the request is running.
+    - **Justification**: Members need timely feedback when planning a meetup and voting. Longer operations must remain understandable rather than appearing frozen.
+
+<a name="nfr4"></a>
+
+4. **Usability and Accessibility**
+    - **Description**: The Android app should clearly show the current meetup status, the user's selected candidate, whether their vote is locked, and the finalized winner. Important actions and errors must be expressed in text, not only through color. Controls should remain usable with Android's font scaling and accessibility services.
+    - **Justification**: Users must understand whether their vote will count and be able to complete the main tasks on different devices and with different accessibility needs.
 
 ---
 
@@ -374,6 +422,15 @@
 
 
 ### **4.7. Design of Non-Functional Requirements**
-1. [**[WRITE_NAME_HERE]**](#nfr1)
-    - **Implementation**: ...
-2. ...
+
+1. [**Security and Access Control**](#nfr1)
+    - **Implementation**: Deploy the public API behind an HTTPS endpoint. The Android app sends the MeetFair session token with protected API requests; the backend verifies the token and checks group or meetup membership before accessing protected resources. Organizer-only operations perform an additional role check. Google Calendar access tokens are used for individual requests and are not stored in the database.
+
+2. [**Location Privacy**](#nfr2)
+    - **Implementation (planned)**: Request Android location permission only when a participant starts sharing their commute. Send location updates through an authenticated Socket.IO connection and restrict each meetup room to authorized group members. Show when sharing is active, stop updates when the trip ends, and avoid retaining a continuous location history beyond the data needed to calculate travel time.
+
+3. [**Response Time**](#nfr3)
+    - **Implementation**: Use Socket.IO to push vote totals and meetup status changes to connected members instead of requiring repeated requests. Run network calls outside the Android main thread and show loading or progress states. **Planned**: measure API response times and realtime delivery against the targets in Section 3.7; keep Google Places and Routes requests outside the UI thread and handle their longer response times explicitly.
+
+4. [**Usability and Accessibility**](#nfr4)
+    - **Implementation**: Show the selected candidate, locked-vote state, current vote totals, meetup status, and winner in text. Display loading and error messages near the relevant action, and ask for confirmation before the organizer finalizes while some participants have not locked their votes. **Planned**: check the main screens with Android font scaling, screen readers, and different screen sizes.
