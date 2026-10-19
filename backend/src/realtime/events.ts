@@ -1,12 +1,18 @@
-// Socket.IO event names and room names; mirrored by Android (data/RealtimeClient.kt)
+// Socket.IO event names and room names (CLAUDE.md §4.6); mirrored by Android (data/RealtimeClient.kt)
 
-export const VOTING_EVENTS = {
-  join: 'voting:join',
-  leave: 'voting:leave',
-  results: 'voting:results',
-  closed: 'voting:closed',
+// Client -> server
+export const CLIENT_EVENTS = {
+  meetupJoin: 'meetup:join',
+  meetupLeave: 'meetup:leave',
 } as const;
 
-export function votingRoom(sessionId: string): string {
-  return `voting:${sessionId}`;
+// Server -> client, always sent to the meetup's room
+export const SERVER_EVENTS = {
+  voteUpdated: 'vote:updated',
+  meetupStatus: 'meetup:status',
+  recommendationsReady: 'recommendations:ready',
+} as const;
+
+export function meetupRoom(meetupId: string): string {
+  return `meetup:${meetupId}`;
 }

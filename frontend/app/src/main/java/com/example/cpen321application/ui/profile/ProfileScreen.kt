@@ -39,7 +39,7 @@ import com.example.cpen321application.ui.common.UiState
 import com.example.cpen321application.ui.common.UiStateContent
 import com.example.cpen321application.ui.common.toFormState
 import com.example.cpen321application.ui.common.toUiState
-import com.example.cpen321application.ui.fairness.formatDebt
+import com.example.cpen321application.ui.fairness.formatCredit
 import com.example.cpen321application.ui.screenViewModel
 import com.example.cpen321application.ui.theme.Dimens
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -163,7 +163,7 @@ private fun ProfileGroupRow(group: ProfileGroup, onOpen: (String) -> Unit) {
     ) {
         Column(Modifier.padding(Dimens.ScreenPadding)) {
             Text("${group.name}$role")
-            Text("Fairness debt: ${formatDebt(group.fairnessDebt)}")
+            Text("Fair Credit: ${formatCredit(group.fairCredit)}")
         }
     }
 }

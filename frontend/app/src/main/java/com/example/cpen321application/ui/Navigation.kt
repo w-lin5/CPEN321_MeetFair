@@ -10,7 +10,10 @@ import androidx.activity.compose.LocalActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 
-/** Every destination in the signed in app. New screens must also be added to [encode], [decodeRoute] and RouteContent. */
+/**
+ * Every destination in the signed in app.
+ * New screens must also be added to [encode], [decodeRoute] and RouteContent.
+ */
 sealed interface Route {
     /** Feature grouping so MeetFairApp can render each feature's routes in its own function. */
     sealed interface Groups : Route

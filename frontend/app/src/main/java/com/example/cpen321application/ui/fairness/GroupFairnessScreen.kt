@@ -23,7 +23,8 @@ import com.example.cpen321application.AppContainer
 import com.example.cpen321application.data.FairnessRepository
 import com.example.cpen321application.model.CommuteSource
 import com.example.cpen321application.model.FairnessEntry
-import com.example.cpen321application.model.FairnessHistory
+import com.example.cpen321application.model.GroupFairness
+import com.example.cpen321application.model.MemberCredit
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.UiState
@@ -33,20 +34,23 @@ import com.example.cpen321application.ui.meetup.isoToDisplay
 import com.example.cpen321application.ui.screenViewModel
 import com.example.cpen321application.ui.theme.Dimens
 import java.util.Locale
+import kotlin.math.roundToLong
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** Loads the signed-in user's fairness debt and commute history in one group. */
+private const val SECONDS_PER_MINUTE = 60.0
+
+/** Loads every member's Fair Credit in one group and the group's ledger. */
 class GroupFairnessViewModel(private val fairness: FairnessRepository, private val groupId: String) : ViewModel() {
-    private val _state = MutableStateFlow<UiState<FairnessHistory>>(UiState.Loading)
-    val state: StateFlow<UiState<FairnessHistory>> = _state.asStateFlow()
+    private val _state = MutableStateFlow<UiState<GroupFairness>>(UiState.Loading)
+    val state: StateFlow<UiState<GroupFairness>> = _state.asStateFlow()
 
     fun load() {
         viewModelScope.launch {
             _state.value = UiState.Loading
-            _state.value = fairness.fairnessHistory(groupId).toUiState()
+            _state.value = fairness.groupFairness(groupId).toUiState()
         }
     }
 
@@ -60,30 +64,50 @@ class GroupFairnessViewModel(private val fairness: FairnessRepository, private v
 fun GroupFairnessScreen(container: AppContainer, groupId: String, onBack: () -> Unit) {
     val vm: GroupFairnessViewModel = screenViewModel(GroupFairnessViewModel.factory(container, groupId))
     val state by vm.state.collectAsState()
+    val userId = container.sessionStore.currentUserId()
     LaunchedEffect(Unit) { vm.load() }
 
-    ScreenColumn("Fairness history", onBack) {
-        UiStateContent(state, onRetry = vm::load, emptyMessage = "") { FairnessContent(it) }
+    ScreenColumn("Fair Credit", onBack) {
+        UiStateContent(state, onRetry = vm::load, emptyMessage = "") { FairnessContent(it, userId) }
     }
 }
 
 @Composable
-private fun FairnessContent(data: FairnessHistory) {
+private fun FairnessContent(data: GroupFairness, userId: String?) {
+    val mine = data.entriesFor(userId)
     LazyColumn(verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
+        // Several composables in one lazy item would overlap, so each item has a single Column root
         item {
             Column(verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
                 Text(
-                    "Fairness debt: ${formatDebt(data.fairnessDebt)}",
+                    "Your Fair Credit: ${formatCredit(data.balanceOf(userId))}",
                     style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.testTag(TestTags.FAIRNESS_DEBT_TEXT),
+                    modifier = Modifier.testTag(TestTags.FAIR_CREDIT_TEXT),
                 )
                 Text("Positive means you have travelled more than the group average; it raises your vote weight.")
-                if (data.history.isEmpty()) {
-                    Text("No finished meetups yet.", modifier = Modifier.testTag(TestTags.FAIRNESS_HISTORY_EMPTY))
+                Text("Group", style = MaterialTheme.typography.titleMedium)
+            }
+        }
+        items(data.members, key = { it.userId }) { MemberRow(it) }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
+                Text("Your history", style = MaterialTheme.typography.titleMedium)
+                if (mine.isEmpty()) {
+                    Text("No settled meetups yet.", modifier = Modifier.testTag(TestTags.FAIRNESS_HISTORY_EMPTY))
                 }
             }
         }
-        items(data.history, key = { it.meetupId }) { FairnessRow(it) }
+        items(mine, key = { it.meetupId }) { FairnessRow(it) }
+    }
+}
+
+@Composable
+private fun MemberRow(member: MemberCredit) {
+    Card(modifier = Modifier.fillMaxWidth().testTag(TestTags.FAIRNESS_MEMBER_ITEM)) {
+        Column(Modifier.padding(Dimens.ScreenPadding)) {
+            Text(member.name ?: "Unknown member")
+            Text("Fair Credit: ${formatCredit(member.balance)}")
+        }
     }
 }
 
@@ -93,14 +117,16 @@ private fun FairnessRow(entry: FairnessEntry) {
     Card(modifier = Modifier.fillMaxWidth().testTag(TestTags.FAIRNESS_ENTRY_ITEM)) {
         Column(Modifier.padding(Dimens.ScreenPadding)) {
             if (entry.recordedAt.isNotBlank()) Text(isoToDisplay(entry.recordedAt))
-            Text("Your commute: ${formatMinutes(entry.commuteMinutes)} ($source)")
-            Text("Group average: ${formatMinutes(entry.groupAverageMinutes)}")
-            Text("Extra: ${formatDebt(entry.extraMinutes)}")
+            Text("Your trip: ${formatMinutes(entry.actualSeconds)} ($source)")
+            Text("Group average: ${formatMinutes(entry.expectedBurden)}")
+            Text("Credit change: ${formatCredit(entry.delta)}")
         }
     }
 }
 
-private fun formatMinutes(minutes: Double): String = String.format(Locale.US, "%.0f min", minutes)
+private fun minutes(seconds: Long): Long = (seconds / SECONDS_PER_MINUTE).roundToLong()
 
-/** Signed so the direction is obvious, e.g. "+12 min" or "-5 min". */
-internal fun formatDebt(minutes: Double): String = String.format(Locale.US, "%+.0f min", minutes)
+private fun formatMinutes(seconds: Long): String = "${minutes(seconds)} min"
+
+/** Seconds shown as signed minutes so the direction is obvious, e.g. "+12 min" or "-5 min". */
+internal fun formatCredit(seconds: Long): String = String.format(Locale.US, "%+d min", minutes(seconds))

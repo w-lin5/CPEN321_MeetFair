@@ -1,90 +1,96 @@
 package com.example.cpen321application.data
 
-import com.example.cpen321application.model.VotingStatus
+import com.example.cpen321application.model.MeetupStatus
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VotingParsersTest {
-    private val sessionJson = """
+    private val candidateJson = """
+        { "placeId": "p1", "name": "Koerner Library", "address": "1958 Main Mall",
+          "location": { "lat": 49.2667, "lng": -123.2551 } }
+    """.trimIndent()
+
+    private val tallyJson = """
         {
-          "id": "s1", "meetupId": "m1", "createdBy": "u1", "status": "open",
-          "winnerCandidateId": null, "myCandidateId": "c2",
+          "meetupId": "m1", "totalWeight": 2.5, "lockedCount": 2, "participantCount": 3,
           "candidates": [
-            { "id": "c1", "placeId": "p1", "name": "Koerner Library", "address": "1958 Main Mall",
-              "location": { "lat": 49.2667, "lng": -123.2551 } },
-            { "id": "c2", "placeId": "p2", "name": "Loafe Cafe", "location": { "lat": 49.26, "lng": -123.24 } }
-          ]
-        }
-    """.trimIndent()
-
-    private val resultsJson = """
-        {
-          "sessionId": "s1", "status": "closed", "winnerCandidateId": "c1",
-          "voterCount": 2, "eligibleVoterCount": 3,
-          "totals": [
-            { "candidateId": "c1", "voteCount": 2, "totalWeight": 2.5 },
-            { "candidateId": "c2", "voteCount": 0, "totalWeight": 0 }
+            { "placeId": "p1", "voteCount": 2, "weight": 1.5, "share": 0.6 },
+            { "placeId": "p2", "voteCount": 1, "weight": 1, "share": 0.4 }
           ]
         }
     """.trimIndent()
 
     @Test
-    fun parseVotingSession_readsCandidatesAndNullableFields() {
-        val session = parseVotingSession(JSONObject(sessionJson))
+    fun parseRecommendation_readsCandidates() {
+        val recommendation = parseRecommendation(JSONObject("""{ "meetupId": "m1", "candidates": [$candidateJson] }"""))
 
-        assertEquals("m1", session.meetupId)
-        assertEquals(VotingStatus.OPEN, session.status)
-        assertNull(session.winnerCandidateId)
-        assertEquals("c2", session.myCandidateId)
-        assertEquals(listOf("Koerner Library", "Loafe Cafe"), session.candidates.map { it.name })
-        assertEquals("1958 Main Mall", session.candidates[0].address)
-        // A missing address degrades to empty rather than failing the whole session
-        assertEquals("", session.candidates[1].address)
-        assertEquals(49.2667, session.candidates[0].lat, 0.0)
+        assertEquals("m1", recommendation.meetupId)
+        assertEquals("Koerner Library", recommendation.candidates.single().name)
+        assertEquals(-123.2551, recommendation.candidates.single().lng, 0.0)
     }
 
     @Test
-    fun parseVotingResults_readsTotalsAndCounts() {
-        val results = parseVotingResults(JSONObject(resultsJson))
+    fun parseVotesSnapshot_readsTallyAndMyVote() {
+        val withVote = JSONObject(tallyJson).put("myVote", JSONObject("""{ "placeId": "p2", "locked": true, "weight": 1 }"""))
 
-        assertEquals(VotingStatus.CLOSED, results.status)
-        assertEquals("c1", results.winnerCandidateId)
-        assertEquals(2, results.voterCount)
-        assertEquals(3, results.eligibleVoterCount)
-        assertEquals(2.5, results.totalFor("c1")!!.totalWeight, 0.0)
-        assertEquals(0, results.totalFor("c2")!!.voteCount)
-        assertEquals(false, results.everyoneVoted)
+        val snapshot = parseVotesSnapshot(withVote)
+
+        assertEquals(2.5, snapshot.tally.totalWeight, 0.0)
+        assertEquals(listOf("p1", "p2"), snapshot.tally.candidates.map { it.placeId })
+        assertEquals(0.6, snapshot.tally.totalFor("p1")!!.share, 0.0)
+        assertTrue(snapshot.myVote!!.locked)
+        assertEquals(1.0, snapshot.myVote!!.weight!!, 0.0)
     }
 
     @Test
-    fun parseVote_readsWeight() {
-        val vote = parseVote(
-            JSONObject("""{"id":"v1","sessionId":"s1","userId":"u1","candidateId":"c1","weight":1}"""),
+    fun parseVotesSnapshot_nullMyVote() {
+        assertNull(parseVotesSnapshot(JSONObject(tallyJson).put("myVote", JSONObject.NULL)).myVote)
+    }
+
+    @Test
+    fun parseMyVote_unlockedHasNoWeight() {
+        val vote = parseMyVote(JSONObject("""{ "placeId": "p1", "locked": false, "weight": null }"""))
+
+        assertFalse(vote.locked)
+        assertNull(vote.weight)
+    }
+
+    @Test
+    fun parseMeetup_readsWinner() {
+        val meetup = parseMeetup(
+            JSONObject(
+                """
+                { "id": "m1", "groupId": "g1", "organizerId": "u1", "title": "Study",
+                  "scheduledAt": "2026-11-05T22:30:00.000Z", "status": "FINALIZED", "participants": [],
+                  "winner": $candidateJson }
+                """.trimIndent(),
+            ),
         )
 
-        assertEquals("c1", vote.candidateId)
-        assertEquals(1.0, vote.weight, 0.0)
+        assertEquals(MeetupStatus.FINALIZED, meetup.status)
+        assertEquals("p1", meetup.winner?.placeId)
     }
 
     @Test
-    fun joinAck_successCarriesResults() {
-        val event = joinAckToEvent(arrayOf(JSONObject().put("ok", true).put("results", JSONObject(resultsJson))))
+    fun statusEvent_readsStatusAndWinner() {
+        val event = parseStatusEvent(JSONObject("""{ "meetupId": "m1", "status": "FINALIZED", "winner": $candidateJson }"""))
 
-        assertTrue(event is VotingEvent.Results)
-        assertEquals(2, (event as VotingEvent.Results).results.voterCount)
+        assertEquals(MeetupStatus.FINALIZED, event.status)
+        assertEquals("p1", event.winner?.placeId)
+        assertNull(parseStatusEvent(JSONObject("""{ "meetupId": "m1", "status": "VOTING" }""")).winner)
     }
 
     @Test
-    fun joinAck_failureAndMalformedPayloadsBecomeUnavailable() {
-        val denied = joinAckToEvent(arrayOf(JSONObject().put("ok", false).put("error", "Not a member of this group")))
-        val empty = joinAckToEvent(arrayOf())
-        val broken = joinAckToEvent(arrayOf(JSONObject().put("ok", true).put("results", JSONObject())))
-
-        assertEquals(VotingEvent.Unavailable("Not a member of this group"), denied)
-        assertTrue(empty is VotingEvent.Unavailable)
-        assertTrue(broken is VotingEvent.Unavailable)
+    fun joinAck_okJoinsAndErrorsAreUnavailable() {
+        assertEquals(MeetupEvent.Joined, joinAckToEvent(arrayOf(JSONObject("""{ "ok": true }"""))))
+        assertEquals(
+            MeetupEvent.Unavailable("Not a member of this group"),
+            joinAckToEvent(arrayOf(JSONObject("""{ "ok": false, "error": "Not a member of this group" }"""))),
+        )
+        assertTrue(joinAckToEvent(arrayOf("not json")) is MeetupEvent.Unavailable)
     }
 }

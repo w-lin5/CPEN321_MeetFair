@@ -60,6 +60,20 @@ const participantSchema = new Schema(
   { _id: false },
 );
 
+// The place the meetup was finalized at (a copy of the winning recommendation candidate)
+const winnerSchema = new Schema(
+  {
+    placeId: { type: String, required: true },
+    name: { type: String, required: true },
+    address: { type: String, default: '' },
+    location: {
+      lat: { type: Number, required: true },
+      lng: { type: Number, required: true },
+    },
+  },
+  { _id: false },
+);
+
 const meetupSchema = new Schema(
   {
     groupId: { type: Schema.Types.ObjectId, ref: 'Group', required: true, index: true },
@@ -68,9 +82,12 @@ const meetupSchema = new Schema(
     scheduledAt: { type: Date, required: true },
     status: { type: String, enum: [...MEETUP_STATUSES], default: 'SETUP' },
     participants: { type: [participantSchema], default: [] },
+    winner: { type: winnerSchema, default: undefined },
+    finalizedAt: { type: Date },
   },
   { timestamps: true, toJSON: jsonOptions },
 );
 
 export type MeetupFields = InferSchemaType<typeof meetupSchema>;
+export type MeetupWinner = InferSchemaType<typeof winnerSchema>;
 export const MeetupModel = model('Meetup', meetupSchema);

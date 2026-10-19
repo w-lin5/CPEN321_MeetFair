@@ -3,77 +3,58 @@ import { type InferSchemaType, Schema, model } from 'mongoose';
 import { COMMUTE_SOURCES } from '../common/types';
 import { jsonOptions } from '../db';
 
-export const VOTING_STATUSES = ['open', 'closed'] as const;
-
-// One place the group can vote for; its generated _id is the candidateId votes refer to
-const candidateSchema = new Schema(
+// One participant's vote in a meetup; free to change until locked, then the weight is snapshotted
+const voteSchema = new Schema(
   {
-    // Google Places id, kept so the winner can be resolved again (e.g. for the calendar event)
+    meetupId: { type: Schema.Types.ObjectId, ref: 'Meetup', required: true },
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    // Google Places id of one of the meetup's recommendation candidates
     placeId: { type: String, required: true },
-    name: { type: String, required: true },
-    address: { type: String, default: '' },
-    location: {
-      lat: { type: Number, required: true },
-      lng: { type: Number, required: true },
-    },
+    locked: { type: Boolean, default: false },
+    // Set when locking, from the voter's Fair Credit at that moment
+    weight: { type: Number, default: null },
+  },
+  { timestamps: true, toJSON: jsonOptions },
+);
+
+// One vote per participant per meetup
+voteSchema.index({ meetupId: 1, userId: 1 }, { unique: true });
+
+export type VoteFields = InferSchemaType<typeof voteSchema>;
+export const VoteModel = model('Vote', voteSchema);
+
+// A member's current Fair Credit in one group, in seconds; changes only at settlement
+const fairCreditSchema = new Schema(
+  {
+    groupId: { type: Schema.Types.ObjectId, ref: 'Group', required: true },
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    balance: { type: Number, required: true },
   },
   { toJSON: jsonOptions },
 );
+fairCreditSchema.index({ groupId: 1, userId: 1 }, { unique: true });
 
-const votingSessionSchema = new Schema(
-  {
-    // One voting session per meetup; access is limited to that meetup's group members
-    meetupId: { type: Schema.Types.ObjectId, ref: 'Meetup', required: true, unique: true },
-    // Candidate locations users can vote for this round
-    candidates: { type: [candidateSchema], required: true },
-    // The current status of the voting session
-    status: { type: String, enum: [...VOTING_STATUSES], default: 'open' },
-    // The organizer who created this voting session
-    createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    // Set when the session is closed
-    winnerCandidateId: { type: Schema.Types.ObjectId, default: null },
-  },
-  { timestamps: true, toJSON: jsonOptions },
-);
+export const FairCreditModel = model('FairCredit', fairCreditSchema, 'fairCredits');
 
-export type VotingSessionFields = InferSchemaType<typeof votingSessionSchema>;
-export const VotingSessionModel = model('VotingSession', votingSessionSchema);
-
-const voteSchema = new Schema(
-  {
-    // The session this vote belongs to
-    sessionId: { type: Schema.Types.ObjectId, ref: 'VotingSession', required: true, index: true },
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    candidateId: { type: Schema.Types.ObjectId, required: true },
-    // Fair Credit at the time of voting
-    weight: { type: Number, required: true, default: 1 },
-  },
-  { timestamps: true, toJSON: jsonOptions },
-);
-
-// Ensure a user can only vote one candidate per session
-voteSchema.index({ sessionId: 1, userId: 1 }, { unique: true });
-
-export const VoteModel = model('Vote', voteSchema);
-
-// One member's commute for one finalized meetup. Fairness debt in a group is the sum of extraMinutes,
-// i.e. how much longer than the group average this user has travelled across past meetups
+// Ledger: one entry per member per settled meetup, explaining one balance change (all durations in seconds)
 const fairCreditEntrySchema = new Schema(
   {
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     groupId: { type: Schema.Types.ObjectId, ref: 'Group', required: true },
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     meetupId: { type: Schema.Types.ObjectId, ref: 'Meetup', required: true },
-    commuteMinutes: { type: Number, required: true },
-    groupAverageMinutes: { type: Number, required: true },
-    // commuteMinutes - groupAverageMinutes; negative when the user travelled less than average
-    extraMinutes: { type: Number, required: true },
+    actualSeconds: { type: Number, required: true },
+    normalizedBurden: { type: Number, required: true },
+    expectedBurden: { type: Number, required: true },
+    // normalizedBurden - expectedBurden; negative when the member travelled less than average
+    delta: { type: Number, required: true },
+    // TRACKED from live commute tracking, ESTIMATED from the Routes fallback
     source: { type: String, enum: [...COMMUTE_SOURCES], required: true },
   },
   { timestamps: true, toJSON: jsonOptions },
 );
-// At most one entry per user per meetup, so re-recording a commute replaces it instead of double counting
-fairCreditEntrySchema.index({ userId: 1, meetupId: 1 }, { unique: true });
-fairCreditEntrySchema.index({ userId: 1, groupId: 1, createdAt: -1 });
+// At most one entry per member per meetup, so a meetup can never be settled twice
+fairCreditEntrySchema.index({ meetupId: 1, userId: 1 }, { unique: true });
+fairCreditEntrySchema.index({ groupId: 1, userId: 1, createdAt: -1 });
 
 export type FairCreditEntryFields = InferSchemaType<typeof fairCreditEntrySchema>;
 export const FairCreditEntryModel = model('FairCreditEntry', fairCreditEntrySchema, 'fairCreditEntries');

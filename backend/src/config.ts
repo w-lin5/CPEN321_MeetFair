@@ -45,15 +45,29 @@ export const tuning = {
 
   // Profile
   displayNameMaxLength: 60,
-  // Upper bound on a single recorded commute (one day), to reject obviously broken measurements
-  maxCommuteMinutes: 24 * 60,
 
-  // Voting: the recommender hands over exactly this many candidates
-  votingCandidateCount: 3,
+  // Fair Credit (seconds of mode-normalized travel burden above the group average, summed over meetups)
+  initialFairCredit: 0,
+  // Upper bound on a single settled trip (one day), to reject obviously broken measurements
+  maxTripSeconds: 24 * 60 * 60,
+  // Mode normalization: raw seconds x multiplier [TBD: all 1.0 until the team decides otherwise]
+  walkBurdenMultiplier: 1,
+  transitBurdenMultiplier: 1,
+  driveBurdenMultiplier: 1,
+  // Vote weight = base + perHour x (Fair Credit in hours), clamped to [min, max]
+  voteWeightBase: 1,
+  voteWeightPerHour: 0.1,
+  minVoteWeight: 1,
+  maxVoteWeight: 1.5,
+  secondsPerHour: 60 * 60,
+
+  // Recommendation: the top candidates the group votes on
+  recommendationCount: 3,
   placeIdMaxLength: 256,
   placeNameMaxLength: 200,
   placeAddressMaxLength: 300,
-  // Weighted totals closer than this count as a tie (guards against floating-point drift)
+
+  // Voting: weighted totals closer than this count as a tie (guards against floating-point drift)
   voteWeightEpsilon: 1e-9,
 
   // Google Calendar

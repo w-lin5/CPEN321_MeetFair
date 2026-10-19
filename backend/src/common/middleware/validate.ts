@@ -100,13 +100,6 @@ export function objectId(f: Fields, key: string): string {
   return value;
 }
 
-// Optional ObjectId: absent or null yields undefined, anything else must be a valid id
-export function optionalObjectId(f: Fields, key: string): string | undefined {
-  const value = f.get(key);
-  if (value === undefined || value === null) return undefined;
-  return objectId(f, key);
-}
-
 // An array of exactly `exactItems` objects, each returned as Fields for further parsing
 export function objectList(f: Fields, key: string, exactItems: number): Fields[] {
   const value = f.get(key);

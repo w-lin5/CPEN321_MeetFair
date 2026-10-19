@@ -41,7 +41,8 @@ object TestTags {
     const val SAVE_DISPLAY_NAME_BUTTON = "save_display_name_button"
     const val RESET_DISPLAY_NAME_BUTTON = "reset_display_name_button"
     const val PROFILE_GROUPS_EMPTY = "profile_groups_empty"
-    const val FAIRNESS_DEBT_TEXT = "fairness_debt_text"
+    const val FAIR_CREDIT_TEXT = "fair_credit_text"
+    const val FAIRNESS_MEMBER_ITEM = "fairness_member_item"
     const val FAIRNESS_HISTORY_EMPTY = "fairness_history_empty"
     const val FAIRNESS_ENTRY_ITEM = "fairness_entry_item"
     const val OPEN_VOTING_BUTTON = "open_voting_button"
@@ -50,8 +51,11 @@ object TestTags {
     const val VOTING_LIVE_TEXT = "voting_live_text"
     const val REFRESH_RESULTS_BUTTON = "refresh_results_button"
     const val WINNER_TEXT = "winner_text"
-    const val CLOSE_VOTING_BUTTON = "close_voting_button"
-    const val CONFIRM_CLOSE_BUTTON = "confirm_close_button"
+    const val FINALIZE_BUTTON = "finalize_button"
+    const val CONFIRM_FINALIZE_BUTTON = "confirm_finalize_button"
+    const val LOCK_VOTE_BUTTON = "lock_vote_button"
+    const val VOTE_LOCKED_TEXT = "vote_locked_text"
+    const val MEETUP_WINNER_TEXT = "meetup_winner_text"
     const val ADD_TO_CALENDAR_BUTTON = "add_to_calendar_button"
     const val CALENDAR_ADDED_TEXT = "calendar_added_text"
 
@@ -60,8 +64,8 @@ object TestTags {
     fun preferenceChip(preference: String) = "preference_chip_$preference"
     fun profileGroupItem(groupId: String) = "profile_group_item_$groupId"
 
-    // Voting rows are tagged per candidate id
-    fun candidateItem(candidateId: String) = "candidate_item_$candidateId"
-    fun voteButton(candidateId: String) = "vote_button_$candidateId"
-    fun pickWinnerButton(candidateId: String) = "pick_winner_button_$candidateId"
+    // Voting rows are tagged per candidate placeId
+    fun candidateItem(placeId: String) = "candidate_item_$placeId"
+    fun voteButton(placeId: String) = "vote_button_$placeId"
+    fun pickWinnerButton(placeId: String) = "pick_winner_button_$placeId"
 }

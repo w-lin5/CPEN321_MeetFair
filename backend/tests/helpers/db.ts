@@ -15,6 +15,8 @@ export async function startDb(): Promise<void> {
     serverSelectionTimeoutMS: SERVER_SELECTION_TIMEOUT_MS,
     runtimeAdapters: { os },
   });
+  // Wait for every model's indexes (unique keys back several 409 checks); a failed build fails loudly here
+  await Promise.all(mongoose.modelNames().map((name) => mongoose.model(name).init()));
 }
 
 export async function clearDb(): Promise<void> {

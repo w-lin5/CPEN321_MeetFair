@@ -3,7 +3,7 @@ import { userService } from './user.service';
 
 /**
  * The user's persistent profile: account info and the groups they belong to.
- * Fairness debt per group is owned by voting-fairness, which adds it on top of this profile
+ * Fair Credit per group is owned by voting-fairness, which adds it on top of this profile
  * (voting-fairness/fair-credit.service.ts), so users-groups stays independent of other components.
  */
 

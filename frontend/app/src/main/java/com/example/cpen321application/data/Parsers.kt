@@ -1,27 +1,28 @@
 package com.example.cpen321application.data
 
 import com.example.cpen321application.model.CalendarEventResult
-import com.example.cpen321application.model.Candidate
-import com.example.cpen321application.model.CandidateVoteTotal
+import com.example.cpen321application.model.CandidateTally
 import com.example.cpen321application.model.CommuteSource
 import com.example.cpen321application.model.FairnessEntry
-import com.example.cpen321application.model.FairnessHistory
 import com.example.cpen321application.model.Group
+import com.example.cpen321application.model.GroupFairness
 import com.example.cpen321application.model.GroupMember
 import com.example.cpen321application.model.GroupRole
 import com.example.cpen321application.model.Meetup
 import com.example.cpen321application.model.MeetupStatus
+import com.example.cpen321application.model.MemberCredit
+import com.example.cpen321application.model.MyVote
 import com.example.cpen321application.model.Participant
+import com.example.cpen321application.model.PlaceCandidate
 import com.example.cpen321application.model.Preference
 import com.example.cpen321application.model.ProfileGroup
+import com.example.cpen321application.model.Recommendation
 import com.example.cpen321application.model.StartLocation
 import com.example.cpen321application.model.TravelMode
 import com.example.cpen321application.model.User
 import com.example.cpen321application.model.UserProfile
-import com.example.cpen321application.model.Vote
-import com.example.cpen321application.model.VotingResults
-import com.example.cpen321application.model.VotingSession
-import com.example.cpen321application.model.VotingStatus
+import com.example.cpen321application.model.VoteTally
+import com.example.cpen321application.model.VotesSnapshot
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -78,13 +79,14 @@ internal fun parseMeetup(o: JSONObject) = Meetup(
     scheduledAt = o.getString("scheduledAt"),
     status = MeetupStatus.fromWire(o.stringOrNull("status")),
     participants = o.getJSONArray("participants").mapObjects(::parseParticipant),
+    winner = o.optJSONObject("winner")?.let(::parsePlaceCandidate),
 )
 
 internal fun parseProfileGroup(o: JSONObject) = ProfileGroup(
     groupId = o.getString("groupId"),
     name = o.getString("name"),
     role = GroupRole.fromWire(o.stringOrNull("role")),
-    fairnessDebt = o.optDouble("fairnessDebt", 0.0),
+    fairCredit = o.optLong("fairCredit", 0),
 )
 
 internal fun parseUserProfile(o: JSONObject) = UserProfile(
@@ -98,24 +100,31 @@ internal fun parseUserProfile(o: JSONObject) = UserProfile(
 )
 
 internal fun parseFairnessEntry(o: JSONObject) = FairnessEntry(
+    userId = o.getString("userId"),
     meetupId = o.getString("meetupId"),
-    commuteMinutes = o.getDouble("commuteMinutes"),
-    groupAverageMinutes = o.getDouble("groupAverageMinutes"),
-    extraMinutes = o.getDouble("extraMinutes"),
+    actualSeconds = o.getLong("actualSeconds"),
+    normalizedBurden = o.getLong("normalizedBurden"),
+    expectedBurden = o.getLong("expectedBurden"),
+    delta = o.getLong("delta"),
     source = CommuteSource.fromWire(o.stringOrNull("source")),
     recordedAt = o.stringOrNull("createdAt").orEmpty(),
 )
 
-internal fun parseFairnessHistory(o: JSONObject) = FairnessHistory(
-    groupId = o.getString("groupId"),
-    fairnessDebt = o.getDouble("fairnessDebt"),
-    history = o.getJSONArray("history").mapObjects(::parseFairnessEntry),
+internal fun parseMemberCredit(o: JSONObject) = MemberCredit(
+    userId = o.getString("userId"),
+    name = o.stringOrNull("name"),
+    balance = o.getLong("balance"),
 )
 
-internal fun parseCandidate(o: JSONObject): Candidate {
+internal fun parseGroupFairness(o: JSONObject) = GroupFairness(
+    groupId = o.getString("groupId"),
+    members = o.getJSONArray("members").mapObjects(::parseMemberCredit),
+    ledger = o.getJSONArray("ledger").mapObjects(::parseFairnessEntry),
+)
+
+internal fun parsePlaceCandidate(o: JSONObject): PlaceCandidate {
     val location = o.getJSONObject("location")
-    return Candidate(
-        id = o.getString("id"),
+    return PlaceCandidate(
         placeId = o.getString("placeId"),
         name = o.getString("name"),
         address = o.stringOrNull("address").orEmpty(),
@@ -124,37 +133,35 @@ internal fun parseCandidate(o: JSONObject): Candidate {
     )
 }
 
-internal fun parseVotingSession(o: JSONObject) = VotingSession(
-    id = o.getString("id"),
+internal fun parseRecommendation(o: JSONObject) = Recommendation(
     meetupId = o.getString("meetupId"),
-    candidates = o.getJSONArray("candidates").mapObjects(::parseCandidate),
-    createdBy = o.getString("createdBy"),
-    status = VotingStatus.fromWire(o.stringOrNull("status")),
-    winnerCandidateId = o.stringOrNull("winnerCandidateId"),
-    myCandidateId = o.stringOrNull("myCandidateId"),
+    candidates = o.getJSONArray("candidates").mapObjects(::parsePlaceCandidate),
 )
 
-internal fun parseVote(o: JSONObject) = Vote(
-    id = o.getString("id"),
-    sessionId = o.getString("sessionId"),
-    userId = o.getString("userId"),
-    candidateId = o.getString("candidateId"),
-    weight = o.getDouble("weight"),
+internal fun parseMyVote(o: JSONObject) = MyVote(
+    placeId = o.getString("placeId"),
+    locked = o.optBoolean("locked"),
+    weight = if (o.has("weight") && !o.isNull("weight")) o.getDouble("weight") else null,
 )
 
-internal fun parseVoteTotal(o: JSONObject) = CandidateVoteTotal(
-    candidateId = o.getString("candidateId"),
+internal fun parseCandidateTally(o: JSONObject) = CandidateTally(
+    placeId = o.getString("placeId"),
     voteCount = o.getInt("voteCount"),
-    totalWeight = o.getDouble("totalWeight"),
+    weight = o.getDouble("weight"),
+    share = o.getDouble("share"),
 )
 
-internal fun parseVotingResults(o: JSONObject) = VotingResults(
-    sessionId = o.getString("sessionId"),
-    status = VotingStatus.fromWire(o.stringOrNull("status")),
-    winnerCandidateId = o.stringOrNull("winnerCandidateId"),
-    voterCount = o.getInt("voterCount"),
-    eligibleVoterCount = o.getInt("eligibleVoterCount"),
-    totals = o.getJSONArray("totals").mapObjects(::parseVoteTotal),
+internal fun parseVoteTally(o: JSONObject) = VoteTally(
+    meetupId = o.getString("meetupId"),
+    candidates = o.getJSONArray("candidates").mapObjects(::parseCandidateTally),
+    totalWeight = o.getDouble("totalWeight"),
+    lockedCount = o.getInt("lockedCount"),
+    participantCount = o.getInt("participantCount"),
+)
+
+internal fun parseVotesSnapshot(o: JSONObject) = VotesSnapshot(
+    tally = parseVoteTally(o),
+    myVote = o.optJSONObject("myVote")?.let(::parseMyVote),
 )
 
 internal fun parseCalendarEventResult(o: JSONObject) = CalendarEventResult(

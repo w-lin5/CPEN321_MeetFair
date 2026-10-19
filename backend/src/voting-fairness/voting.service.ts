@@ -1,203 +1,172 @@
 import { BadRequest, Conflict, Forbidden, NotFound } from '../common/errors';
 import { tuning } from '../config';
 import { calendarClient } from '../integrations/calendar.client';
-import { VOTING_EVENTS, votingRoom } from '../realtime/events';
+import { SERVER_EVENTS, meetupRoom } from '../realtime/events';
 import { publisher } from '../realtime/publisher';
-import { groupService } from '../users-groups/group.service';
+import { recommendationService } from '../recommendation/recommendation.service';
 import { meetupService } from '../users-groups/meetup.service';
-import { VoteModel, VotingSessionModel } from './models';
-import type { CandidateInput } from './schemas';
-import { sameWeight, tally, tiedLeaders } from './tally';
+import { fairCreditService } from './fair-credit.service';
+import { VoteModel } from './models';
+import { decideWinner, tally } from './tally';
 
-type SessionDoc = InstanceType<typeof VotingSessionModel>;
-type VoteDoc = InstanceType<typeof VoteModel>;
+type MeetupDoc = Awaited<ReturnType<typeof meetupService.getById>>;
 
 function isDuplicateKey(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && err.code === tuning.mongoDuplicateKeyCode;
 }
 
-function hasCandidate(session: SessionDoc, candidateId: string): boolean {
-  return session.candidates.some((c) => String(c._id) === candidateId);
+function requireParticipant(meetup: MeetupDoc, userId: string) {
+  const participant = meetup.participants.find((p) => String(p.userId) === userId);
+  if (!participant) throw new Forbidden('Only participants can do this');
+  return participant;
 }
 
-// Load a session the caller may access: it exists and the caller belongs to its meetup's group (404 / 403 otherwise)
-async function loadForMember(sessionId: string, userId: string) {
-  const session = await VotingSessionModel.findById(sessionId);
-  if (!session) throw new NotFound('Voting session not found');
-
-  const meetup = await meetupService.getById(String(session.meetupId));
-  const group = await groupService.requireMembership(String(meetup.groupId), userId);
-
-  return { session, meetup, group };
+// A meetup the caller may vote in: member of its group (404 / 403), meetup in VOTING (409), participant (403)
+async function loadForVoting(meetupId: string, userId: string) {
+  const meetup = await meetupService.getForMember(meetupId, userId);
+  if (meetup.status !== 'VOTING') throw new Conflict('Voting is not open for this meetup');
+  requireParticipant(meetup, userId);
+  return meetup;
 }
 
-// Session JSON plus the caller's current choice, so the UI can highlight it
-async function withMyVote(session: SessionDoc, userId: string) {
-  const mine = await VoteModel.findOne({ sessionId: session._id, userId });
-  return { ...session.toJSON(), myCandidateId: mine ? String(mine.candidateId) : null };
+async function candidatePlaceIds(meetupId: string): Promise<string[]> {
+  const recommendation = await recommendationService.getByMeetupId(meetupId);
+  return recommendation.candidates.map((c) => c.placeId);
 }
 
-// Results are identical for every member, so the same payload is returned over REST and broadcast live
-async function buildResults(session: SessionDoc, eligibleVoterCount: number) {
-  const votes = await VoteModel.find({ sessionId: session._id });
+// The same tally goes to every member, over REST and as vote:updated
+async function buildTally(meetup: MeetupDoc) {
+  const meetupId = String(meetup._id);
+  const votes = await VoteModel.find({ meetupId });
 
   return {
-    sessionId: String(session._id),
-    status: session.status,
-    winnerCandidateId: session.winnerCandidateId ? String(session.winnerCandidateId) : null,
-    voterCount: votes.length,
-    eligibleVoterCount,
-    totals: tally(session.candidates, votes).map(({ candidateId, voteCount, totalWeight }) => ({
-      candidateId,
-      voteCount,
-      totalWeight,
-    })),
+    meetupId,
+    ...tally(await candidatePlaceIds(meetupId), votes),
+    participantCount: meetup.participants.length,
   };
 }
 
-// Decide the winner; a manual pick is only accepted when nobody voted or the tie cannot be broken
-function pickWinner(session: SessionDoc, votes: VoteDoc[], manualPick: string | undefined): string {
-  if (manualPick !== undefined && !hasCandidate(session, manualPick)) {
-    throw new BadRequest('Candidate does not belong to this voting session');
-  }
-
-  if (votes.length === 0) {
-    if (manualPick === undefined) {
-      throw new Conflict('Cannot finalize with zero votes; cast a vote or pick a winner');
-    }
-    return manualPick;
-  }
-
-  const leaders = tiedLeaders(session.candidates, votes);
-  const [onlyLeader] = leaders;
-
-  if (leaders.length === 1 && onlyLeader !== undefined) {
-    if (manualPick !== undefined && manualPick !== onlyLeader) {
-      throw new Conflict('A winner can only be picked manually to break a tie');
-    }
-    return onlyLeader;
-  }
-
-  if (manualPick === undefined || !leaders.includes(manualPick)) {
-    throw new Conflict(`Tie between candidates ${leaders.join(', ')}; pick one of them as the winner`);
-  }
-
-  return manualPick;
+async function broadcastTally(meetup: MeetupDoc): Promise<void> {
+  publisher.publish(meetupRoom(String(meetup._id)), SERVER_EVENTS.voteUpdated, await buildTally(meetup));
 }
 
-// Organizer turns the recommender's candidates into a vote; moves the meetup from SETUP to VOTING
-async function createSession(meetupId: string, userId: string, candidates: CandidateInput[]) {
-  const meetup = await meetupService.getForMember(meetupId, userId);
-  if (String(meetup.organizerId) !== userId) {
-    throw new Forbidden('Only the meetup organizer can start voting');
+// Create or change the caller's vote; 409 once it is locked
+async function castVote(meetupId: string, userId: string, placeId: string) {
+  const meetup = await loadForVoting(meetupId, userId);
+  if (!(await candidatePlaceIds(meetupId)).includes(placeId)) {
+    throw new BadRequest('placeId is not one of this meetup\'s candidates');
   }
 
-  // Claim the status transition first so two concurrent starts cannot both succeed
-  if (!(await meetupService.transitionStatus(meetupId, 'SETUP', 'VOTING'))) {
-    throw new Conflict('Voting can only start while the meetup is in SETUP');
-  }
+  // Re-sending the same choice changes nothing, so members are not notified
+  const existing = await VoteModel.findOne({ meetupId, userId });
+  if (existing && !existing.locked && existing.placeId === placeId) return existing;
 
+  let vote;
   try {
-    return await VotingSessionModel.create({ meetupId, candidates, createdBy: userId });
+    // The filter never matches a locked vote, so the upsert then hits the unique key instead of changing it
+    vote = await VoteModel.findOneAndUpdate(
+      { meetupId, userId, locked: false },
+      { $set: { placeId } },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
+    ).orFail();
   } catch (err) {
-    await meetupService.transitionStatus(meetupId, 'VOTING', 'SETUP');
-    if (isDuplicateKey(err)) throw new Conflict('This meetup already has a voting session');
+    if (isDuplicateKey(err)) throw new Conflict('Your vote is locked');
     throw err;
   }
-}
 
-async function getSession(sessionId: string, userId: string) {
-  const { session } = await loadForMember(sessionId, userId);
-  return withMyVote(session, userId);
-}
-
-// Entry point from the meetup screen, which only knows the meetup id
-async function getSessionForMeetup(meetupId: string, userId: string) {
-  await meetupService.getForMember(meetupId, userId);
-
-  const session = await VotingSessionModel.findOne({ meetupId });
-  if (!session) throw new NotFound('Voting has not started for this meetup');
-
-  return withMyVote(session, userId);
-}
-
-// Create or change the caller's single vote; members are only notified when something actually changed
-async function submitVote(sessionId: string, userId: string, candidateId: string, weight: number) {
-  if (!Number.isFinite(weight) || weight < 0) {
-    throw new BadRequest('Vote weight must be a non-negative finite number');
-  }
-
-  const { session, group } = await loadForMember(sessionId, userId);
-
-  if (session.status !== 'open') throw new Conflict('Voting session is closed');
-  if (!hasCandidate(session, candidateId)) {
-    throw new BadRequest('Candidate does not belong to this voting session');
-  }
-
-  const existing = await VoteModel.findOne({ sessionId, userId });
-  if (existing && String(existing.candidateId) === candidateId && sameWeight(existing.weight, weight)) {
-    return existing;
-  }
-
-  // Upsert on the unique (sessionId, userId) key: changing a vote never creates a second one
-  const vote = await VoteModel.findOneAndUpdate(
-    { sessionId, userId },
-    { $set: { candidateId, weight } },
-    { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
-  ).orFail();
-
-  publisher.publish(
-    votingRoom(sessionId),
-    VOTING_EVENTS.results,
-    await buildResults(session, group.members.length),
-  );
-
+  await broadcastTally(meetup);
   return vote;
 }
 
-async function getResults(sessionId: string, userId: string) {
-  const { session, group } = await loadForMember(sessionId, userId);
-  return buildResults(session, group.members.length);
-}
+// Lock the caller's vote and snapshot its weight from their Fair Credit
+async function lockVote(meetupId: string, userId: string) {
+  const meetup = await loadForVoting(meetupId, userId);
+  const weight = await fairCreditService.getVoteWeight(userId, String(meetup.groupId));
 
-// Close voting, record the winner and finalize the meetup; the session is reopened if finalizing fails
-async function closeSession(sessionId: string, userId: string, manualPick: string | undefined) {
-  const { session, meetup, group } = await loadForMember(sessionId, userId);
-
-  if (String(session.createdBy) !== userId) {
-    throw new Forbidden('Only the creator can close this voting session');
-  }
-  if (session.status !== 'open') throw new Conflict('Voting session is already closed');
-
-  const winnerCandidateId = pickWinner(session, await VoteModel.find({ sessionId }), manualPick);
-
-  // Conditional on still being open so a concurrent close (or a late vote check) sees one outcome
-  const closed = await VotingSessionModel.findOneAndUpdate(
-    { _id: sessionId, status: 'open' },
-    { $set: { status: 'closed', winnerCandidateId } },
+  const vote = await VoteModel.findOneAndUpdate(
+    { meetupId, userId, locked: false },
+    { $set: { locked: true, weight } },
     { returnDocument: 'after' },
   );
-  if (!closed) throw new Conflict('Voting session is already closed');
-
-  try {
-    await meetupService.transitionStatus(String(meetup._id), 'VOTING', 'FINALIZED');
-  } catch (err) {
-    await VotingSessionModel.updateOne({ _id: sessionId }, { $set: { status: 'open', winnerCandidateId: null } });
-    throw err;
+  if (!vote) {
+    if (await VoteModel.exists({ meetupId, userId })) throw new Conflict('Your vote is already locked');
+    throw new NotFound('Vote for a candidate before locking');
   }
 
-  publisher.publish(votingRoom(sessionId), VOTING_EVENTS.closed, {
-    session: closed.toJSON(),
-    results: await buildResults(closed, group.members.length),
+  await broadcastTally(meetup);
+  return vote;
+}
+
+// Tally for any member, plus the caller's own vote so the UI can highlight it
+async function getVotes(meetupId: string, userId: string) {
+  const meetup = await meetupService.getForMember(meetupId, userId);
+  const mine = await VoteModel.findOne({ meetupId, userId });
+  return { ...(await buildTally(meetup)), myVote: mine };
+}
+
+// Decide the winner; a manual pick is only accepted when nobody locked a vote or the tie cannot be broken
+function pickWinner(placeIds: string[], votes: Parameters<typeof decideWinner>[1], manualPick: string | undefined) {
+  if (manualPick !== undefined && !placeIds.includes(manualPick)) {
+    throw new BadRequest('placeId is not one of this meetup\'s candidates');
+  }
+
+  const decision = decideWinner(placeIds, votes);
+  if (decision.kind === 'none') {
+    if (manualPick === undefined) throw new Conflict('Cannot finalize with no locked votes; pick a winner');
+    return manualPick;
+  }
+  if (decision.kind === 'winner') {
+    if (manualPick !== undefined && manualPick !== decision.placeId) {
+      throw new Conflict('A winner can only be picked manually to break a tie');
+    }
+    return decision.placeId;
+  }
+  if (manualPick === undefined || !decision.placeIds.includes(manualPick)) {
+    throw new Conflict(`Tie between candidates ${decision.placeIds.join(', ')}; pick one of them as the winner`);
+  }
+  return manualPick;
+}
+
+// Organizer closes voting: the winner (by locked weight) is stored on the meetup, which moves to FINALIZED
+async function finalize(meetupId: string, userId: string, manualPick: string | undefined) {
+  const meetup = await meetupService.getForMember(meetupId, userId);
+  if (String(meetup.organizerId) !== userId) throw new Forbidden('Only the meetup organizer can finalize');
+  if (meetup.status !== 'VOTING') throw new Conflict('Only a meetup in VOTING can be finalized');
+
+  const recommendation = await recommendationService.getByMeetupId(meetupId);
+  const placeIds = recommendation.candidates.map((c) => c.placeId);
+  const winnerId = pickWinner(placeIds, await VoteModel.find({ meetupId }), manualPick);
+  const winner = recommendation.candidates.find((c) => c.placeId === winnerId);
+  if (!winner?.location) throw new NotFound('Winning candidate not found');
+
+  // Conditional on still being in VOTING, so concurrent finalizes see one outcome
+  const finalized = await meetupService.finalize(meetupId, {
+    placeId: winner.placeId,
+    name: winner.name,
+    address: winner.address,
+    location: { lat: winner.location.lat, lng: winner.location.lng },
+  });
+  if (!finalized) throw new Conflict('Only a meetup in VOTING can be finalized');
+
+  publisher.publish(meetupRoom(meetupId), SERVER_EVENTS.meetupStatus, {
+    meetupId,
+    status: finalized.status,
+    winner: finalized.toJSON().winner,
   });
 
-  return withMyVote(closed, userId);
+  return finalized;
+}
+
+// Google event ids may use 0-9 and a-v; ObjectId hex fits, so one id per (meetup, user) makes inserts idempotent
+function calendarEventIdFor(meetupId: string, userId: string): string {
+  return `meetfair${meetupId}${userId}`.toLowerCase();
 }
 
 /**
  * Adds a finalized meetup (at the winning place) to the caller's own primary Google Calendar.
  * [accessToken] is the device's short-lived calendar.events token: used once, never stored or logged.
- * Each participant can add the meetup once; the created event id is recorded on their participation entry.
+ * Each participant can add the meetup once. The Google event id is derived from (meetup, user), so a
+ * repeated or concurrent request is rejected by Google as a duplicate instead of creating a second event.
  */
 async function addToCalendar(meetupId: string, userId: string, accessToken: string) {
   const meetup = await meetupService.getForMember(meetupId, userId);
@@ -205,18 +174,17 @@ async function addToCalendar(meetupId: string, userId: string, accessToken: stri
   if (meetup.status !== 'FINALIZED' && meetup.status !== 'SETTLED') {
     throw new Conflict('Only a finalized meetup can be added to a calendar');
   }
-  const participant = meetup.participants.find((p) => String(p.userId) === userId);
-  if (!participant) throw new Forbidden('Only participants can add this meetup to their calendar');
+  const participant = requireParticipant(meetup, userId);
   if (participant.calendarEventId) throw new Conflict('This meetup is already in your calendar');
 
-  const session = await VotingSessionModel.findOne({ meetupId });
-  const winner = session?.candidates.find((c) => String(c._id) === String(session.winnerCandidateId));
-
+  const winner = meetup.winner;
   const start = meetup.scheduledAt;
   const end = new Date(start.getTime()
     + tuning.calendarEventDurationMinutes * tuning.secondsPerMinute * tuning.msPerSecond);
+  const eventId = calendarEventIdFor(String(meetup._id), userId);
 
   const created = await calendarClient.createEvent(accessToken, {
+    eventId,
     title: meetup.title,
     description: 'Planned with MeetFair',
     startTime: start.toISOString(),
@@ -227,20 +195,11 @@ async function addToCalendar(meetupId: string, userId: string, accessToken: stri
     attendeeEmails: [],
   });
 
-  // A concurrent request may have recorded an event in the meantime; the first one wins
-  if (!(await meetupService.recordCalendarEvent(meetupId, userId, created.externalId))) {
-    throw new Conflict('This meetup is already in your calendar');
-  }
+  // Record the id either way: after a duplicate (e.g. our earlier write failed) the event does exist
+  const recorded = await meetupService.recordCalendarEvent(meetupId, userId, created.externalId);
+  if (created.duplicate || !recorded) throw new Conflict('This meetup is already in your calendar');
 
   return { eventId: created.externalId, htmlLink: created.htmlLink };
 }
 
-export const votingService = {
-  createSession,
-  getSession,
-  getSessionForMeetup,
-  submitVote,
-  getResults,
-  closeSession,
-  addToCalendar,
-};
+export const votingService = { castVote, lockVote, getVotes, finalize, addToCalendar };

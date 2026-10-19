@@ -118,6 +118,9 @@ private fun MeetupInfo(
         )
         Text(isoToDisplay(meetup.scheduledAt))
         Text("Status: ${meetup.status.name}", modifier = Modifier.testTag(TestTags.MEETUP_STATUS_TEXT))
+        meetup.winner?.let { winner ->
+            Text("Meeting at: ${winner.name}", modifier = Modifier.testTag(TestTags.MEETUP_WINNER_TEXT))
+        }
         Text(
             if (submitted) "You have submitted your details." else "You have not submitted your details yet.",
             modifier = Modifier.testTag(TestTags.PARTICIPATION_STATUS_TEXT),

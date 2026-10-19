@@ -1,10 +1,10 @@
 package com.example.cpen321application.data
 
-import com.example.cpen321application.model.FairnessHistory
+import com.example.cpen321application.model.GroupFairness
 import org.json.JSONObject
 
 class FairnessRepository(private val api: ApiClient) {
-    /** The caller's fairness debt and commute history in one of their groups. */
-    suspend fun fairnessHistory(groupId: String): ApiResult<FairnessHistory> =
-        api.get("users/me/groups/$groupId/fairness").parse { parseFairnessHistory(JSONObject(it)) }
+    /** Every member's Fair Credit in the group and the group's ledger; members only. */
+    suspend fun groupFairness(groupId: String): ApiResult<GroupFairness> =
+        api.get("groups/$groupId/fairness").parse { parseGroupFairness(JSONObject(it)) }
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
 import kotlinx.coroutines.tasks.await
 
@@ -40,7 +41,8 @@ class CalendarAuthorizer {
                     IllegalStateException("No access token returned and no resolution available")
                 )
             }
-        } catch (e: Exception) {
+        } catch (e: ApiException) {
+            // Only Play Services failures are handled; coroutine cancellation still propagates
             CalendarAuthResult.Failure(e)
         }
     }

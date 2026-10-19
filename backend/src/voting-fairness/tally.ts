@@ -1,49 +1,77 @@
 import { tuning } from '../config';
 
-// Pure vote counting: no DB access, so it can be unit tested on plain objects
+// Pure vote counting (no DB access). Only locked votes carry weight; unlocked ones are just counted
 
-interface TallyCandidate {
-  _id: unknown;
-}
-
-interface TallyVote {
-  candidateId: unknown;
-  weight: number;
+export interface TallyVote {
+  placeId: string;
+  locked: boolean;
+  weight?: number | null | undefined;
 }
 
 export interface CandidateTally {
-  candidateId: string;
+  placeId: string;
+  // Current picks, locked or not, so members see choices live before anyone locks
   voteCount: number;
-  totalWeight: number;
-  // Highest single voter weight; breaks ties in favour of the member with the most fairness debt
-  topVoterWeight: number;
+  // Sum of locked weights for this candidate
+  weight: number;
+  // weight / totalWeight; 0 while nothing is locked
+  share: number;
 }
+
+export interface Tally {
+  candidates: CandidateTally[];
+  totalWeight: number;
+  lockedCount: number;
+}
+
+export type WinnerDecision =
+  | { kind: 'winner'; placeId: string }
+  | { kind: 'tie'; placeIds: string[] }
+  | { kind: 'none' };
 
 export function sameWeight(a: number, b: number): boolean {
   return Math.abs(a - b) < tuning.voteWeightEpsilon;
 }
 
-// Raw count and weighted total per candidate, in the session's candidate order
-export function tally(candidates: TallyCandidate[], votes: TallyVote[]): CandidateTally[] {
-  return candidates.map((candidate) => {
-    const candidateId = String(candidate._id);
-    const candidateVotes = votes.filter((v) => String(v.candidateId) === candidateId);
-
-    return {
-      candidateId,
-      voteCount: candidateVotes.length,
-      totalWeight: candidateVotes.reduce((sum, v) => sum + v.weight, 0),
-      topVoterWeight: candidateVotes.reduce((max, v) => Math.max(max, v.weight), 0),
-    };
-  });
+function lockedWeight(vote: TallyVote): number {
+  return vote.locked ? (vote.weight ?? 0) : 0;
 }
 
-// Candidates still tied after comparing weighted totals, then top individual voter weight
-export function tiedLeaders(candidates: TallyCandidate[], votes: TallyVote[]): string[] {
-  const totals = tally(candidates, votes);
-  const best = Math.max(...totals.map((t) => t.totalWeight));
-  const leaders = totals.filter((t) => sameWeight(t.totalWeight, best));
-  const bestVoter = Math.max(...leaders.map((t) => t.topVoterWeight));
+// Per-candidate totals in the recommendation's candidate order
+export function tally(placeIds: string[], votes: TallyVote[]): Tally {
+  const totalWeight = votes.reduce((sum, v) => sum + lockedWeight(v), 0);
 
-  return leaders.filter((t) => sameWeight(t.topVoterWeight, bestVoter)).map((t) => t.candidateId);
+  return {
+    candidates: placeIds.map((placeId) => {
+      const mine = votes.filter((v) => v.placeId === placeId);
+      const weight = mine.reduce((sum, v) => sum + lockedWeight(v), 0);
+      return { placeId, voteCount: mine.length, weight, share: totalWeight > 0 ? weight / totalWeight : 0 };
+    }),
+    totalWeight,
+    lockedCount: votes.filter((v) => v.locked).length,
+  };
+}
+
+/**
+ * Winner = highest share of locked weight. Ties are broken by the highest single voter weight
+ * (favouring the member who compromised most); a tie that still remains is left to the organizer.
+ */
+export function decideWinner(placeIds: string[], votes: TallyVote[]): WinnerDecision {
+  const locked = votes.filter((v) => v.locked);
+  if (locked.length === 0) return { kind: 'none' };
+
+  const totals = tally(placeIds, locked).candidates.map((c) => ({
+    placeId: c.placeId,
+    weight: c.weight,
+    topVoterWeight: locked
+      .filter((v) => v.placeId === c.placeId)
+      .reduce((max, v) => Math.max(max, lockedWeight(v)), 0),
+  }));
+  const best = Math.max(...totals.map((t) => t.weight));
+  const leaders = totals.filter((t) => sameWeight(t.weight, best));
+  const bestVoter = Math.max(...leaders.map((t) => t.topVoterWeight));
+  const tied = leaders.filter((t) => sameWeight(t.topVoterWeight, bestVoter)).map((t) => t.placeId);
+
+  const [only] = tied;
+  return tied.length === 1 && only !== undefined ? { kind: 'winner', placeId: only } : { kind: 'tie', placeIds: tied };
 }

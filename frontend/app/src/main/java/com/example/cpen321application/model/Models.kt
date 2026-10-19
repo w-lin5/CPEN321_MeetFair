@@ -82,14 +82,16 @@ data class Meetup(
     val scheduledAt: String,
     val status: MeetupStatus,
     val participants: List<Participant>,
+    // Set once the organizer finalized the vote
+    val winner: PlaceCandidate? = null,
 )
 
-// One group on the profile, with the user's accumulated fairness debt there (minutes; negative = travelled less)
+// One group on the profile, with the user's Fair Credit there (seconds; negative = travelled less than average)
 data class ProfileGroup(
     val groupId: String,
     val name: String,
     val role: GroupRole,
-    val fairnessDebt: Double,
+    val fairCredit: Long,
 )
 
 // displayName is already resolved: the custom name if set, otherwise the Google name
@@ -113,31 +115,29 @@ enum class CommuteSource {
     }
 }
 
+// One ledger row: a member's Fair Credit change for one settled meetup (all durations in seconds)
 data class FairnessEntry(
+    val userId: String,
     val meetupId: String,
-    val commuteMinutes: Double,
-    val groupAverageMinutes: Double,
-    val extraMinutes: Double,
+    val actualSeconds: Long,
+    val normalizedBurden: Long,
+    val expectedBurden: Long,
+    val delta: Long,
     val source: CommuteSource,
     val recordedAt: String,
 )
 
-data class FairnessHistory(val groupId: String, val fairnessDebt: Double, val history: List<FairnessEntry>)
+data class MemberCredit(val userId: String, val name: String?, val balance: Long)
 
-enum class VotingStatus {
-    OPEN,
-    CLOSED,
-    ;
+// GET /groups/:id/fairness: every member's balance and the group's ledger, newest first
+data class GroupFairness(val groupId: String, val members: List<MemberCredit>, val ledger: List<FairnessEntry>) {
+    fun balanceOf(userId: String?): Long = members.firstOrNull { it.userId == userId }?.balance ?: 0
 
-    companion object {
-        // The backend sends lowercase "open" / "closed"
-        fun fromWire(value: String?): VotingStatus = if (value == "closed") CLOSED else OPEN
-    }
+    fun entriesFor(userId: String?): List<FairnessEntry> = ledger.filter { it.userId == userId }
 }
 
-// One place the group can vote for; [id] is what votes refer to, [placeId] is the Google Places id
-data class Candidate(
-    val id: String,
+// One recommended place; votes refer to it by [placeId] (its Google Places id)
+data class PlaceCandidate(
     val placeId: String,
     val name: String,
     val address: String,
@@ -145,52 +145,37 @@ data class Candidate(
     val lng: Double,
 )
 
-// myCandidateId is the caller's current vote (null until they vote)
-data class VotingSession(
-    val id: String,
-    val meetupId: String,
-    val candidates: List<Candidate>,
-    val createdBy: String,
-    val status: VotingStatus,
-    val winnerCandidateId: String?,
-    val myCandidateId: String?,
-)
+data class Recommendation(val meetupId: String, val candidates: List<PlaceCandidate>)
 
-data class Vote(
-    val id: String,
-    val sessionId: String,
-    val userId: String,
-    val candidateId: String,
-    val weight: Double,
-)
+// The caller's vote; [weight] is only set once it is locked
+data class MyVote(val placeId: String, val locked: Boolean, val weight: Double?)
 
-data class CandidateVoteTotal(
-    val candidateId: String,
-    val voteCount: Int,
-    val totalWeight: Double,
-)
+// voteCount counts every current pick; weight and share only count locked votes
+data class CandidateTally(val placeId: String, val voteCount: Int, val weight: Double, val share: Double)
 
 // Weights are floating point; totals closer than this are treated as equal
 private const val WEIGHT_EPSILON = 1e-9
 
-data class VotingResults(
-    val sessionId: String,
-    val status: VotingStatus,
-    val winnerCandidateId: String?,
-    val voterCount: Int,
-    val eligibleVoterCount: Int,
-    val totals: List<CandidateVoteTotal>,
+data class VoteTally(
+    val meetupId: String,
+    val candidates: List<CandidateTally>,
+    val totalWeight: Double,
+    val lockedCount: Int,
+    val participantCount: Int,
 ) {
-    val everyoneVoted: Boolean get() = voterCount >= eligibleVoterCount
+    val everyoneLocked: Boolean get() = lockedCount >= participantCount
 
-    fun totalFor(candidateId: String): CandidateVoteTotal? = totals.firstOrNull { it.candidateId == candidateId }
+    fun totalFor(placeId: String): CandidateTally? = candidates.firstOrNull { it.placeId == placeId }
 
-    /** Candidates sharing the highest weighted total; all of them when nobody has voted. */
+    /** Candidates sharing the highest locked weight; all of them while nothing is locked. */
     fun leaders(): List<String> {
-        val best = totals.maxOfOrNull { it.totalWeight } ?: return emptyList()
-        return totals.filter { best - it.totalWeight < WEIGHT_EPSILON }.map { it.candidateId }
+        val best = candidates.maxOfOrNull { it.weight } ?: return emptyList()
+        return candidates.filter { best - it.weight < WEIGHT_EPSILON }.map { it.placeId }
     }
 }
+
+// GET /meetups/:id/votes: the shared tally plus the caller's own vote (null until they vote)
+data class VotesSnapshot(val tally: VoteTally, val myVote: MyVote?)
 
 // A meetup event created in the caller's own Google Calendar; htmlLink opens it in Google Calendar
 data class CalendarEventResult(val eventId: String, val htmlLink: String?)

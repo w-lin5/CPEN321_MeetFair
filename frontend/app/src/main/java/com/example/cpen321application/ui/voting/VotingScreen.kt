@@ -28,13 +28,15 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.cpen321application.AppContainer
 import com.example.cpen321application.data.ApiResult
+import com.example.cpen321application.data.MeetupEvent
+import com.example.cpen321application.data.MeetupRepository
 import com.example.cpen321application.data.RealtimeClient
-import com.example.cpen321application.data.VotingEvent
 import com.example.cpen321application.data.VotingRepository
-import com.example.cpen321application.model.Candidate
-import com.example.cpen321application.model.VotingResults
-import com.example.cpen321application.model.VotingSession
-import com.example.cpen321application.model.VotingStatus
+import com.example.cpen321application.model.Meetup
+import com.example.cpen321application.model.MeetupStatus
+import com.example.cpen321application.model.MyVote
+import com.example.cpen321application.model.PlaceCandidate
+import com.example.cpen321application.model.VoteTally
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.UiState
@@ -50,25 +52,31 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private const val HTTP_CONFLICT = 409
+private const val PERCENT = 100
 
-/** Everything the voting screen renders once the session has loaded. */
+/** Everything the voting screen renders once the meetup and its candidates have loaded. */
 data class VotingState(
-    val session: VotingSession,
-    val results: VotingResults? = null,
+    val meetup: Meetup,
+    val candidates: List<PlaceCandidate>,
+    val tally: VoteTally? = null,
+    val myVote: MyVote? = null,
     // Candidate whose vote request is in flight; voting buttons are disabled meanwhile
-    val pendingCandidateId: String? = null,
-    val closing: Boolean = false,
+    val pendingPlaceId: String? = null,
+    val locking: Boolean = false,
+    val finalizing: Boolean = false,
     // True while the Socket.IO room is joined; false falls back to manual refresh
     val live: Boolean = false,
     val error: String? = null,
-    // Non-empty when the server refused to close because of a tie or zero votes; the organizer picks from these
+    // Non-empty when the server refused to finalize because of a tie or no locked votes; the organizer picks
     val manualPickOptions: List<String> = emptyList(),
 ) {
-    val isOpen: Boolean get() = session.status == VotingStatus.OPEN
+    val isOpen: Boolean get() = meetup.status == MeetupStatus.VOTING
+    val locked: Boolean get() = myVote?.locked == true
 }
 
 class VotingViewModel(
     private val voting: VotingRepository,
+    private val meetups: MeetupRepository,
     private val realtime: RealtimeClient,
     private val meetupId: String,
 ) : ViewModel() {
@@ -80,65 +88,87 @@ class VotingViewModel(
     fun load() {
         viewModelScope.launch {
             _state.value = UiState.Loading
-            when (val result = voting.getSessionForMeetup(meetupId)) {
-                is ApiResult.Failure -> _state.value = UiState.Error(result.error.message)
-                is ApiResult.Success -> {
-                    _state.value = UiState.Success(VotingState(result.data))
-                    refreshResults()
-                    subscribe(result.data.id)
-                }
+            val meetup = meetups.get(meetupId)
+            val recommendation = voting.recommendations(meetupId)
+            _state.value = when {
+                meetup is ApiResult.Failure -> UiState.Error(meetup.error.message)
+                recommendation is ApiResult.Failure -> UiState.Error(recommendation.error.message)
+                meetup is ApiResult.Success && recommendation is ApiResult.Success ->
+                    UiState.Success(VotingState(meetup.data, recommendation.data.candidates))
+                else -> UiState.Error("Could not load voting")
+            }
+            if (_state.value is UiState.Success) {
+                refreshVotes()
+                subscribe()
             }
         }
     }
 
-    fun refreshResults() {
-        val sessionId = current()?.session?.id ?: return
+    fun refreshVotes() {
+        if (current() == null) return
         viewModelScope.launch {
-            when (val result = voting.getResults(sessionId)) {
-                is ApiResult.Success -> edit { it.copy(results = result.data) }
+            when (val result = voting.votes(meetupId)) {
+                is ApiResult.Success -> edit { it.copy(tally = result.data.tally, myVote = result.data.myVote) }
                 is ApiResult.Failure -> edit { it.copy(error = result.error.message) }
             }
         }
     }
 
-    fun vote(candidateId: String) {
+    fun vote(placeId: String) {
         val s = current() ?: return
-        if (!s.isOpen || s.pendingCandidateId != null || s.session.myCandidateId == candidateId) return
+        if (!s.isOpen || s.locked || s.pendingPlaceId != null || s.myVote?.placeId == placeId) return
 
-        edit { it.copy(pendingCandidateId = candidateId, error = null) }
+        edit { it.copy(pendingPlaceId = placeId, error = null) }
         viewModelScope.launch {
-            when (val result = voting.submitVote(s.session.id, candidateId)) {
+            when (val result = voting.vote(meetupId, placeId)) {
                 is ApiResult.Success -> {
-                    edit { it.copy(pendingCandidateId = null, session = it.session.copy(myCandidateId = candidateId)) }
-                    // While live, the broadcast brings the new totals; otherwise fetch them
-                    if (current()?.live != true) refreshResults()
+                    edit { it.copy(pendingPlaceId = null, myVote = result.data) }
+                    // While live, the broadcast brings the new tally; otherwise fetch it
+                    if (current()?.live != true) refreshVotes()
                 }
                 is ApiResult.Failure -> {
-                    edit { it.copy(pendingCandidateId = null, error = result.error.message) }
-                    // 409 means someone closed voting meanwhile; reload to show the final state
-                    if (result.error.httpCode == HTTP_CONFLICT) reloadSession()
+                    edit { it.copy(pendingPlaceId = null, error = result.error.message) }
+                    // 409 means the vote got locked or voting ended meanwhile; reload to show the real state
+                    if (result.error.httpCode == HTTP_CONFLICT) reloadMeetup()
                 }
             }
         }
     }
 
-    /** [winnerCandidateId] is only passed after the server asked for a manual pick. */
-    fun close(winnerCandidateId: String? = null) {
+    fun lock() {
         val s = current() ?: return
-        if (!s.isOpen || s.closing) return
+        if (!s.isOpen || s.locked || s.locking || s.myVote == null) return
 
-        edit { it.copy(closing = true, error = null) }
+        edit { it.copy(locking = true, error = null) }
         viewModelScope.launch {
-            when (val result = voting.closeSession(s.session.id, winnerCandidateId)) {
+            when (val result = voting.lock(meetupId)) {
                 is ApiResult.Success -> {
-                    edit { it.copy(closing = false, manualPickOptions = emptyList(), session = result.data) }
-                    refreshResults()
+                    edit { it.copy(locking = false, myVote = result.data) }
+                    if (current()?.live != true) refreshVotes()
+                }
+                is ApiResult.Failure -> edit { it.copy(locking = false, error = result.error.message) }
+            }
+        }
+    }
+
+    /** [placeId] is only passed after the server asked for a manual pick. */
+    fun finalize(placeId: String? = null) {
+        val s = current() ?: return
+        if (!s.isOpen || s.finalizing) return
+
+        edit { it.copy(finalizing = true, error = null) }
+        viewModelScope.launch {
+            when (val result = voting.finalize(meetupId, placeId)) {
+                is ApiResult.Success -> {
+                    edit { it.copy(finalizing = false, manualPickOptions = emptyList(), meetup = result.data) }
+                    refreshVotes()
                 }
                 is ApiResult.Failure -> edit {
+                    val conflict = result.error.httpCode == HTTP_CONFLICT
                     it.copy(
-                        closing = false,
+                        finalizing = false,
                         error = result.error.message,
-                        manualPickOptions = if (result.error.httpCode == HTTP_CONFLICT) pickOptions(it) else emptyList(),
+                        manualPickOptions = if (conflict) pickOptions(it) else emptyList(),
                     )
                 }
             }
@@ -147,20 +177,23 @@ class VotingViewModel(
 
     fun dismissManualPick() = edit { it.copy(manualPickOptions = emptyList()) }
 
-    private fun reloadSession() {
-        val sessionId = current()?.session?.id ?: return
+    private fun reloadMeetup() {
         viewModelScope.launch {
-            val result = voting.getSession(sessionId)
-            if (result is ApiResult.Success) edit { it.copy(session = result.data) }
-            refreshResults()
+            val result = meetups.get(meetupId)
+            if (result is ApiResult.Success) edit { it.copy(meetup = result.data) }
+            refreshVotes()
         }
     }
 
     // Restarted on every load so a retry after an error reconnects
-    private fun subscribe(sessionId: String) {
+    private fun subscribe() {
         liveJob?.cancel()
         liveJob = viewModelScope.launch {
-            realtime.votingEvents(sessionId).collect { event -> edit { applyEvent(it, event) } }
+            realtime.meetupEvents(meetupId).collect { event ->
+                edit { applyEvent(it, event) }
+                // The tally may have changed before the room was joined
+                if (event is MeetupEvent.Joined) refreshVotes()
+            }
         }
     }
 
@@ -172,34 +205,31 @@ class VotingViewModel(
 
     companion object {
         fun factory(c: AppContainer, meetupId: String) = viewModelFactory {
-            initializer { VotingViewModel(c.votingRepository, c.realtimeClient, meetupId) }
+            initializer { VotingViewModel(c.votingRepository, c.meetupRepository, c.realtimeClient, meetupId) }
         }
     }
 }
 
 /** Pure state transition for one live event; kept outside the ViewModel so it is unit-testable. */
-internal fun applyEvent(state: VotingState, event: VotingEvent): VotingState = when (event) {
-    is VotingEvent.Results -> state.copy(results = event.results, live = true)
-    // Keep the caller's own vote: the broadcast session is the same for every member
-    is VotingEvent.Closed -> state.copy(
-        session = event.session.copy(myCandidateId = state.session.myCandidateId),
-        results = event.results,
+internal fun applyEvent(state: VotingState, event: MeetupEvent): VotingState = when (event) {
+    MeetupEvent.Joined -> state.copy(live = true)
+    is MeetupEvent.VoteUpdated -> state.copy(tally = event.tally, live = true)
+    is MeetupEvent.StatusChanged -> state.copy(
+        meetup = state.meetup.copy(status = event.status, winner = event.winner ?: state.meetup.winner),
         manualPickOptions = emptyList(),
     )
-    is VotingEvent.Unavailable -> state.copy(live = false)
+    // The candidates are already loaded once this screen is open
+    MeetupEvent.RecommendationsReady -> state
+    is MeetupEvent.Unavailable -> state.copy(live = false)
 }
 
-/** Candidates the organizer may pick: everyone if nobody voted, otherwise those tied for first. */
+/** Candidates the organizer may pick: everyone if nothing is locked, otherwise those tied for first. */
 internal fun pickOptions(state: VotingState): List<String> {
-    val results = state.results
-    return if (results == null || results.voterCount == 0) {
-        state.session.candidates.map { it.id }
-    } else {
-        results.leaders()
-    }
+    val tally = state.tally
+    return if (tally == null || tally.lockedCount == 0) state.candidates.map { it.placeId } else tally.leaders()
 }
 
-/** Live weighted vote on the meetup's candidate places; the organizer closes it to finalize the meetup. */
+/** Live weighted vote on the meetup's candidate places; the organizer finalizes it. */
 @Composable
 fun VotingScreen(container: AppContainer, meetupId: String, onBack: () -> Unit) {
     val vm: VotingViewModel = screenViewModel(VotingViewModel.factory(container, meetupId))
@@ -209,42 +239,48 @@ fun VotingScreen(container: AppContainer, meetupId: String, onBack: () -> Unit) 
 
     ScreenColumn("Vote on a spot", onBack) {
         UiStateContent(state, onRetry = vm::load, emptyMessage = "") { voting ->
-            VotingContent(voting, isOrganizer = voting.session.createdBy == userId, vm)
+            VotingContent(voting, userId, vm)
         }
     }
 }
 
 @Composable
-private fun VotingContent(state: VotingState, isOrganizer: Boolean, vm: VotingViewModel) {
+private fun VotingContent(state: VotingState, userId: String?, vm: VotingViewModel) {
+    val isOrganizer = state.meetup.organizerId == userId
+    val isParticipant = state.meetup.participants.any { it.userId == userId }
+
     Column(
         modifier = Modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(Dimens.Spacing),
     ) {
-        VotingHeader(state, onRefresh = vm::refreshResults)
+        VotingHeader(state, onRefresh = vm::refreshVotes)
 
-        state.session.candidates.forEach { candidate ->
-            CandidateCard(candidate, state, onVote = { vm.vote(candidate.id) })
+        state.candidates.forEach { candidate ->
+            CandidateCard(candidate, state, canVote = isParticipant, onVote = { vm.vote(candidate.placeId) })
         }
+
+        if (isParticipant && state.isOpen) LockControls(state, onLock = vm::lock)
+        if (!isParticipant && state.isOpen) Text("Only members who entered their details can vote.")
 
         state.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag(TestTags.ERROR_TEXT))
         }
 
-        if (isOrganizer && state.isOpen) CloseVotingControls(state, vm)
+        if (isOrganizer && state.isOpen) FinalizeControls(state, vm)
     }
 }
 
 @Composable
 private fun VotingHeader(state: VotingState, onRefresh: () -> Unit) {
-    val results = state.results
+    val tally = state.tally
     Text(
         if (state.isOpen) "Voting is open" else "Voting is closed",
         style = MaterialTheme.typography.titleMedium,
         modifier = Modifier.testTag(TestTags.VOTING_STATUS_TEXT),
     )
-    if (results != null) {
+    if (tally != null) {
         Text(
-            "${results.voterCount} of ${results.eligibleVoterCount} member(s) have voted",
+            "${tally.lockedCount} of ${tally.participantCount} participant(s) have locked their vote",
             modifier = Modifier.testTag(TestTags.VOTER_COUNT_TEXT),
         )
     }
@@ -260,17 +296,18 @@ private fun VotingHeader(state: VotingState, onRefresh: () -> Unit) {
 }
 
 @Composable
-private fun CandidateCard(candidate: Candidate, state: VotingState, onVote: () -> Unit) {
-    val total = state.results?.totalFor(candidate.id)
-    val mine = state.session.myCandidateId == candidate.id
-    val winner = state.session.winnerCandidateId == candidate.id
+private fun CandidateCard(candidate: PlaceCandidate, state: VotingState, canVote: Boolean, onVote: () -> Unit) {
+    val total = state.tally?.totalFor(candidate.placeId)
+    val mine = state.myVote?.placeId == candidate.placeId
+    val winner = state.meetup.winner?.placeId == candidate.placeId
 
-    OutlinedCard(modifier = Modifier.fillMaxWidth().testTag(TestTags.candidateItem(candidate.id))) {
+    OutlinedCard(modifier = Modifier.fillMaxWidth().testTag(TestTags.candidateItem(candidate.placeId))) {
         Column(Modifier.padding(Dimens.ScreenPadding), verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
             Text(candidate.name, style = MaterialTheme.typography.titleMedium)
             if (candidate.address.isNotBlank()) Text(candidate.address)
             if (total != null) {
-                Text("Votes: ${total.voteCount} · Weighted: ${formatWeight(total.totalWeight)}")
+                val weight = "${formatWeight(total.weight)} (${formatShare(total.share)})"
+                Text("Picks: ${total.voteCount} · Locked weight: $weight")
             }
             if (winner) {
                 Text(
@@ -279,70 +316,85 @@ private fun CandidateCard(candidate: Candidate, state: VotingState, onVote: () -
                     modifier = Modifier.testTag(TestTags.WINNER_TEXT),
                 )
             }
-            if (state.isOpen) {
+            if (state.isOpen && canVote && !state.locked) {
                 Button(
                     onClick = onVote,
-                    enabled = !mine && state.pendingCandidateId == null,
-                    modifier = Modifier.testTag(TestTags.voteButton(candidate.id)),
-                ) {
-                    Text(
-                        when {
-                            mine -> "Your vote"
-                            state.pendingCandidateId == candidate.id -> "Voting…"
-                            state.session.myCandidateId != null -> "Change vote"
-                            else -> "Vote"
-                        },
-                    )
-                }
+                    enabled = !mine && state.pendingPlaceId == null,
+                    modifier = Modifier.testTag(TestTags.voteButton(candidate.placeId)),
+                ) { Text(voteLabel(state, candidate.placeId, mine)) }
             } else if (mine) {
-                Text("Your vote")
+                Text(if (state.locked) "Your locked vote" else "Your vote")
             }
         }
     }
 }
 
+private fun voteLabel(state: VotingState, placeId: String, mine: Boolean): String = when {
+    mine -> "Your vote"
+    state.pendingPlaceId == placeId -> "Voting…"
+    state.myVote != null -> "Change vote"
+    else -> "Vote"
+}
+
+// Locking makes the vote final and snapshots its Fair Credit weight; only locked votes count
 @Composable
-private fun CloseVotingControls(state: VotingState, vm: VotingViewModel) {
-    var confirmEarlyClose by rememberSaveable { mutableStateOf(false) }
+private fun LockControls(state: VotingState, onLock: () -> Unit) {
+    val weight = state.myVote?.weight
+    if (state.locked) {
+        val suffix = if (weight != null) " (weight ${formatWeight(weight)})" else ""
+        Text("Your vote is locked$suffix", modifier = Modifier.testTag(TestTags.VOTE_LOCKED_TEXT))
+    } else if (state.myVote != null) {
+        Button(
+            onClick = onLock,
+            enabled = !state.locking && state.pendingPlaceId == null,
+            modifier = Modifier.testTag(TestTags.LOCK_VOTE_BUTTON),
+        ) { Text(if (state.locking) "Locking…" else "Lock my vote") }
+        Text("Only locked votes count. You can still change your vote until you lock it.")
+    }
+}
+
+@Composable
+private fun FinalizeControls(state: VotingState, vm: VotingViewModel) {
+    var confirmEarly by rememberSaveable { mutableStateOf(false) }
 
     Button(
-        // Warn before force-closing while some members have not voted yet
-        onClick = { if (state.results?.everyoneVoted == false) confirmEarlyClose = true else vm.close() },
-        enabled = !state.closing,
-        modifier = Modifier.testTag(TestTags.CLOSE_VOTING_BUTTON),
-    ) { Text(if (state.closing) "Closing…" else "Close voting") }
+        // Warn before finalizing while some participants have not locked their vote yet
+        onClick = { if (state.tally?.everyoneLocked == false) confirmEarly = true else vm.finalize() },
+        enabled = !state.finalizing,
+        modifier = Modifier.testTag(TestTags.FINALIZE_BUTTON),
+    ) { Text(if (state.finalizing) "Finalizing…" else "Finalize meetup") }
 
-    if (confirmEarlyClose) {
+    if (confirmEarly) {
         AlertDialog(
-            onDismissRequest = { confirmEarlyClose = false },
-            title = { Text("Close voting early?") },
-            text = { Text("Not every member has voted yet. Close the poll anyway?") },
+            onDismissRequest = { confirmEarly = false },
+            title = { Text("Finalize early?") },
+            text = { Text("Not every participant has locked their vote, and unlocked votes do not count.") },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        confirmEarlyClose = false
-                        vm.close()
+                        confirmEarly = false
+                        vm.finalize()
                     },
-                    modifier = Modifier.testTag(TestTags.CONFIRM_CLOSE_BUTTON),
-                ) { Text("Close anyway") }
+                    modifier = Modifier.testTag(TestTags.CONFIRM_FINALIZE_BUTTON),
+                ) { Text("Finalize anyway") }
             },
-            dismissButton = { TextButton(onClick = { confirmEarlyClose = false }) { Text("Keep voting") } },
+            dismissButton = { TextButton(onClick = { confirmEarly = false }) { Text("Keep voting") } },
         )
     }
 
     if (state.manualPickOptions.isNotEmpty()) ManualPick(state, vm)
 }
 
-// Shown when the server could not decide (tie or zero votes): the organizer chooses the winner
+// Shown when the server could not decide (tie or no locked votes): the organizer chooses the winner
 @Composable
 private fun ManualPick(state: VotingState, vm: VotingViewModel) {
-    val options = state.session.candidates.filter { it.id in state.manualPickOptions }
+    val options = state.candidates.filter { it.placeId in state.manualPickOptions }
     Text("Pick the winner", style = MaterialTheme.typography.titleMedium)
     options.forEach { candidate ->
         OutlinedButton(
-            onClick = { vm.close(candidate.id) },
-            enabled = !state.closing,
-            modifier = Modifier.fillMaxWidth().testTag(TestTags.pickWinnerButton(candidate.id)),
+            onClick = { vm.finalize(candidate.placeId) },
+            enabled = !state.finalizing,
+            modifier = Modifier.fillMaxWidth().testTag(TestTags.pickWinnerButton(candidate.placeId)),
         ) { Text(candidate.name) }
     }
     TextButton(onClick = vm::dismissManualPick) { Text("Cancel") }
@@ -351,3 +403,5 @@ private fun ManualPick(state: VotingState, vm: VotingViewModel) {
 // Fair Credit weights may be fractional; show at most two decimals
 private fun formatWeight(weight: Double): String =
     if (weight % 1.0 == 0.0) weight.toLong().toString() else String.format(Locale.US, "%.2f", weight)
+
+private fun formatShare(share: Double): String = String.format(Locale.US, "%.0f%%", share * PERCENT)

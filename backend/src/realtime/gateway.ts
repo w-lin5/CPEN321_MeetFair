@@ -5,12 +5,12 @@ import { Server, type Socket } from 'socket.io';
 import { HttpError } from '../common/errors';
 import { parseInput } from '../common/middleware/validate';
 import { verifySessionToken } from '../common/session';
-import { votingSessionParams } from '../voting-fairness/schemas';
-import { votingService } from '../voting-fairness/voting.service';
-import { VOTING_EVENTS, votingRoom } from './events';
+import { meetupService } from '../users-groups/meetup.service';
+import { meetupParams } from '../users-groups/schemas';
+import { CLIENT_EVENTS, meetupRoom } from './events';
 import { setTransport } from './publisher';
 
-type Ack = (response: { ok: true; results: unknown } | { ok: false; error: string }) => void;
+type Ack = (response: { ok: true } | { ok: false; error: string }) => void;
 
 // Same token the REST API accepts, sent as { auth: { token } } or an Authorization: Bearer header
 function handshakeToken(socket: Socket): string | undefined {
@@ -38,25 +38,26 @@ function safeAck(ack: unknown): Ack {
   return typeof ack === 'function' ? (ack as Ack) : () => undefined;
 }
 
-// Joining is authorized like GET /voting-sessions/:id/votes and answers with the current results,
-// so a client never misses votes cast between its REST load and the join
+// Only members of the meetup's group may join its room. Clients reload over REST after the ack,
+// so nothing published between their first load and the join is missed
 async function handleJoin(socket: Socket, payload: unknown, ack: Ack): Promise<void> {
   try {
-    const { sessionId } = parseInput(votingSessionParams, payload);
-    const results = await votingService.getResults(sessionId, userIdOf(socket));
-    await socket.join(votingRoom(sessionId));
-    ack({ ok: true, results });
+    const { meetupId } = parseInput(meetupParams, payload);
+    await meetupService.getForMember(meetupId, userIdOf(socket));
+    await socket.join(meetupRoom(meetupId));
+    ack({ ok: true });
   } catch (err) {
     ack({ ok: false, error: errorMessage(err) });
   }
 }
 
-async function handleLeave(socket: Socket, payload: unknown): Promise<void> {
+async function handleLeave(socket: Socket, payload: unknown, ack: Ack): Promise<void> {
   try {
-    const { sessionId } = parseInput(votingSessionParams, payload);
-    await socket.leave(votingRoom(sessionId));
-  } catch {
-    // Leaving a room with a malformed id is a no-op
+    const { meetupId } = parseInput(meetupParams, payload);
+    await socket.leave(meetupRoom(meetupId));
+    ack({ ok: true });
+  } catch (err) {
+    ack({ ok: false, error: errorMessage(err) });
   }
 }
 
@@ -75,11 +76,11 @@ export function attachRealtime(httpServer: HttpServer): Server {
   });
 
   io.on('connection', (socket) => {
-    socket.on(VOTING_EVENTS.join, (payload: unknown, ack: unknown) => {
+    socket.on(CLIENT_EVENTS.meetupJoin, (payload: unknown, ack: unknown) => {
       void handleJoin(socket, payload, safeAck(ack));
     });
-    socket.on(VOTING_EVENTS.leave, (payload: unknown) => {
-      void handleLeave(socket, payload);
+    socket.on(CLIENT_EVENTS.meetupLeave, (payload: unknown, ack: unknown) => {
+      void handleLeave(socket, payload, safeAck(ack));
     });
   });
 

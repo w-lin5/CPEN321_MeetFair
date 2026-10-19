@@ -5,7 +5,7 @@ import com.example.cpen321application.model.GroupRole
 import com.example.cpen321application.ui.Route
 import com.example.cpen321application.ui.decodeRoute
 import com.example.cpen321application.ui.encode
-import com.example.cpen321application.ui.fairness.formatDebt
+import com.example.cpen321application.ui.fairness.formatCredit
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,8 +22,8 @@ class ProfileParsersTest {
                   "id": "u1", "email": "ada@example.com", "googleName": "Ada Lovelace",
                   "displayName": "Ada Lovelace", "hasCustomDisplayName": false, "photoUrl": null,
                   "groups": [
-                    { "groupId": "g1", "name": "Study Crew", "role": "ORGANIZER", "fairnessDebt": 12.5 },
-                    { "groupId": "g2", "name": "Climbing", "role": "MEMBER", "fairnessDebt": -3 }
+                    { "groupId": "g1", "name": "Study Crew", "role": "ORGANIZER", "fairCredit": 750 },
+                    { "groupId": "g2", "name": "Climbing", "role": "MEMBER", "fairCredit": -180 }
                   ]
                 }
                 """.trimIndent(),
@@ -34,34 +34,40 @@ class ProfileParsersTest {
         assertFalse(profile.hasCustomDisplayName)
         assertNull(profile.photoUrl)
         assertEquals(GroupRole.ORGANIZER, profile.groups[0].role)
-        assertEquals(12.5, profile.groups[0].fairnessDebt, 0.0)
-        assertEquals(-3.0, profile.groups[1].fairnessDebt, 0.0)
+        assertEquals(750L, profile.groups[0].fairCredit)
+        assertEquals(-180L, profile.groups[1].fairCredit)
     }
 
     @Test
-    fun parseFairnessHistory_readsEntries() {
-        val history = parseFairnessHistory(
+    fun parseGroupFairness_readsMembersAndLedger() {
+        val fairness = parseGroupFairness(
             JSONObject(
                 """
                 {
-                  "groupId": "g1", "fairnessDebt": 10,
-                  "history": [
-                    { "id": "e1", "meetupId": "m2", "commuteMinutes": 15, "groupAverageMinutes": 20,
-                      "extraMinutes": -5, "source": "ESTIMATED", "createdAt": "2026-10-20T18:00:00.000Z" },
-                    { "id": "e2", "meetupId": "m1", "commuteMinutes": 40, "groupAverageMinutes": 25,
-                      "extraMinutes": 15, "source": "TRACKED" }
+                  "groupId": "g1",
+                  "members": [
+                    { "userId": "u1", "name": "Ada", "balance": 600 },
+                    { "userId": "u2", "name": null, "balance": -600 }
+                  ],
+                  "ledger": [
+                    { "id": "e1", "userId": "u1", "meetupId": "m2", "actualSeconds": 900, "normalizedBurden": 900,
+                      "expectedBurden": 1200, "delta": -300, "source": "ESTIMATED", "createdAt": "2026-10-20T18:00:00.000Z" },
+                    { "id": "e2", "userId": "u2", "meetupId": "m2", "actualSeconds": 1500, "normalizedBurden": 1500,
+                      "expectedBurden": 1200, "delta": 300, "source": "TRACKED" }
                   ]
                 }
                 """.trimIndent(),
             ),
         )
 
-        assertEquals(10.0, history.fairnessDebt, 0.0)
-        assertEquals(listOf("m2", "m1"), history.history.map { it.meetupId })
-        assertEquals(CommuteSource.ESTIMATED, history.history[0].source)
-        assertEquals("2026-10-20T18:00:00.000Z", history.history[0].recordedAt)
-        // A missing timestamp degrades to blank rather than failing the whole history
-        assertEquals("", history.history[1].recordedAt)
+        assertEquals(600L, fairness.balanceOf("u1"))
+        assertEquals(0L, fairness.balanceOf("nobody"))
+        assertNull(fairness.members[1].name)
+        assertEquals(listOf(-300L), fairness.entriesFor("u1").map { it.delta })
+        assertEquals(CommuteSource.ESTIMATED, fairness.ledger[0].source)
+        assertEquals(-300L, fairness.ledger[0].delta)
+        // A missing timestamp degrades to blank rather than failing the whole ledger
+        assertEquals("", fairness.ledger[1].recordedAt)
     }
 
     @Test
@@ -71,9 +77,9 @@ class ProfileParsersTest {
     }
 
     @Test
-    fun formatDebt_showsSign() {
-        assertEquals("+12 min", formatDebt(12.4))
-        assertEquals("-5 min", formatDebt(-5.0))
-        assertEquals("+0 min", formatDebt(0.0))
+    fun formatCredit_showsSignedMinutes() {
+        assertEquals("+12 min", formatCredit(744))
+        assertEquals("-5 min", formatCredit(-300))
+        assertEquals("+0 min", formatCredit(0))
     }
 }

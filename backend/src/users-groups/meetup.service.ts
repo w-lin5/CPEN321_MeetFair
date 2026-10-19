@@ -1,7 +1,7 @@
 import { NotFound, Conflict } from '../common/errors';
 import type { MeetupStatus } from '../common/types';
 import { groupService } from './group.service';
-import { MeetupModel } from './models';
+import { MeetupModel, type MeetupWinner } from './models';
 import type { ParticipationInput } from './schemas';
 
 // Create a meetup in SETUP (enum); the caller must be a group member and becomes its organizer
@@ -40,6 +40,15 @@ async function getForMember(meetupId: string, userId: string) {
 async function transitionStatus(meetupId: string, from: MeetupStatus, to: MeetupStatus): Promise<boolean> {
   const moved = await MeetupModel.updateOne({ _id: meetupId, status: from }, { $set: { status: to } });
   return moved.modifiedCount > 0;
+}
+
+// VOTING -> FINALIZED with the winning place, atomically; null if the meetup was no longer in VOTING
+async function finalize(meetupId: string, winner: MeetupWinner) {
+  return MeetupModel.findOneAndUpdate(
+    { _id: meetupId, status: 'VOTING' },
+    { $set: { status: 'FINALIZED', winner, finalizedAt: new Date() } },
+    { returnDocument: 'after' },
+  );
 }
 
 // Remember the Google Calendar event created for one participant; returns false if one was already recorded
@@ -81,5 +90,6 @@ export const meetupService = {
   getForMember,
   submitParticipation,
   transitionStatus,
+  finalize,
   recordCalendarEvent,
 };
