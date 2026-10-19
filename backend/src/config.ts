@@ -14,7 +14,8 @@ if (Number.isNaN(port) || port < 1 || port > 65535) {
   throw new Error(`Invalid PORT: ${rawPort}`);
 }
 
-// TODO: change test-secret and test-client-id, not sure what to put rn as default to not expose anythnig
+// The test defaults are placeholders, not secrets: they apply only under NODE_ENV=test (Jest),
+// and every other environment must set each variable or the server refuses to start
 export const env = {
   port,
   mongoUri: requireValue('MONGODB_URI', process.env.MONGODB_URI, 'mongodb://localhost:27017/test'),
