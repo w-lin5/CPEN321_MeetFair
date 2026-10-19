@@ -153,7 +153,7 @@
 
 **Description**: The Organizer closes the voting process, allowing the system to determine the winning location, update each member's fairness debt based on their finalized commute, and export the event to the members' calendars.
 
-**Primary actor(s)**: Organizer, Google Calendar API 
+**Primary actor(s)**: Organizer (User)
     
 **Main success scenario**:
 1. The Organizer selects the option to close voting and finalize the meetup.
