@@ -4,7 +4,7 @@
 
 | **Change Date**   | **Modified Sections** | **Rationale** |
 | ----------------- | --------------------- | ------------- |
-| _Nothing to show_ |
+| 2026-10-19 | Section 3: Tests of Non-Functional Requirements | Replaced outdated example tests with existing Security and Access Control test coverage and stated its verification limits.
 
 ---
 
@@ -113,22 +113,17 @@ _(Placeholder for Jest coverage screenshot without mocks)_
 
 ### 3.1. Test Locations in Git
 
-| **Non-Functional Requirement**  | **Location in Git**                              |
-| ------------------------------- | ------------------------------------------------ |
-| **Performance (Response Time)** | [`backend/tests/nfr/response_time.test.js`](#) |
-| **Chat Data Security**          | [`backend/tests/nfr/chat_security.test.js`](#) |
+| **Non-Functional Requirement** | **Existing Test Locations** | **Current Coverage** |
+| ------------------------------ | --------------------------- | -------------------- |
+| [Security and Access Control](Requirements_and_Design.md#nfr1) | `backend/tests/no-mock/auth.test.ts`; `backend/tests/no-mock/groups.test.ts`; `backend/tests/no-mock/meetups.test.ts`; `backend/tests/no-mock/voting.test.ts`; `backend/tests/no-mock/realtime.test.ts`; `backend/tests/no-mock/calendar.test.ts`; `backend/tests/mock/index.test.ts` | Tests session-token rejection, membership and organizer restrictions, Socket.IO room access, and server HTTPS startup logic. Does not test the deployed TLS configuration or prove that access tokens are absent from all stored data. |
 
 ### 3.2. Test Verification and Logs
 
-- **Performance (Response Time)**
+- **Security and Access Control**
 
-  - **Verification:** This test suite simulates multiple concurrent API calls using Jest along with a load-testing utility to mimic real-world user behavior. The focus is on key endpoints such as user login and study group search to ensure that each call completes within the target response time of 2 seconds under normal load. The test logs capture metrics such as average response time, maximum response time, and error rates. These logs are then analyzed to identify any performance bottlenecks, ensuring the system can handle expected traffic without degradation in user experience.
-  - **Log Output**
-    ```
-    [Placeholder for response time test logs]
-    ```
+  - **Verification:** The existing backend tests check that requests with missing or invalid session tokens are rejected; users outside a group cannot access its protected meetup data; non-participants cannot vote; and only the meetup organizer can finalize voting. Realtime tests check that an invalid token cannot establish a socket connection and that a user outside the group cannot join its meetup room. Calendar API tests check authentication and membership restrictions. A mocked startup test checks that the server uses HTTPS when both certificate files are present and refuses to start when only one is present.
 
-- **Chat Data Security**
+- **Placeholder**
   - **Verification:** ...
   - **Log Output**
     ```
