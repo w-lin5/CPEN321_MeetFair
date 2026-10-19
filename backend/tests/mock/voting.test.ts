@@ -1,6 +1,7 @@
 import request from 'supertest';
 
 import { createApp } from '../../src/app';
+import { NotFound } from '../../src/common/errors';
 import { recommendationService } from '../../src/recommendation/recommendation.service';
 import { MeetupModel } from '../../src/users-groups/models';
 import { fairCreditService } from '../../src/voting-fairness/fair-credit.service';
@@ -68,6 +69,41 @@ describe('Mocked: POST /api/meetups/:meetupId/vote/lock', () => {
     expect(res.status).toBe(200);
     expect(res.body.weight).toBe(2.5);
     expect(credit).toHaveBeenCalledWith(ada.id, String(meetup.groupId));
+  });
+});
+
+// Interface GET /api/meetups/:meetupId/votes
+describe('Mocked: GET /api/meetups/:meetupId/votes', () => {
+  // Input: member of a meetup in VOTING
+  // Expected status code: 500
+  // Expected output: { error: "Internal Server Error" } (no internals leaked)
+  // Mocked behavior: VoteModel.find throws while the tally is built
+  test('Database failure while loading the tally', async () => {
+    quietConsole();
+    const { ada, meetup } = await setup();
+    jest.spyOn(VoteModel, 'find').mockImplementation(() => {
+      throw new Error('db down');
+    });
+
+    const res = await app().get(`/api/meetups/${meetup.id}/votes`).set('Authorization', bearer(ada.id));
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Internal Server Error' });
+  });
+
+  // Input: member of a meetup in VOTING
+  // Expected status code: 404
+  // Expected output: { error: "No recommendations for this meetup yet" }
+  // Mocked behavior: recommendationService.getByMeetupId rejects with NotFound (candidates missing)
+  test('Candidates cannot be loaded', async () => {
+    const { ada, meetup } = await setup();
+    jest.spyOn(recommendationService, 'getByMeetupId')
+      .mockRejectedValue(new NotFound('No recommendations for this meetup yet'));
+
+    const res = await app().get(`/api/meetups/${meetup.id}/votes`).set('Authorization', bearer(ada.id));
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'No recommendations for this meetup yet' });
   });
 });
 

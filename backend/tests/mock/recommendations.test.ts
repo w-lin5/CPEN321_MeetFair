@@ -60,3 +60,24 @@ describe('Mocked: POST /api/meetups/:meetupId/recommendations', () => {
     expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
   });
 });
+
+// Interface GET /api/meetups/:meetupId/recommendations
+describe('Mocked: GET /api/meetups/:meetupId/recommendations', () => {
+  // Input: member of a meetup whose recommendations were generated
+  // Expected status code: 500
+  // Expected output: { error: "Internal Server Error" } (no internals leaked)
+  // Mocked behavior: RecommendationModel.findOne rejects
+  test('Database failure while loading recommendations', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { organizer, meetup } = await setup();
+    expect((await generate(meetup.id, organizer.id)).status).toBe(201);
+    jest.spyOn(RecommendationModel, 'findOne').mockRejectedValue(new Error('db down') as never);
+
+    const res = await request(createApp())
+      .get(`/api/meetups/${meetup.id}/recommendations`)
+      .set('Authorization', bearer(organizer.id));
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Internal Server Error' });
+  });
+});
