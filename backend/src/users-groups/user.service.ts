@@ -31,4 +31,20 @@ async function findByIds(ids: Types.ObjectId[]) {
   return UserModel.find({ _id: { $in: ids } });
 }
 
-export const userService = { upsertFromGoogle, signInWithGoogle, getById, findByIds };
+// The name other members should see: the user's own choice, else their Google name
+function displayNameOf(user: { name: string; displayName?: string | null | undefined }): string {
+  return user.displayName ?? user.name;
+}
+
+// null clears the custom name so the Google name is shown again
+async function updateDisplayName(userId: string, displayName: string | null) {
+  const updated = await UserModel.findByIdAndUpdate(
+    userId,
+    { $set: { displayName } },
+    { returnDocument: 'after' },
+  );
+  if (!updated) throw new NotFound('User not found');
+  return updated;
+}
+
+export const userService = { upsertFromGoogle, signInWithGoogle, getById, findByIds, displayNameOf, updateDisplayName };
