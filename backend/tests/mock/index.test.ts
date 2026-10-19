@@ -9,10 +9,18 @@ interface FakeIo {
   close: jest.Mock<Promise<void>, [Callback]>;
 }
 
+// Which of backend/certs/fullchain.pem and privkey.pem exist
+interface CertFiles {
+  cert: boolean;
+  key: boolean;
+}
+
 interface Harness {
   connectDb: jest.Mock<Promise<void>, [string]>;
   disconnectDb: jest.Mock<Promise<void>, []>;
   listen: jest.Mock<FakeServer, [number, Callback]>;
+  createHttpsServer: jest.Mock<{ listen: Harness['listen'] }, [unknown, unknown]>;
+  app: { listen: Harness['listen'] };
   server: FakeServer;
   io: FakeIo;
   attachRealtime: jest.Mock<FakeIo, [FakeServer]>;
@@ -30,8 +38,11 @@ async function flush(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
-// Load index.ts fresh with its collaborators replaced by fakes
-function boot(overrides: Partial<Pick<Harness, 'connectDb' | 'disconnectDb'>> = {}): Harness {
+// Load index.ts fresh with its collaborators replaced by fakes; no certificate files unless `certs` says so
+function boot(
+  overrides: Partial<Pick<Harness, 'connectDb' | 'disconnectDb'>> = {},
+  certs: CertFiles = { cert: false, key: false },
+): Harness {
   // Fake server/listen invoke their callbacks synchronously so no real port is opened
   const handlers = new Map<string, Callback>();
   const server: FakeServer = { close: jest.fn((cb: Callback) => { cb(); }) };
@@ -47,6 +58,11 @@ function boot(overrides: Partial<Pick<Harness, 'connectDb' | 'disconnectDb'>> = 
     }),
   };
   const attachRealtime = jest.fn((_server: FakeServer): FakeIo => io);
+  const app = { listen };
+  // The HTTPS server listens through the same fake, so both protocols hand back `server`
+  const createHttpsServer = jest.fn<{ listen: typeof listen }, [unknown, unknown]>(() => ({ listen }));
+  const fileExists = (file: string) => (file.endsWith('fullchain.pem') ? certs.cert : certs.key);
+  const readPem = (file: string) => Buffer.from(`pem of ${file.endsWith('fullchain.pem') ? 'cert' : 'key'}`);
   const connectDb = overrides.connectDb ?? jest.fn().mockResolvedValue(undefined);
   const disconnectDb = overrides.disconnectDb ?? jest.fn().mockResolvedValue(undefined);
 
@@ -61,18 +77,35 @@ function boot(overrides: Partial<Pick<Harness, 'connectDb' | 'disconnectDb'>> = 
 
   // isolateModules gives index.ts a fresh module registry, so its top-level bootstrap re-runs on every call
   jest.isolateModules(() => {
-    jest.doMock('../../src/app', () => ({ createApp: () => ({ listen }) }));
+    jest.doMock('node:fs', () => ({ existsSync: fileExists, readFileSync: readPem }));
+    jest.doMock('node:https', () => ({ createServer: createHttpsServer }));
+    jest.doMock('../../src/app', () => ({ createApp: () => app }));
     jest.doMock('../../src/config', () => ({ env: { port: PORT, mongoUri: URI } }));
     jest.doMock('../../src/db', () => ({ connectDb, disconnectDb }));
     jest.doMock('../../src/realtime/gateway', () => ({ attachRealtime }));
     require('../../src/index');
   });
 
-  return { connectDb, disconnectDb, listen, server, io, attachRealtime, handlers, exit, consoleLog, consoleError };
+  return {
+    connectDb,
+    disconnectDb,
+    listen,
+    createHttpsServer,
+    app,
+    server,
+    io,
+    attachRealtime,
+    handlers,
+    exit,
+    consoleLog,
+    consoleError,
+  };
 }
 
 afterEach(() => {
   jest.restoreAllMocks();
+  jest.dontMock('node:fs');
+  jest.dontMock('node:https');
   jest.dontMock('../../src/app');
   jest.dontMock('../../src/config');
   jest.dontMock('../../src/db');
@@ -81,8 +114,8 @@ afterEach(() => {
 
 // Interface: server bootstrap (src/index.ts)
 describe('Mocked: index bootstrap', () => {
-  // Input: normal startup
-  // Expected behavior: DB connected with the configured URI, app listens on the configured port,
+  // Input: normal startup, no certificate files in backend/certs/
+  // Expected behavior: DB connected with the configured URI, app listens over plain HTTP on the configured port,
   //                    Socket.IO is attached to the HTTP server, startup is logged,
   //                    SIGINT and SIGTERM handlers are registered
   test('Starts the server and registers shutdown handlers', async () => {
@@ -91,10 +124,46 @@ describe('Mocked: index bootstrap', () => {
 
     expect(h.connectDb).toHaveBeenCalledWith(URI);
     expect(h.listen).toHaveBeenCalledWith(PORT, expect.any(Function));
+    expect(h.createHttpsServer).not.toHaveBeenCalled();
     expect(h.attachRealtime).toHaveBeenCalledWith(h.server);
-    expect(h.consoleLog).toHaveBeenCalledWith(`Server listening on port ${PORT}`);
+    expect(h.consoleLog).toHaveBeenCalledWith(`Server listening on port ${PORT} (http)`);
     expect([...h.handlers.keys()].sort()).toEqual(['SIGINT', 'SIGTERM']);
     expect(h.exit).not.toHaveBeenCalled();
+  });
+
+  // Input: startup with backend/certs/fullchain.pem and privkey.pem present
+  // Expected behavior: an HTTPS server is built from the PEM files around the Express app, listens on the
+  //                    configured port, gets Socket.IO attached, and startup is logged as https
+  test('Serves HTTPS when a certificate and key are installed', async () => {
+    const h = boot({}, { cert: true, key: true });
+    await flush();
+
+    expect(h.createHttpsServer).toHaveBeenCalledWith(
+      { cert: Buffer.from('pem of cert'), key: Buffer.from('pem of key') },
+      h.app,
+    );
+    expect(h.listen).toHaveBeenCalledWith(PORT, expect.any(Function));
+    expect(h.attachRealtime).toHaveBeenCalledWith(h.server);
+    expect(h.consoleLog).toHaveBeenCalledWith(`Server listening on port ${PORT} (https)`);
+    expect(h.exit).not.toHaveBeenCalled();
+  });
+
+  // Input: startup with only one of the two PEM files present (certificate only / key only)
+  // Expected behavior: startup fails with a message naming both files instead of silently falling back to HTTP;
+  //                    the server never listens; exit code 1
+  test.each<[string, CertFiles]>([
+    ['certificate only', { cert: true, key: false }],
+    ['key only', { cert: false, key: true }],
+  ])('Half-installed TLS (%s) is fatal', async (_label, certs) => {
+    const h = boot({}, certs);
+    await flush();
+
+    expect(h.consoleError).toHaveBeenCalledWith(
+      'Fatal startup error:',
+      'HTTPS needs both certs/fullchain.pem and certs/privkey.pem',
+    );
+    expect(h.listen).not.toHaveBeenCalled();
+    expect(h.exit).toHaveBeenCalledWith(1);
   });
 
   // Input: SIGINT / SIGTERM after a successful startup, DB disconnects cleanly
