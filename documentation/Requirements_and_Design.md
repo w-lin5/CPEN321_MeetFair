@@ -408,8 +408,9 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
 
 ### **4.6. Use Case Sequence Diagram (5 Most Major Use Cases)**
-1. [**[WRITE_NAME_HERE]**](#uc1)\
-[SEQUENCE_DIAGRAM_HERE]
+1. [**Sign In**](#uc1)
+    [Sign In sequence diagram](images/UC1_Sign_In_Sequence_Diagram.png)
+
 2. [**Create or Join Group**](#uc2)
 
     **Create Group**
@@ -420,6 +421,11 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
     ![Join Group sequence diagram](images/UC2_Join_Group_Sequence_Diagram.png)
 
+3. [**Get Recommendations**](#uc3)
+    ![Get_Recommendations sequence diagram](images/UC3_Get_Recommendations_Sequence_Diagram.png)
+
+4. [**Share Live Location**](#uc5)
+    ![Share Live Location](images\UC5_Share_Live_Location_Sequence_Diagram.png)
 
 ### **4.7. Design of Non-Functional Requirements**
 
