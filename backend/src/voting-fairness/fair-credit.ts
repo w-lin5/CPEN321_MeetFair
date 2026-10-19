@@ -43,17 +43,14 @@ export function normalizedBurden(actualSeconds: number, mode: TravelMode): numbe
 export function creditChanges(trips: SettledTrip[]): CreditChange[] {
   if (trips.length === 0) return [];
 
-  const burdens = trips.map((t) => normalizedBurden(t.actualSeconds, t.mode));
-  const expected = burdens.reduce((sum, b) => sum + b, 0) / trips.length;
+  const burdens = trips.map((trip) => ({ trip, burden: normalizedBurden(trip.actualSeconds, trip.mode) }));
+  const expected = burdens.reduce((sum, b) => sum + b.burden, 0) / trips.length;
 
-  return trips.map((trip, i) => {
-    const burden = burdens[i] ?? 0;
-    return {
-      userId: trip.userId,
-      actualSeconds: Math.round(trip.actualSeconds),
-      normalizedBurden: Math.round(burden),
-      expectedBurden: Math.round(expected),
-      delta: Math.round(burden - expected),
-    };
-  });
+  return burdens.map(({ trip, burden }) => ({
+    userId: trip.userId,
+    actualSeconds: Math.round(trip.actualSeconds),
+    normalizedBurden: Math.round(burden),
+    expectedBurden: Math.round(expected),
+    delta: Math.round(burden - expected),
+  }));
 }
