@@ -59,10 +59,17 @@ class ApiClient(baseUrl: String, private val http: OkHttpClient) {
     // Prioritize server provided err message, with error code as fallback
     private fun serverMessage(body: String, code: Int): String =
         try {
-            JSONObject(body).optString("error").ifBlank { "HTTP $code" }
+            serverErrorText(JSONObject(body), code)
         } catch (_: JSONException) {
             "HTTP $code"
         }
+}
+
+// { error, details? } from the backend; validation details say which field was wrong, so they are shown too
+internal fun serverErrorText(body: JSONObject, code: Int): String {
+    val error = body.optString("error").ifBlank { "HTTP $code" }
+    val details = body.optJSONArray("details")?.strings().orEmpty()
+    return if (details.isEmpty()) error else "$error: ${details.joinToString("; ")}"
 }
 
 // Parses a successful body; malformed JSON becomes a Failure instead of a crash
