@@ -74,6 +74,8 @@
     - 2a1. ...
     - 2a2. ...
 
+<a name="uc2"></a>
+
 #### Use Case 2: Create or Join Group
 
 **Description**: A user creates a new group and receives an invite code to share, or joins an existing group by entering an invite code, associating their account with that group so they can participate in future meetups.
@@ -252,7 +254,15 @@
 ### **4.6. Use Case Sequence Diagram (5 Most Major Use Cases)**
 1. [**[WRITE_NAME_HERE]**](#uc1)\
 [SEQUENCE_DIAGRAM_HERE]
-2. ...
+2. [**Create or Join Group**](#uc2)
+
+    **Create Group**
+
+    ![Create Group sequence diagram](images/UC2_Create_Group_Sequence_Diagram.jpg)
+
+    **Join Group**
+
+    ![Join Group sequence diagram](images/UC2_Join_Group_Sequence_Diagram.png)
 
 
 ### **4.7. Design of Non-Functional Requirements**
