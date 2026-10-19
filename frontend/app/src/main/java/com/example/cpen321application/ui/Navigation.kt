@@ -28,6 +28,7 @@ sealed interface Route {
     data class CreateMeetup(val groupId: String) : Meetups
     data class Meetup(val meetupId: String) : Meetups
     data class Participation(val meetupId: String) : Meetups
+    data class StartVoting(val meetupId: String) : Meetups
     data class Voting(val meetupId: String) : Meetups
 
     data object Profile : Profiles
@@ -43,6 +44,7 @@ private const val GROUP = "group"
 private const val CREATE_MEETUP = "create_meetup"
 private const val MEETUP = "meetup"
 private const val PARTICIPATION = "participation"
+private const val START_VOTING = "start_voting"
 private const val VOTING = "voting"
 private const val PROFILE = "profile"
 private const val GROUP_FAIRNESS = "group_fairness"
@@ -56,6 +58,7 @@ fun Route.encode(): String = when (this) {
     is Route.CreateMeetup -> "$CREATE_MEETUP$ARG_SEP$groupId"
     is Route.Meetup -> "$MEETUP$ARG_SEP$meetupId"
     is Route.Participation -> "$PARTICIPATION$ARG_SEP$meetupId"
+    is Route.StartVoting -> "$START_VOTING$ARG_SEP$meetupId"
     is Route.Voting -> "$VOTING$ARG_SEP$meetupId"
     Route.Profile -> PROFILE
     is Route.GroupFairness -> "$GROUP_FAIRNESS$ARG_SEP$groupId"
@@ -73,6 +76,7 @@ fun decodeRoute(text: String): Route? {
         CREATE_MEETUP -> arg?.let { Route.CreateMeetup(it) }
         MEETUP -> arg?.let { Route.Meetup(it) }
         PARTICIPATION -> arg?.let { Route.Participation(it) }
+        START_VOTING -> arg?.let { Route.StartVoting(it) }
         VOTING -> arg?.let { Route.Voting(it) }
         PROFILE -> Route.Profile
         GROUP_FAIRNESS -> arg?.let { Route.GroupFairness(it) }

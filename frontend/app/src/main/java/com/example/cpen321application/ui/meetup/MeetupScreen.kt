@@ -74,17 +74,19 @@ fun MeetupScreen(
     meetupId: String,
     onBack: () -> Unit,
     onEnterDetails: () -> Unit,
+    onStartVoting: () -> Unit,
     onOpenVoting: () -> Unit,
 ) {
     val vm: MeetupViewModel = screenViewModel(MeetupViewModel.factory(container, meetupId))
     val state by vm.state.collectAsState()
     val calendar by vm.calendar.collectAsState()
     val userId = container.sessionStore.currentUserId()
+    val actions = MeetupActions(onEnterDetails, onStartVoting, onOpenVoting)
     LaunchedEffect(Unit) { vm.load() }
 
     ScreenColumn("Meetup", onBack) {
         UiStateContent(state, onRetry = vm::load, emptyMessage = "") { meetup ->
-            MeetupInfo(meetup, userId, onEnterDetails, onOpenVoting) {
+            MeetupInfo(meetup, userId, actions) {
                 val alreadyAdded = meetup.participants.any { it.userId == userId && it.calendarEventId != null }
                 AddToCalendarButton(
                     container.calendarAuthorizer,
@@ -98,16 +100,23 @@ fun MeetupScreen(
     }
 }
 
+/** Navigation callbacks for the next steps the meetup screen can offer. */
+private data class MeetupActions(
+    val onEnterDetails: () -> Unit,
+    val onStartVoting: () -> Unit,
+    val onOpenVoting: () -> Unit,
+)
+
 @Composable
 private fun MeetupInfo(
     meetup: Meetup,
     userId: String?,
-    onEnterDetails: () -> Unit,
-    onOpenVoting: () -> Unit,
+    actions: MeetupActions,
     calendarSection: @Composable () -> Unit,
 ) {
     val submitted = meetup.participants.any { it.userId == userId }
     val setup = meetup.status == MeetupStatus.SETUP
+    val isOrganizer = meetup.organizerId == userId
     val decided = meetup.status == MeetupStatus.FINALIZED || meetup.status == MeetupStatus.SETTLED
 
     Column(verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
@@ -127,15 +136,21 @@ private fun MeetupInfo(
         )
         Text("${meetup.participants.size} member(s) have submitted their details.")
         if (setup) {
-            Button(onClick = onEnterDetails, modifier = Modifier.testTag(TestTags.PARTICIPATION_BUTTON)) {
+            Button(onClick = actions.onEnterDetails, modifier = Modifier.testTag(TestTags.PARTICIPATION_BUTTON)) {
                 Text(if (submitted) "Edit my details" else "Enter my details")
             }
         } else {
             Text("Details can no longer be changed.")
         }
+        // Only the organizer can close SETUP and open the vote (backend answers 403 otherwise)
+        if (setup && isOrganizer) {
+            Button(onClick = actions.onStartVoting, modifier = Modifier.testTag(TestTags.START_VOTING_BUTTON)) {
+                Text("Start voting")
+            }
+        }
         // A voting session exists from VOTING onwards; once finalized the screen shows the winner
         if (meetup.status == MeetupStatus.VOTING || meetup.status == MeetupStatus.FINALIZED) {
-            Button(onClick = onOpenVoting, modifier = Modifier.testTag(TestTags.OPEN_VOTING_BUTTON)) {
+            Button(onClick = actions.onOpenVoting, modifier = Modifier.testTag(TestTags.OPEN_VOTING_BUTTON)) {
                 Text(if (meetup.status == MeetupStatus.VOTING) "Vote on a spot" else "See voting results")
             }
         }

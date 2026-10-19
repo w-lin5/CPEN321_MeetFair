@@ -45,6 +45,8 @@ object TestTags {
     const val FAIRNESS_MEMBER_ITEM = "fairness_member_item"
     const val FAIRNESS_HISTORY_EMPTY = "fairness_history_empty"
     const val FAIRNESS_ENTRY_ITEM = "fairness_entry_item"
+    const val START_VOTING_BUTTON = "start_voting_button"
+    const val START_VOTING_SUBMIT = "start_voting_submit"
     const val OPEN_VOTING_BUTTON = "open_voting_button"
     const val VOTING_STATUS_TEXT = "voting_status_text"
     const val VOTER_COUNT_TEXT = "voter_count_text"
@@ -63,6 +65,12 @@ object TestTags {
     fun modeChip(mode: String) = "mode_chip_$mode"
     fun preferenceChip(preference: String) = "preference_chip_$preference"
     fun profileGroupItem(groupId: String) = "profile_group_item_$groupId"
+
+    // Start-voting fields are tagged per candidate position (0-based)
+    fun candidateNameInput(index: Int) = "candidate_name_input_$index"
+    fun candidateAddressInput(index: Int) = "candidate_address_input_$index"
+    fun candidateLatInput(index: Int) = "candidate_lat_input_$index"
+    fun candidateLngInput(index: Int) = "candidate_lng_input_$index"
 
     // Voting rows are tagged per candidate placeId
     fun candidateItem(placeId: String) = "candidate_item_$placeId"

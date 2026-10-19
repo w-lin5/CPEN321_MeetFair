@@ -18,6 +18,7 @@ import com.example.cpen321application.ui.meetup.CreateMeetupScreen
 import com.example.cpen321application.ui.meetup.MeetupScreen
 import com.example.cpen321application.ui.meetup.ParticipationScreen
 import com.example.cpen321application.ui.profile.ProfileScreen
+import com.example.cpen321application.ui.recommendation.StartVotingScreen
 import com.example.cpen321application.ui.voting.VotingScreen
 
 /** Token present -> app, token absent (sign-out or 401 status code) -> sign-in. */
@@ -75,9 +76,15 @@ private fun MeetupRoutes(container: AppContainer, navigator: Navigator, route: R
             route.meetupId,
             onBack = navigator::pop,
             onEnterDetails = { navigator.push(Route.Participation(route.meetupId)) },
+            onStartVoting = { navigator.push(Route.StartVoting(route.meetupId)) },
             onOpenVoting = { navigator.push(Route.Voting(route.meetupId)) },
         )
         is Route.Participation -> ParticipationScreen(container, route.meetupId, onBack = navigator::pop)
+        // Once voting is open, back from the voting screen returns to the meetup, not to the finished form
+        is Route.StartVoting -> StartVotingScreen(container, route.meetupId, onBack = navigator::pop, onStarted = {
+            navigator.pop()
+            navigator.push(Route.Voting(route.meetupId))
+        })
         is Route.Voting -> VotingScreen(container, route.meetupId, onBack = navigator::pop)
     }
 }
