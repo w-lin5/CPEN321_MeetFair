@@ -13,6 +13,10 @@ services:
       - path: ./backend/.env
     environment:
       MONGODB_URI: mongodb://mongo:27017/cpen321
+    # HTTPS: put fullchain.pem and privkey.pem in backend/certs/ (gitignored). Without them the
+    # server keeps speaking plain HTTP on the same port.
+    volumes:
+      - ./backend/certs:/app/certs:ro
     depends_on:
       mongo:
         condition: service_healthy

@@ -1,4 +1,5 @@
 import type { Server as HttpServer } from 'node:http';
+import type { Server as HttpsServer } from 'node:https';
 
 import { Server, type Socket } from 'socket.io';
 
@@ -61,7 +62,8 @@ async function handleLeave(socket: Socket, payload: unknown, ack: Ack): Promise<
   }
 }
 
-export function attachRealtime(httpServer: HttpServer): Server {
+// Works on the plain HTTP server and on the HTTPS server alike (clients then connect with wss://)
+export function attachRealtime(httpServer: HttpServer | HttpsServer): Server {
   const io = new Server(httpServer);
 
   io.use((socket, next) => {

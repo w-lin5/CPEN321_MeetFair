@@ -6,3 +6,5 @@ coverage
 !.env.example
 *.log
 *.tsbuildinfo
+# Mounted at runtime by docker-compose.yml so the private key never ends up in an image layer
+certs

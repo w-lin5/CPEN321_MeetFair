@@ -8,3 +8,7 @@ coverage/
 
 *.log
 .DS_Store
+
+# TLS certificate + private key that turn on HTTPS (src/index.ts)
+certs/*
+!certs/.gitkeep
