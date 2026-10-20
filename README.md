@@ -1,7 +1,5 @@
 # CPEN321_26W1_MeetFair
 
-_Keep this README up to date with the steps required to build and run the frontend and backend (including any scripts, config files, and environment variables). TAs ill follow these instructions._
-
 ## Requirements
 
 Install the following before the frontend or backend setup steps:
@@ -120,7 +118,3 @@ Set at least:
    ```bash
    docker compose down
    ```
-
-## Additional Setup
-
-_Please specify any other additional setup steps non-specific to either frontend nor backend_
