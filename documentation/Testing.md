@@ -2,10 +2,9 @@
 
 ## 1. Change History
 
-| **Change Date**   | **Modified Sections** | **Rationale** |
-| ----------------- | --------------------- | ------------- |
-| 2026-10-19 | Section 3: Tests of Non-Functional Requirements | Replaced outdated example tests with existing Security and Access Control test coverage and stated its verification limits.
-
+| **Change Date** | **Modified Sections** | **Rationale** |
+| --------------- | --------------------- | ------------- |
+| 2026-10-19 | All Sections | Initial submission for CP1 |
 ---
 
 ## 2. Back-end Test Specification: APIs
@@ -97,15 +96,16 @@
 
 ### 2.2. GitHub Actions Configuration Location
 
+(*not yet implemented*)
 `.github/workflows/backend-tests.yml`
 
 ### 2.3. Jest Coverage Report Screenshots With Mocks
 
-_(Placeholder for Jest coverage screenshot with mocks enabled)_
+![Coverage with mocks](images/Coverage_With_Mocks.png)
 
 ### 2.4. Jest Coverage Report Screenshots Without Mocks
 
-_(Placeholder for Jest coverage screenshot without mocks)_
+![Coverage without mocks](images/Coverage_Without_Mocks.png)
 
 ---
 

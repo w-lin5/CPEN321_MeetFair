@@ -4,16 +4,7 @@
 
 | **Change Date**   | **Modified Sections** | **Rationale** |
 | ----------------- | --------------------- | ------------- |
-| 2026-10-14 | 3.2, 3.4, 3.5 | Added the use case diagram, the use case descriptions and the formal use case template for CP1. |
-| 2026-10-15 | 3.1, 3.3, 3.5 | Added the features, the actors and the formal specification of "Finalize Meetup". |
-| 2026-10-16 | 3.5 | Added the formal specification of "Create or Join Group". |
-| 2026-10-18 | 4.1, 4.2, 4.3, 4.4 | Added the design specification: components and their interfaces, database, external modules, frameworks and libraries. |
-| 2026-10-19 | 2, 3.5, 3.7, 4.7 | Added the project description, the remaining formal use case specifications, the non-functional requirements and their design. |
-| 2026-10-19 | 3.1 | Aligned the features with the implementation: travel times come from the Google Routes API, the replacement for the Distance Matrix API; meetup preferences are a fixed set; each member adds the finalized meetup to their own Google Calendar; recorded which features are implemented at CP1. |
-| 2026-10-19 | 3.3, 3.4 | Described every actor in the use case diagram (Organizer, Member and the three Google services). Removed "Import Calendar", because the group agrees on the meetup time before using MeetFair, so availability is out of scope. Added the use cases the app implements but the list was missing (Lock Vote, Add Meetup to Google Calendar, Edit Profile). |
-| 2026-10-19 | 3.5, 4.6 | Replaced "Sign In" with "Vote on a Candidate" as Use Case 1, because the formal use cases must exclude authentication. Matched "Create or Join Group" and "Finalize Meetup" to the implemented behavior. |
-| 2026-10-19 | 4.4, 4.5 | Added the dependency diagram. |
-
+| 2026-10-19 | All Sections | Initial submission for CP1 |
 ---
 
 ## 2. Project Description
