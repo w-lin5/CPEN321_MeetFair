@@ -50,7 +50,7 @@ class ProfileParsersTest {
                     { "userId": "u2", "name": null, "balance": -600 }
                   ],
                   "ledger": [
-                    { "id": "e1", "userId": "u1", "meetupId": "m2", "actualSeconds": 900, "normalizedBurden": 900,
+                    { "id": "e1", "userId": "u1", "meetupId": "m2", "meetupTitle": "Second session", "placeName": "Library", "actualSeconds": 900, "normalizedBurden": 900,
                       "expectedBurden": 1200, "delta": -300, "source": "ESTIMATED", "createdAt": "2026-10-20T18:00:00.000Z" },
                     { "id": "e2", "userId": "u2", "meetupId": "m2", "actualSeconds": 1500, "normalizedBurden": 1500,
                       "expectedBurden": 1200, "delta": 300, "source": "TRACKED" }
@@ -65,9 +65,12 @@ class ProfileParsersTest {
         assertNull(fairness.members[1].name)
         assertEquals(listOf(-300L), fairness.entriesFor("u1").map { it.delta })
         assertEquals(CommuteSource.ESTIMATED, fairness.ledger[0].source)
+        assertEquals("Second session", fairness.ledger[0].meetupTitle)
+        assertEquals("Library", fairness.ledger[0].placeName)
         assertEquals(-300L, fairness.ledger[0].delta)
         // A missing timestamp degrades to blank rather than failing the whole ledger
         assertEquals("", fairness.ledger[1].recordedAt)
+        assertNull(fairness.ledger[1].meetupTitle)
     }
 
     @Test

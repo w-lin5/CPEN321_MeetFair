@@ -119,6 +119,8 @@ enum class CommuteSource {
 data class FairnessEntry(
     val userId: String,
     val meetupId: String,
+    val meetupTitle: String?,
+    val placeName: String?,
     val actualSeconds: Long,
     val normalizedBurden: Long,
     val expectedBurden: Long,

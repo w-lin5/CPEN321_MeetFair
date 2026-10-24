@@ -1,6 +1,7 @@
 import request from 'supertest';
 
 import { createApp } from '../../src/app';
+import { MeetupModel } from '../../src/users-groups/models';
 import { fairCreditService } from '../../src/voting-fairness/fair-credit.service';
 import { FairCreditEntryModel, FairCreditModel } from '../../src/voting-fairness/models';
 import { bearer } from '../helpers/auth';
@@ -44,6 +45,9 @@ describe('Unmocked: GET /api/groups/:groupId/fairness', () => {
     await fairCreditService.settleMeetup(groupA.id, meetupA.id, [trip(ada.id, 40), trip(grace.id, 10)]);
     await fairCreditService.settleMeetup(groupA.id, meetupA2.id, [trip(ada.id, 15, 'ESTIMATED'), trip(grace.id, 25)]);
     await fairCreditService.settleMeetup(groupB.id, meetupB.id, [trip(ada.id, 90), trip(grace.id, 10)]);
+    await MeetupModel.updateOne({ _id: meetupA2.id }, { $set: {
+      winner: { placeId: 'library', name: 'Library', address: '123 Main St', location: { lat: 49, lng: -123 } },
+    } });
 
     const res = await getFairness(groupA.id, grace.id);
 
@@ -58,6 +62,8 @@ describe('Unmocked: GET /api/groups/:groupId/fairness', () => {
     expect(res.body.ledger).toContainEqual(expect.objectContaining({
       userId: ada.id,
       meetupId: meetupA2.id,
+      meetupTitle: 'Second session',
+      placeName: 'Library',
       actualSeconds: 900,
       normalizedBurden: 900,
       expectedBurden: 1200,

@@ -1,5 +1,6 @@
 package com.example.cpen321application.ui.fairness
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,6 +14,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.ViewModel
@@ -84,7 +88,7 @@ private fun FairnessContent(data: GroupFairness, userId: String?) {
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.testTag(TestTags.FAIR_CREDIT_TEXT),
                 )
-                Text("Positive means you have travelled more than the group average; it raises your vote weight.")
+                Text("Positive credit means you travelled more than the group average. Voting uses your balance to set your vote weight; it does not spend credit.")
                 Text("Group", style = MaterialTheme.typography.titleMedium)
             }
         }
@@ -114,12 +118,21 @@ private fun MemberRow(member: MemberCredit) {
 @Composable
 private fun FairnessRow(entry: FairnessEntry) {
     val source = if (entry.source == CommuteSource.TRACKED) "tracked" else "Maps estimate"
-    Card(modifier = Modifier.fillMaxWidth().testTag(TestTags.FAIRNESS_ENTRY_ITEM)) {
+    var expanded by rememberSaveable(entry.meetupId) { mutableStateOf(false) }
+    Card(modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }.testTag(TestTags.FAIRNESS_ENTRY_ITEM)) {
         Column(Modifier.padding(Dimens.ScreenPadding)) {
+            Text(entry.meetupTitle ?: "Meetup", style = MaterialTheme.typography.titleMedium)
+            entry.placeName?.let { Text("Place: $it") }
             if (entry.recordedAt.isNotBlank()) Text(isoToDisplay(entry.recordedAt))
-            Text("Your trip: ${formatMinutes(entry.actualSeconds)} ($source)")
-            Text("Group average: ${formatMinutes(entry.expectedBurden)}")
-            Text("Credit change: ${formatCredit(entry.delta)}")
+            Text("Fair Credit change: ${formatCredit(entry.delta)}")
+            Text(if (expanded) "Tap to hide calculation" else "Tap to see how this was calculated")
+            if (expanded) {
+                Text("Your trip: ${formatMinutes(entry.actualSeconds)} ($source)")
+                Text("Your adjusted travel burden: ${entry.normalizedBurden} seconds")
+                Text("Group average adjusted burden: ${entry.expectedBurden} seconds")
+                Text("Your burden minus the group average = ${entry.delta} seconds of Fair Credit.")
+                Text("A positive change earns credit; a negative change lowers your balance. The calculation is rounded to whole seconds.")
+            }
         }
     }
 }

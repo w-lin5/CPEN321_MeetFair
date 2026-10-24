@@ -4,6 +4,7 @@ import { BadRequest, Conflict } from '../common/errors';
 import type { CommuteSource } from '../common/types';
 import { tuning } from '../config';
 import { groupService } from '../users-groups/group.service';
+import { MeetupModel } from '../users-groups/models';
 import { profileService } from '../users-groups/profile.service';
 import { userService } from '../users-groups/user.service';
 import { type SettledTrip, creditChanges } from './fair-credit';
@@ -59,7 +60,7 @@ async function updateProfile(userId: string, input: { displayName: string | null
   return withFairCredit(userId, await profileService.updateProfile(userId, input));
 }
 
-// Every member's balance (with display name) and the group's ledger, newest first; members only
+// Every member's balance and the group's ledger with meetup context, newest first; members only
 async function getGroupFairness(groupId: string, userId: string) {
   const group = await groupService.requireMembership(groupId, userId);
   const memberIds = group.members.map((m) => m.userId);
@@ -70,6 +71,9 @@ async function getGroupFairness(groupId: string, userId: string) {
   ]);
   const names = new Map(users.map((u): [string, string] => [u.id, userService.displayNameOf(u)]));
   const balances = new Map(credits.map((c): [string, number] => [String(c.userId), c.balance]));
+  const meetupIds = [...new Set(ledger.map((entry) => String(entry.meetupId)))];
+  const meetups = meetupIds.length ? await MeetupModel.find({ _id: { $in: meetupIds }, groupId }) : [];
+  const meetupDetails = new Map(meetups.map((meetup) => [String(meetup.id), meetup]));
 
   return {
     groupId,
@@ -78,7 +82,14 @@ async function getGroupFairness(groupId: string, userId: string) {
       name: names.get(String(id)) ?? null,
       balance: balances.get(String(id)) ?? tuning.initialFairCredit,
     })),
-    ledger,
+    ledger: ledger.map((entry) => {
+      const meetup = meetupDetails.get(String(entry.meetupId));
+      return {
+        ...entry.toJSON(),
+        meetupTitle: meetup?.title ?? null,
+        placeName: meetup?.winner?.name ?? null,
+      };
+    }),
   };
 }
 
