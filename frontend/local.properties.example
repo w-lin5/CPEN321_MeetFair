@@ -8,3 +8,5 @@ API_BASE_URL=http://10.0.2.2:3000
 GOOGLE_CLIENT_ID=
 
 # Other API keys, secrets, and configurations
+# Enable Maps SDK for Android; restrict this key to your Android package and signing SHA-1.
+MAPS_API_KEY=
