@@ -87,6 +87,8 @@ class VotingViewModel(
     val state: StateFlow<UiState<VotingState>> = _state.asStateFlow()
     private val _deleted = MutableStateFlow(false)
     val deleted: StateFlow<Boolean> = _deleted.asStateFlow()
+    private val _notifyDeletion = MutableStateFlow(false)
+    val notifyDeletion: StateFlow<Boolean> = _notifyDeletion.asStateFlow()
 
     private var liveJob: Job? = null
 
@@ -196,8 +198,10 @@ class VotingViewModel(
         liveJob = viewModelScope.launch {
             realtime.meetupEvents(meetupId).collect { event ->
                 if (event is MeetupEvent.Deleted) {
+                    _notifyDeletion.value = event.notifyParticipant
                     _deleted.value = true
-                    _state.value = UiState.Error("This meetup has been deleted by its organizer.")
+                    _state.value = if (event.notifyParticipant)
+                        UiState.Error("This meetup has been deleted by its organizer.") else UiState.Empty
                     return@collect
                 }
                 edit { applyEvent(it, event) }
@@ -225,7 +229,8 @@ class VotingViewModel(
 
 /** Pure state transition for one live event; kept outside the ViewModel so it is unit-testable. */
 internal fun applyEvent(state: VotingState, event: MeetupEvent): VotingState = when (event) {
-    MeetupEvent.Deleted -> state.copy(live = false, error = "This meetup has been deleted by its organizer.")
+    is MeetupEvent.Deleted -> state.copy(live = false,
+        error = if (event.notifyParticipant) "This meetup has been deleted by its organizer." else null)
     MeetupEvent.Joined -> state.copy(live = true)
     is MeetupEvent.VoteUpdated -> state.copy(tally = event.tally, live = true)
     is MeetupEvent.StatusChanged -> state.copy(
@@ -250,11 +255,15 @@ fun VotingScreen(container: AppContainer, meetupId: String, onBack: () -> Unit, 
     val state by vm.state.collectAsState()
     MeetupStatusNotifications((state as? UiState.Success)?.data?.meetup)
     val deleted by vm.deleted.collectAsState()
+    val notifyDeletion by vm.notifyDeletion.collectAsState()
     val notify = LocalNotify.current
     val userId = container.sessionStore.currentUserId()
     LaunchedEffect(Unit) { vm.load() }
     LaunchedEffect(deleted) {
-        if (deleted) { notify("This meetup has been deleted by its organizer."); onDeleted() }
+        if (deleted) {
+            if (notifyDeletion) notify("This meetup has been deleted by its organizer.")
+            onDeleted()
+        }
     }
 
     ScreenColumn("Vote on a spot", onBack) {

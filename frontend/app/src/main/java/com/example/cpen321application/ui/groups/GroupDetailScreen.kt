@@ -169,7 +169,7 @@ fun GroupDetailScreen(
                     notify("This group has been deleted by its organizer.")
                     onBack()
                 }
-                event is GroupEvent.MeetupDeleted && event.groupId == groupId ->
+                event is GroupEvent.MeetupDeleted && event.groupId == groupId && event.notifyParticipant ->
                     notify("A meetup was deleted. The list has been updated.")
             }
         }

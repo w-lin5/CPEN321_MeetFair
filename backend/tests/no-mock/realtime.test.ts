@@ -64,7 +64,7 @@ test('deleting a voting meetup notifies members, clears the room and prevents jo
   const res = await request(app).delete(`/api/meetups/${meetup.id}`)
     .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
   expect(res.status).toBe(204);
-  expect(await deleted).toEqual({ meetupId: meetup.id });
+  expect(await deleted).toEqual({ meetupId: meetup.id, participantIds: [organizer.id, member.id] });
   expect(ioServer.sockets.adapter.rooms.has(`meetup:${meetup.id}`)).toBe(false);
   expect(await join(socket, meetup.id)).toMatchObject({ ok: false, error: 'Meetup not found' });
 });
@@ -93,7 +93,7 @@ test('meetup deletion notifies the group detail listener without joining the mee
   const res = await request(app).delete(`/api/meetups/${meetup.id}`)
     .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
   expect(res.status).toBe(204);
-  expect(await notification).toEqual({ groupId: String(meetup.groupId), meetupId: meetup.id });
+  expect(await notification).toEqual({ groupId: String(meetup.groupId), meetupId: meetup.id, notifyParticipant: true });
   await silence();
   expect(outsideEvents).toEqual([]);
 });
@@ -113,6 +113,21 @@ test('removing a member disconnects their existing socket and denies a new room 
   expect(await disconnected).toBe('io server disconnect');
   const reconnected = await client(signSessionToken(member.id));
   expect(await join(reconnected, meetup.id)).toMatchObject({ ok: false, error: 'Not a member of this group' });
+});
+
+test('non-participants get silent list invalidation and no deletion notice eligibility', async () => {
+  const { organizer, member, meetup } = await setup();
+  const observer = await createUserN(4);
+  await addMember(String(meetup.groupId), observer.id);
+  const socket = await client(signSessionToken(observer.id));
+  expect(await join(socket, meetup.id)).toEqual({ ok: true });
+  const listUpdate = nextEvent<{ notifyParticipant: boolean }>(socket, 'group:meetup-deleted');
+  const pageUpdate = nextEvent<{ participantIds: string[] }>(socket, 'meetup:deleted');
+  const res = await request(app).delete(`/api/meetups/${meetup.id}`)
+    .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
+  expect(res.status).toBe(204);
+  expect(await listUpdate).toMatchObject({ notifyParticipant: false });
+  expect((await pageUpdate).participantIds).toEqual([organizer.id, member.id]);
 });
 
 // Connects with the given session token (or none) and resolves once connected or rejected

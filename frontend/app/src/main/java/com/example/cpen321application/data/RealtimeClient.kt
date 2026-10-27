@@ -16,7 +16,7 @@ import org.json.JSONObject
 
 /** Something the server pushed (or failed to push) for one meetup. */
 sealed interface MeetupEvent {
-    data object Deleted : MeetupEvent
+    data class Deleted(val notifyParticipant: Boolean) : MeetupEvent
     /** The meetup room was (re)joined; reload over REST so nothing published before the join is missed. */
     data object Joined : MeetupEvent
 
@@ -44,7 +44,7 @@ private const val EVENT_MEETUP_DELETED = "meetup:deleted"
 sealed interface GroupEvent {
     data object Connected : GroupEvent
     data class Deleted(val groupId: String) : GroupEvent
-    data class MeetupDeleted(val groupId: String) : GroupEvent
+    data class MeetupDeleted(val groupId: String, val notifyParticipant: Boolean = false) : GroupEvent
 }
 
 /** Socket.IO client for live updates, authenticated with the session token. */
@@ -63,7 +63,8 @@ class RealtimeClient(private val baseUrl: String, private val sessionStore: Sess
         }
         socket.on("group:meetup-deleted") { args ->
             val id = (args.firstOrNull() as? JSONObject)?.optString("groupId").orEmpty()
-            if (id.isNotBlank()) trySend(GroupEvent.MeetupDeleted(id))
+            val payload = args.firstOrNull() as? JSONObject
+            if (id.isNotBlank()) trySend(GroupEvent.MeetupDeleted(id, payload?.optBoolean("notifyParticipant", false) == true))
         }
         socket.connect()
         awaitClose { socket.off(); socket.disconnect() }
@@ -100,7 +101,14 @@ class RealtimeClient(private val baseUrl: String, private val sessionStore: Sess
         socket.on(EVENT_RECOMMENDATIONS_READY) { trySend(MeetupEvent.RecommendationsReady) }
         // Membership/participation changed; reload the meetup and tally over REST.
         socket.on(EVENT_MEETUP_UPDATED) { trySend(MeetupEvent.Joined) }
-        socket.on(EVENT_MEETUP_DELETED) { trySend(MeetupEvent.Deleted) }
+        socket.on(EVENT_MEETUP_DELETED) { args ->
+            val payload = args.firstOrNull() as? JSONObject
+            val participants = payload?.optJSONArray("participantIds")
+            val participant = participants != null && (0 until participants.length()).any {
+                participants.optString(it) == sessionStore.currentUserId()
+            }
+            trySend(MeetupEvent.Deleted(participant))
+        }
         socket.connect()
 
         awaitClose {

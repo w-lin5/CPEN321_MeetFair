@@ -107,16 +107,23 @@ fun MeetupScreen(
     val deletion by vm.deletion.collectAsState()
     val notify = LocalNotify.current
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    var exited by rememberSaveable { mutableStateOf(false) }
     val userId = container.sessionStore.currentUserId()
     val actions = MeetupActions(onEnterDetails, onStartVoting, onOpenVoting)
     LaunchedEffect(Unit) { vm.load() }
     LaunchedEffect(container, meetupId) {
         container.realtimeClient.meetupEvents(meetupId).collect { event ->
             if (event is MeetupEvent.StatusChanged) vm.onStatusChanged(event)
+            if (event is MeetupEvent.Deleted && !vm.deletion.value.submitting &&
+                vm.deletion.value.result == null && !exited) {
+                exited = true
+                if (event.notifyParticipant) notify("This meetup has been deleted by its organizer.")
+                onBack()
+            }
         }
     }
     LaunchedEffect(deletion.result) {
-        if (deletion.result != null) { notify("Meetup deleted."); onBack() }
+        if (deletion.result != null && !exited) { exited = true; notify("Meetup deleted."); onBack() }
     }
 
     ScreenColumn("Meetup", onBack) {

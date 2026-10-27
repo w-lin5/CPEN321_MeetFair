@@ -17,6 +17,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VotingStateTest {
+    @Test fun deletionMessageIsOnlyShownForSubmittedParticipants() {
+        assertEquals("This meetup has been deleted by its organizer.", applyEvent(state, MeetupEvent.Deleted(true)).error)
+        assertEquals(null, applyEvent(state, MeetupEvent.Deleted(false)).error)
+        assertFalse(applyEvent(state, MeetupEvent.Deleted(false)).live)
+    }
     private val candidates = listOf("p1", "p2", "p3").map { PlaceCandidate(it, "Place $it", "", 0.0, 0.0) }
 
     private val meetup = Meetup(
