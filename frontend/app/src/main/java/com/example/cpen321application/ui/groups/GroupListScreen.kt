@@ -26,6 +26,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.cpen321application.AppContainer
 import com.example.cpen321application.data.GroupRepository
+import com.example.cpen321application.data.GroupEvent
 import com.example.cpen321application.model.Group
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
@@ -38,14 +39,24 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 /** Loads the groups the signed-in user belongs to. */
 class GroupListViewModel(private val groups: GroupRepository) : ViewModel() {
     private val _state = MutableStateFlow<UiState<List<Group>>>(UiState.Loading)
     val state: StateFlow<UiState<List<Group>>> = _state.asStateFlow()
+    private val _notice = MutableStateFlow<String?>(null)
+    val notice: StateFlow<String?> = _notice.asStateFlow()
+    private var loadJob: Job? = null
+
+    fun onGroupEvent(event: GroupEvent) {
+        if (event is GroupEvent.Deleted) _notice.value = "A group was deleted by its organizer."
+        if (event is GroupEvent.Connected || event is GroupEvent.Deleted) load()
+    }
 
     fun load() {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _state.value = UiState.Loading
             _state.value = groups.list().toListUiState()
         }
@@ -66,10 +77,13 @@ fun GroupListScreen(
 ) {
     val vm: GroupListViewModel = screenViewModel(GroupListViewModel.factory(container))
     val state by vm.state.collectAsState()
+    val notice by vm.notice.collectAsState()
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { vm.load() }
+    LaunchedEffect(container) { container.realtimeClient.groupEvents().collect(vm::onGroupEvent) }
 
     ScreenColumn("Your groups") {
+        notice?.let { Text(it) }
         Row(horizontalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
             Button(onClick = onCreate, modifier = Modifier.testTag(TestTags.CREATE_GROUP_BUTTON)) {
                 Text("Create group")

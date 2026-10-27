@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { getUserId } from '../common/middleware/require-auth';
 import { parseInput } from '../common/middleware/validate';
 import { groupService } from './group.service';
+import { deletionService } from './deletion.service';
 import { meetupService } from './meetup.service';
 import {
   createGroupBody,
@@ -16,6 +17,18 @@ import {
 import { userService } from './user.service';
 
 export const usersGroupsRouter = Router();
+
+usersGroupsRouter.delete('/groups/:groupId', async (req, res) => {
+  const { groupId } = parseInput(groupParams, req.params);
+  await deletionService.deleteGroup(groupId, getUserId(req));
+  res.status(204).end();
+});
+
+usersGroupsRouter.delete('/meetups/:meetupId', async (req, res) => {
+  const { meetupId } = parseInput(meetupParams, req.params);
+  await deletionService.deleteMeetup(meetupId, getUserId(req));
+  res.status(204).end();
+});
 
 usersGroupsRouter.delete('/groups/:groupId/members/:memberId', async (req, res) => {
   const { groupId, memberId } = parseInput(groupMemberParams, req.params);

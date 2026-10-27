@@ -191,6 +191,10 @@ class VotingViewModel(
         liveJob?.cancel()
         liveJob = viewModelScope.launch {
             realtime.meetupEvents(meetupId).collect { event ->
+                if (event is MeetupEvent.Deleted) {
+                    _state.value = UiState.Error("This meetup has been deleted by its organizer.")
+                    return@collect
+                }
                 edit { applyEvent(it, event) }
                 // The tally may have changed before the room was joined
                 if (event is MeetupEvent.Joined) {
@@ -216,6 +220,7 @@ class VotingViewModel(
 
 /** Pure state transition for one live event; kept outside the ViewModel so it is unit-testable. */
 internal fun applyEvent(state: VotingState, event: MeetupEvent): VotingState = when (event) {
+    MeetupEvent.Deleted -> state.copy(live = false, error = "This meetup has been deleted by its organizer.")
     MeetupEvent.Joined -> state.copy(live = true)
     is MeetupEvent.VoteUpdated -> state.copy(tally = event.tally, live = true)
     is MeetupEvent.StatusChanged -> state.copy(

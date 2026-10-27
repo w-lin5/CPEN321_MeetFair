@@ -8,6 +8,9 @@ export const CLIENT_EVENTS = {
 
 // Server -> client, always sent to the meetup's room
 export const SERVER_EVENTS = {
+  groupDeleted: 'group:deleted',
+  groupMeetupDeleted: 'group:meetup-deleted',
+  meetupDeleted: 'meetup:deleted',
   meetupUpdated: 'meetup:updated',
   voteUpdated: 'vote:updated',
   meetupStatus: 'meetup:status',
@@ -16,4 +19,8 @@ export const SERVER_EVENTS = {
 
 export function meetupRoom(meetupId: string): string {
   return `meetup:${meetupId}`;
+}
+
+export function userRoom(userId: string): string {
+  return `user:${userId}`;
 }

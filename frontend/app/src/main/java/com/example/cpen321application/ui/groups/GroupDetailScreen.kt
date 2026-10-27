@@ -31,12 +31,16 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.cpen321application.AppContainer
 import com.example.cpen321application.data.ApiResult
 import com.example.cpen321application.data.GroupRepository
+import com.example.cpen321application.data.GroupEvent
 import com.example.cpen321application.data.MeetupRepository
 import com.example.cpen321application.model.Group
 import com.example.cpen321application.model.GroupMember
 import com.example.cpen321application.model.GroupRole
 import com.example.cpen321application.model.Meetup
 import com.example.cpen321application.ui.common.ScreenColumn
+import com.example.cpen321application.ui.common.DeleteConfirmation
+import com.example.cpen321application.ui.common.FormState
+import com.example.cpen321application.ui.common.toFormState
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.UiState
 import com.example.cpen321application.ui.common.UiStateContent
@@ -47,6 +51,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 /** A group together with its meetups, loaded as one unit so the screen has a single loading/error state. */
 data class GroupDetailData(val group: Group, val meetups: List<Meetup>)
@@ -71,9 +76,36 @@ class GroupDetailViewModel(
     val state: StateFlow<UiState<GroupDetailData>> = _state.asStateFlow()
     private val _removal = MutableStateFlow(MemberRemovalState())
     val removal: StateFlow<MemberRemovalState> = _removal.asStateFlow()
+    private val _deletion = MutableStateFlow(FormState<Unit>())
+    val deletion: StateFlow<FormState<Unit>> = _deletion.asStateFlow()
+    private var deleted = false
+    private var loadJob: Job? = null
+    private val _notice = MutableStateFlow<String?>(null)
+    val notice: StateFlow<String?> = _notice.asStateFlow()
+
+    fun onGroupEvent(event: GroupEvent) {
+        when (event) {
+            GroupEvent.Connected -> load()
+            is GroupEvent.Deleted -> if (event.groupId == groupId) {
+                deleted = true
+                loadJob?.cancel()
+                _state.value = UiState.Error("This group has been deleted by its organizer.")
+            }
+            is GroupEvent.MeetupDeleted -> if (event.groupId == groupId) {
+                _notice.value = "A meetup was deleted. The list has been updated."
+                load()
+            }
+        }
+    }
+
+    fun deleteGroup() {
+        if (_deletion.value.submitting || _deletion.value.result != null || _removal.value.pending) return
+        _deletion.value = FormState(submitting = true)
+        viewModelScope.launch { _deletion.value = groups.delete(groupId).toFormState() }
+    }
 
     fun removeMember(memberId: String) {
-        if (_removal.value.pending) return
+        if (_removal.value.pending || _deletion.value.submitting) return
         _removal.value = MemberRemovalState(pending = true)
         viewModelScope.launch {
             when (val result = groups.removeMember(groupId, memberId)) {
@@ -87,7 +119,9 @@ class GroupDetailViewModel(
     }
 
     fun load() {
-        viewModelScope.launch {
+        if (deleted) return
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _state.value = UiState.Loading
             _state.value = combine(groups.detail(groupId), meetups.listForGroup(groupId))
         }
@@ -111,14 +145,31 @@ fun GroupDetailScreen(
     val vm: GroupDetailViewModel = screenViewModel(GroupDetailViewModel.factory(container, groupId))
     val state by vm.state.collectAsState()
     val removal by vm.removal.collectAsState()
+    val deletion by vm.deletion.collectAsState()
+    val notice by vm.notice.collectAsState()
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var selectedMemberId by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { vm.load() }
+    LaunchedEffect(container, groupId) { container.realtimeClient.groupEvents().collect(vm::onGroupEvent) }
+    LaunchedEffect(deletion.result) { if (deletion.result != null) onBack() }
 
     ScreenColumn("Group", onBack) {
+        notice?.let { Text(it) }
         UiStateContent(state, onRetry = vm::load, emptyMessage = "") { data ->
             GroupInfo(data, onNewMeetup, onOpenMeetup,
                 canRemove = data.group.organizerId == container.sessionStore.currentUserId(),
-                removal = removal, onRemove = { selectedMemberId = it.userId })
+                removal = removal, onRemove = { selectedMemberId = it.userId },
+                deletion = deletion, onDelete = { confirmDelete = true })
+            if (confirmDelete) {
+                DeleteConfirmation(
+                    title = "Delete group?",
+                    description = "Delete ${data.group.name} and all its meetups, participation details, votes and group Fair Credit data? This cannot be undone. External calendar events will remain.",
+                    votingWarning = if (data.meetups.any { it.status.name == "VOTING" })
+                        "Warning: this group still has meetups with voting in progress. Deleting it will end those votes." else null,
+                    onDismiss = { confirmDelete = false },
+                    onDelete = { confirmDelete = false; vm.deleteGroup() },
+                )
+            }
             val selected = data.group.members.firstOrNull { it.userId == selectedMemberId }
             if (selected != null) {
                 val activeParticipation = data.meetups.any { meetup ->
@@ -154,6 +205,7 @@ fun GroupDetailScreen(
 private fun GroupInfo(
     data: GroupDetailData, onNewMeetup: () -> Unit, onOpenMeetup: (String) -> Unit,
     canRemove: Boolean, removal: MemberRemovalState, onRemove: (GroupMember) -> Unit,
+    deletion: FormState<Unit>, onDelete: () -> Unit,
 ) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
         // Several composables in one lazy item would overlap, so each item has a single Column root
@@ -161,6 +213,13 @@ private fun GroupInfo(
             Column(verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
                 Text(data.group.name, style = MaterialTheme.typography.titleLarge)
                 Text("Invite code: ${data.group.inviteCode}", modifier = Modifier.testTag(TestTags.INVITE_CODE_TEXT))
+                if (canRemove) {
+                    TextButton(onClick = onDelete, enabled = !deletion.submitting && !removal.pending,
+                        modifier = Modifier.testTag("delete_group")) {
+                        Text(if (deletion.submitting) "Deleting..." else "Delete group", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                deletion.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Text("Members", style = MaterialTheme.typography.titleMedium)
                 if (removal.pending) Text("Removing member...")
                 removal.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag(TestTags.ERROR_TEXT)) }
@@ -172,7 +231,7 @@ private fun GroupInfo(
                 if (canRemove && member.userId != data.group.organizerId) {
                     TextButton(
                         onClick = { onRemove(member) },
-                        enabled = !removal.pending,
+                        enabled = !removal.pending && !deletion.submitting,
                         modifier = Modifier.testTag("remove_member_${member.userId}"),
                     ) { Text("Remove") }
                 }

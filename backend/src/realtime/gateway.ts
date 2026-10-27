@@ -8,8 +8,8 @@ import { parseInput } from '../common/middleware/validate';
 import { verifySessionToken } from '../common/session';
 import { meetupService } from '../users-groups/meetup.service';
 import { meetupParams } from '../users-groups/schemas';
-import { CLIENT_EVENTS, meetupRoom } from './events';
-import { setRevoker, setTransport } from './publisher';
+import { CLIENT_EVENTS, meetupRoom, userRoom } from './events';
+import { setRevoker, setRoomCloser, setTransport } from './publisher';
 
 type Ack = (response: { ok: true } | { ok: false; error: string }) => void;
 
@@ -85,6 +85,11 @@ export function attachRealtime(httpServer: HttpServer | HttpsServer): Server {
   });
 
   io.on('connection', (socket) => {
+    // Private account room: clients cannot choose or join another user's room.
+    const identity: unknown = socket.data;
+    if (typeof identity === 'object' && identity !== null && 'userId' in identity && typeof identity.userId === 'string') {
+      void socket.join(userRoom(identity.userId));
+    }
     socket.on(CLIENT_EVENTS.meetupJoin, (payload: unknown, ack: unknown) => {
       void handleJoin(socket, payload, safeAck(ack));
     });
@@ -102,6 +107,7 @@ export function attachRealtime(httpServer: HttpServer | HttpsServer): Server {
       if (userIdOf(socket) === userId) socket.disconnect(true);
     }
   });
+  setRoomCloser(room => { io.in(room).socketsLeave(room); });
 
   return io;
 }

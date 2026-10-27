@@ -9,6 +9,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class MeetupRepository(private val api: ApiClient) {
+    suspend fun delete(meetupId: String): ApiResult<Unit> = api.delete("meetups/$meetupId").parse { Unit }
     suspend fun listForGroup(groupId: String): ApiResult<List<Meetup>> =
         api.get("groups/$groupId/meetups").parse { JSONArray(it).mapObjects(::parseMeetup) }
 

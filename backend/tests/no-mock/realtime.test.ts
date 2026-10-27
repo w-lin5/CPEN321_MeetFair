@@ -8,7 +8,7 @@ import request from 'supertest';
 import { createApp } from '../../src/app';
 import { signSessionToken } from '../../src/common/session';
 import { attachRealtime } from '../../src/realtime/gateway';
-import { setRevoker, setTransport } from '../../src/realtime/publisher';
+import { setRevoker, setRoomCloser, setTransport } from '../../src/realtime/publisher';
 import { VoteModel } from '../../src/voting-fairness/models';
 import { clearDb, startDb, stopDb } from '../helpers/db';
 import {
@@ -49,10 +49,53 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
+  setRoomCloser(null);
   setRevoker(null);
   setTransport(null);
   await ioServer.close();
   await stopDb();
+});
+
+test('deleting a voting meetup notifies members, clears the room and prevents joining again', async () => {
+  const { organizer, member, meetup } = await setup();
+  const socket = await client(signSessionToken(member.id));
+  expect(await join(socket, meetup.id)).toEqual({ ok: true });
+  const deleted = nextEvent<{ meetupId: string }>(socket, 'meetup:deleted');
+  const res = await request(app).delete(`/api/meetups/${meetup.id}`)
+    .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
+  expect(res.status).toBe(204);
+  expect(await deleted).toEqual({ meetupId: meetup.id });
+  expect(ioServer.sockets.adapter.rooms.has(`meetup:${meetup.id}`)).toBe(false);
+  expect(await join(socket, meetup.id)).toMatchObject({ ok: false, error: 'Meetup not found' });
+});
+
+test('group deletion notifies members without a meetup subscription, but not outsiders', async () => {
+  const { organizer, member, outsider, meetup } = await setup();
+  const memberSocket = await client(signSessionToken(member.id));
+  const outsiderSocket = await client(signSessionToken(outsider.id));
+  const outsideEvents = recorder(outsiderSocket, 'group:deleted');
+  const notification = nextEvent<{ groupId: string }>(memberSocket, 'group:deleted');
+  const groupId = String(meetup.groupId);
+  const res = await request(app).delete(`/api/groups/${groupId}`)
+    .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
+  expect(res.status).toBe(204);
+  expect(await notification).toEqual({ groupId });
+  await silence();
+  expect(outsideEvents).toEqual([]);
+});
+
+test('meetup deletion notifies the group detail listener without joining the meetup', async () => {
+  const { organizer, member, outsider, meetup } = await setup();
+  const memberSocket = await client(signSessionToken(member.id));
+  const outsiderSocket = await client(signSessionToken(outsider.id));
+  const outsideEvents = recorder(outsiderSocket, 'group:meetup-deleted');
+  const notification = nextEvent<{ groupId: string; meetupId: string }>(memberSocket, 'group:meetup-deleted');
+  const res = await request(app).delete(`/api/meetups/${meetup.id}`)
+    .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
+  expect(res.status).toBe(204);
+  expect(await notification).toEqual({ groupId: String(meetup.groupId), meetupId: meetup.id });
+  await silence();
+  expect(outsideEvents).toEqual([]);
 });
 
 test('removing a member disconnects their existing socket and denies a new room subscription', async () => {

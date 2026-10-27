@@ -2,13 +2,19 @@ package com.example.cpen321application.ui.meetup
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.ViewModel
@@ -21,6 +27,7 @@ import com.example.cpen321application.model.CalendarEventResult
 import com.example.cpen321application.model.Meetup
 import com.example.cpen321application.model.MeetupStatus
 import com.example.cpen321application.ui.common.FormState
+import com.example.cpen321application.ui.common.DeleteConfirmation
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.UiState
@@ -42,6 +49,14 @@ class MeetupViewModel(private val meetups: MeetupRepository, private val meetupI
 
     private val _calendar = MutableStateFlow(FormState<CalendarEventResult>())
     val calendar: StateFlow<FormState<CalendarEventResult>> = _calendar.asStateFlow()
+    private val _deletion = MutableStateFlow(FormState<Unit>())
+    val deletion: StateFlow<FormState<Unit>> = _deletion.asStateFlow()
+
+    fun deleteMeetup() {
+        if (_deletion.value.submitting || _deletion.value.result != null) return
+        _deletion.value = FormState(submitting = true)
+        viewModelScope.launch { _deletion.value = meetups.delete(meetupId).toFormState() }
+    }
 
     fun load() {
         viewModelScope.launch {
@@ -80,12 +95,26 @@ fun MeetupScreen(
     val vm: MeetupViewModel = screenViewModel(MeetupViewModel.factory(container, meetupId))
     val state by vm.state.collectAsState()
     val calendar by vm.calendar.collectAsState()
+    val deletion by vm.deletion.collectAsState()
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
     val userId = container.sessionStore.currentUserId()
     val actions = MeetupActions(onEnterDetails, onStartVoting, onOpenVoting)
     LaunchedEffect(Unit) { vm.load() }
+    LaunchedEffect(deletion.result) { if (deletion.result != null) onBack() }
 
     ScreenColumn("Meetup", onBack) {
         UiStateContent(state, onRetry = vm::load, emptyMessage = "") { meetup ->
+            if (confirmDelete) {
+                DeleteConfirmation(
+                    title = "Delete meetup?",
+                    description = "Delete ${meetup.title}, its participation details, candidates and votes? This cannot be undone. Settled Fair Credit and external calendar events will remain.",
+                    votingWarning = if (meetup.status == MeetupStatus.VOTING)
+                        "Warning: this meetup currently has voting in progress. Deleting it will end the vote." else null,
+                    onDismiss = { confirmDelete = false },
+                    onDelete = { confirmDelete = false; vm.deleteMeetup() },
+                )
+            }
+            Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
             MeetupInfo(meetup, userId, actions) {
                 val alreadyAdded = meetup.participants.any { it.userId == userId && it.calendarEventId != null }
                 AddToCalendarButton(
@@ -95,6 +124,14 @@ fun MeetupScreen(
                     onToken = vm::addToCalendar,
                     onError = vm::setCalendarError,
                 )
+            }
+            if (meetup.organizerId == userId) {
+                TextButton(onClick = { confirmDelete = true }, enabled = !deletion.submitting,
+                    modifier = Modifier.testTag("delete_meetup")) {
+                    Text(if (deletion.submitting) "Deleting..." else "Delete meetup", color = MaterialTheme.colorScheme.error)
+                }
+            }
+            deletion.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         }
     }

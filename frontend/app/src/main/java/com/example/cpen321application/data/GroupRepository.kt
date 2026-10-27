@@ -5,6 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class GroupRepository(private val api: ApiClient) {
+    suspend fun delete(groupId: String): ApiResult<Unit> = api.delete("groups/$groupId").parse { Unit }
     suspend fun removeMember(groupId: String, memberId: String): ApiResult<Unit> =
         api.delete("groups/$groupId/members/$memberId").parse { Unit }
 

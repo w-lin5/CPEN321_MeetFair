@@ -16,6 +16,7 @@ import org.json.JSONObject
 
 /** Something the server pushed (or failed to push) for one meetup. */
 sealed interface MeetupEvent {
+    data object Deleted : MeetupEvent
     /** The meetup room was (re)joined; reload over REST so nothing published before the join is missed. */
     data object Joined : MeetupEvent
 
@@ -38,9 +39,36 @@ private const val EVENT_VOTE_UPDATED = "vote:updated"
 private const val EVENT_STATUS = "meetup:status"
 private const val EVENT_RECOMMENDATIONS_READY = "recommendations:ready"
 private const val EVENT_MEETUP_UPDATED = "meetup:updated"
+private const val EVENT_MEETUP_DELETED = "meetup:deleted"
+
+sealed interface GroupEvent {
+    data object Connected : GroupEvent
+    data class Deleted(val groupId: String) : GroupEvent
+    data class MeetupDeleted(val groupId: String) : GroupEvent
+}
 
 /** Socket.IO client for live updates, authenticated with the session token. */
 class RealtimeClient(private val baseUrl: String, private val sessionStore: SessionStore) {
+    /** Account-scoped updates work from the group list without joining a meetup room. */
+    fun groupEvents(): Flow<GroupEvent> = callbackFlow {
+        val token = sessionStore.currentToken()
+        if (token == null) { close(); return@callbackFlow }
+        val options = IO.Options.builder().setAuth(mapOf("token" to token))
+            .setTransports(arrayOf(WebSocket.NAME)).build()
+        val socket = IO.socket(URI.create(baseUrl), options)
+        socket.on(Socket.EVENT_CONNECT) { trySend(GroupEvent.Connected) }
+        socket.on("group:deleted") { args ->
+            val id = (args.firstOrNull() as? JSONObject)?.optString("groupId").orEmpty()
+            if (id.isNotBlank()) trySend(GroupEvent.Deleted(id))
+        }
+        socket.on("group:meetup-deleted") { args ->
+            val id = (args.firstOrNull() as? JSONObject)?.optString("groupId").orEmpty()
+            if (id.isNotBlank()) trySend(GroupEvent.MeetupDeleted(id))
+        }
+        socket.connect()
+        awaitClose { socket.off(); socket.disconnect() }
+    }
+
     /**
      * Live updates for one meetup's room.
      * Cold flow: connects on collect, disconnects when the collector is cancelled.
@@ -72,6 +100,7 @@ class RealtimeClient(private val baseUrl: String, private val sessionStore: Sess
         socket.on(EVENT_RECOMMENDATIONS_READY) { trySend(MeetupEvent.RecommendationsReady) }
         // Membership/participation changed; reload the meetup and tally over REST.
         socket.on(EVENT_MEETUP_UPDATED) { trySend(MeetupEvent.Joined) }
+        socket.on(EVENT_MEETUP_DELETED) { trySend(MeetupEvent.Deleted) }
         socket.connect()
 
         awaitClose {
