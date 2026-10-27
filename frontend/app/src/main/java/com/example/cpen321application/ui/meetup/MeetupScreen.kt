@@ -27,6 +27,7 @@ import com.example.cpen321application.model.CalendarEventResult
 import com.example.cpen321application.model.Meetup
 import com.example.cpen321application.model.MeetupStatus
 import com.example.cpen321application.ui.common.FormState
+import com.example.cpen321application.ui.common.LocalNotify
 import com.example.cpen321application.ui.common.DeleteConfirmation
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
@@ -96,11 +97,14 @@ fun MeetupScreen(
     val state by vm.state.collectAsState()
     val calendar by vm.calendar.collectAsState()
     val deletion by vm.deletion.collectAsState()
+    val notify = LocalNotify.current
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     val userId = container.sessionStore.currentUserId()
     val actions = MeetupActions(onEnterDetails, onStartVoting, onOpenVoting)
     LaunchedEffect(Unit) { vm.load() }
-    LaunchedEffect(deletion.result) { if (deletion.result != null) onBack() }
+    LaunchedEffect(deletion.result) {
+        if (deletion.result != null) { notify("Meetup deleted."); onBack() }
+    }
 
     ScreenColumn("Meetup", onBack) {
         UiStateContent(state, onRetry = vm::load, emptyMessage = "") { meetup ->

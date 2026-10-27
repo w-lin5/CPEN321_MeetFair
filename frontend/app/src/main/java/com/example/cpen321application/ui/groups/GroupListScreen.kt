@@ -29,6 +29,7 @@ import com.example.cpen321application.data.GroupRepository
 import com.example.cpen321application.data.GroupEvent
 import com.example.cpen321application.model.Group
 import com.example.cpen321application.ui.common.ScreenColumn
+import com.example.cpen321application.ui.common.LocalNotify
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.UiState
 import com.example.cpen321application.ui.common.UiStateContent
@@ -45,12 +46,9 @@ import kotlinx.coroutines.Job
 class GroupListViewModel(private val groups: GroupRepository) : ViewModel() {
     private val _state = MutableStateFlow<UiState<List<Group>>>(UiState.Loading)
     val state: StateFlow<UiState<List<Group>>> = _state.asStateFlow()
-    private val _notice = MutableStateFlow<String?>(null)
-    val notice: StateFlow<String?> = _notice.asStateFlow()
     private var loadJob: Job? = null
 
     fun onGroupEvent(event: GroupEvent) {
-        if (event is GroupEvent.Deleted) _notice.value = "A group was deleted by its organizer."
         if (event is GroupEvent.Connected || event is GroupEvent.Deleted) load()
     }
 
@@ -77,13 +75,17 @@ fun GroupListScreen(
 ) {
     val vm: GroupListViewModel = screenViewModel(GroupListViewModel.factory(container))
     val state by vm.state.collectAsState()
-    val notice by vm.notice.collectAsState()
+    val notify = LocalNotify.current
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { vm.load() }
-    LaunchedEffect(container) { container.realtimeClient.groupEvents().collect(vm::onGroupEvent) }
+    LaunchedEffect(container) {
+        container.realtimeClient.groupEvents().collect { event ->
+            vm.onGroupEvent(event)
+            if (event is GroupEvent.Deleted) notify("A group was deleted by its organizer.")
+        }
+    }
 
     ScreenColumn("Your groups") {
-        notice?.let { Text(it) }
         Row(horizontalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
             Button(onClick = onCreate, modifier = Modifier.testTag(TestTags.CREATE_GROUP_BUTTON)) {
                 Text("Create group")

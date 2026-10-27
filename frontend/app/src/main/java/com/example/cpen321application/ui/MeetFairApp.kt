@@ -9,6 +9,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.cpen321application.AppContainer
 import com.example.cpen321application.ui.auth.SignInScreen
+import com.example.cpen321application.ui.common.NotificationHost
 import com.example.cpen321application.ui.fairness.GroupFairnessScreen
 import com.example.cpen321application.ui.groups.CreateGroupScreen
 import com.example.cpen321application.ui.groups.GroupDetailScreen
@@ -35,9 +36,11 @@ private fun AuthedApp(container: AppContainer, token: String) {
     val navigator = rememberSaveable(saver = Navigator.Saver) { Navigator.initial() }
     BackHandler(enabled = navigator.stack.size > 1) { navigator.pop() }
     val entry = navigator.current
-    key(entry.id) {
-        CompositionLocalProvider(LocalEntryKey provides "${token.hashCode()}-${entry.id}") {
-            RouteContent(container, navigator, entry.route)
+    NotificationHost {
+        key(entry.id) {
+            CompositionLocalProvider(LocalEntryKey provides "${token.hashCode()}-${entry.id}") {
+                RouteContent(container, navigator, entry.route)
+            }
         }
     }
 }
@@ -85,7 +88,10 @@ private fun MeetupRoutes(container: AppContainer, navigator: Navigator, route: R
             navigator.pop()
             navigator.push(Route.Voting(route.meetupId))
         })
-        is Route.Voting -> VotingScreen(container, route.meetupId, onBack = navigator::pop)
+        is Route.Voting -> VotingScreen(container, route.meetupId, onBack = navigator::pop, onDeleted = {
+            navigator.pop()
+            if (navigator.current.route == Route.Meetup(route.meetupId)) navigator.pop()
+        })
     }
 }
 

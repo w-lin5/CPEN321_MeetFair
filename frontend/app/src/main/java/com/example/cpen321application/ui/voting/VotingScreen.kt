@@ -39,6 +39,7 @@ import com.example.cpen321application.model.MyVote
 import com.example.cpen321application.model.PlaceCandidate
 import com.example.cpen321application.model.VoteTally
 import com.example.cpen321application.ui.common.ScreenColumn
+import com.example.cpen321application.ui.common.LocalNotify
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.UiState
 import com.example.cpen321application.ui.common.UiStateContent
@@ -83,6 +84,8 @@ class VotingViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow<UiState<VotingState>>(UiState.Loading)
     val state: StateFlow<UiState<VotingState>> = _state.asStateFlow()
+    private val _deleted = MutableStateFlow(false)
+    val deleted: StateFlow<Boolean> = _deleted.asStateFlow()
 
     private var liveJob: Job? = null
 
@@ -192,6 +195,7 @@ class VotingViewModel(
         liveJob = viewModelScope.launch {
             realtime.meetupEvents(meetupId).collect { event ->
                 if (event is MeetupEvent.Deleted) {
+                    _deleted.value = true
                     _state.value = UiState.Error("This meetup has been deleted by its organizer.")
                     return@collect
                 }
@@ -240,11 +244,16 @@ internal fun pickOptions(state: VotingState): List<String> {
 
 /** Live weighted vote on the meetup's candidate places; the organizer finalizes it. */
 @Composable
-fun VotingScreen(container: AppContainer, meetupId: String, onBack: () -> Unit) {
+fun VotingScreen(container: AppContainer, meetupId: String, onBack: () -> Unit, onDeleted: () -> Unit = onBack) {
     val vm: VotingViewModel = screenViewModel(VotingViewModel.factory(container, meetupId))
     val state by vm.state.collectAsState()
+    val deleted by vm.deleted.collectAsState()
+    val notify = LocalNotify.current
     val userId = container.sessionStore.currentUserId()
     LaunchedEffect(Unit) { vm.load() }
+    LaunchedEffect(deleted) {
+        if (deleted) { notify("This meetup has been deleted by its organizer."); onDeleted() }
+    }
 
     ScreenColumn("Vote on a spot", onBack) {
         UiStateContent(state, onRetry = vm::load, emptyMessage = "") { voting ->

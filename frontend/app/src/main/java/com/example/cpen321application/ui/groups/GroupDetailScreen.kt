@@ -38,6 +38,7 @@ import com.example.cpen321application.model.GroupMember
 import com.example.cpen321application.model.GroupRole
 import com.example.cpen321application.model.Meetup
 import com.example.cpen321application.ui.common.ScreenColumn
+import com.example.cpen321application.ui.common.LocalNotify
 import com.example.cpen321application.ui.common.DeleteConfirmation
 import com.example.cpen321application.ui.common.FormState
 import com.example.cpen321application.ui.common.toFormState
@@ -79,9 +80,9 @@ class GroupDetailViewModel(
     private val _deletion = MutableStateFlow(FormState<Unit>())
     val deletion: StateFlow<FormState<Unit>> = _deletion.asStateFlow()
     private var deleted = false
+    private val _missing = MutableStateFlow(false)
+    val missing: StateFlow<Boolean> = _missing.asStateFlow()
     private var loadJob: Job? = null
-    private val _notice = MutableStateFlow<String?>(null)
-    val notice: StateFlow<String?> = _notice.asStateFlow()
 
     fun onGroupEvent(event: GroupEvent) {
         when (event) {
@@ -92,7 +93,6 @@ class GroupDetailViewModel(
                 _state.value = UiState.Error("This group has been deleted by its organizer.")
             }
             is GroupEvent.MeetupDeleted -> if (event.groupId == groupId) {
-                _notice.value = "A meetup was deleted. The list has been updated."
                 load()
             }
         }
@@ -123,7 +123,14 @@ class GroupDetailViewModel(
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             _state.value = UiState.Loading
-            _state.value = combine(groups.detail(groupId), meetups.listForGroup(groupId))
+            val group = groups.detail(groupId)
+            if (group is ApiResult.Failure && group.error.httpCode == 404) {
+                deleted = true
+                _missing.value = true
+                _state.value = UiState.Empty
+            } else {
+                _state.value = combine(group, meetups.listForGroup(groupId))
+            }
         }
     }
 
@@ -146,15 +153,35 @@ fun GroupDetailScreen(
     val state by vm.state.collectAsState()
     val removal by vm.removal.collectAsState()
     val deletion by vm.deletion.collectAsState()
-    val notice by vm.notice.collectAsState()
+    val notify = LocalNotify.current
+    val missing by vm.missing.collectAsState()
+    var exited by rememberSaveable { mutableStateOf(false) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var selectedMemberId by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { vm.load() }
-    LaunchedEffect(container, groupId) { container.realtimeClient.groupEvents().collect(vm::onGroupEvent) }
-    LaunchedEffect(deletion.result) { if (deletion.result != null) onBack() }
+    LaunchedEffect(container, groupId) {
+        container.realtimeClient.groupEvents().collect { event ->
+            vm.onGroupEvent(event)
+            when {
+                event is GroupEvent.Deleted && event.groupId == groupId && !vm.deletion.value.submitting &&
+                    vm.deletion.value.result == null && !exited -> {
+                    exited = true
+                    notify("This group has been deleted by its organizer.")
+                    onBack()
+                }
+                event is GroupEvent.MeetupDeleted && event.groupId == groupId ->
+                    notify("A meetup was deleted. The list has been updated.")
+            }
+        }
+    }
+    LaunchedEffect(deletion.result) {
+        if (deletion.result != null && !exited) { exited = true; notify("Group deleted."); onBack() }
+    }
+    LaunchedEffect(missing) {
+        if (missing && !exited) { exited = true; notify("This group is no longer available."); onBack() }
+    }
 
     ScreenColumn("Group", onBack) {
-        notice?.let { Text(it) }
         UiStateContent(state, onRetry = vm::load, emptyMessage = "") { data ->
             GroupInfo(data, onNewMeetup, onOpenMeetup,
                 canRemove = data.group.organizerId == container.sessionStore.currentUserId(),
