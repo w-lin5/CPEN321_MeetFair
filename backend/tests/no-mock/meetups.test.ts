@@ -28,24 +28,40 @@ async function setupGroup() {
 
 // Interface POST /api/groups/:groupId/meetups
 describe('Unmocked: POST /api/groups/:groupId/meetups', () => {
+  test.each([-60_000, 0, 60_000])('requires a future time, offset from now: %i ms', async offset => {
+    const { member, group } = await setupGroup();
+    const now = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      const res = await request(createApp()).post(`/api/groups/${group.id}/meetups`)
+        .set('Authorization', bearer(member.id))
+        .send({ title: 'Time validation', scheduledAt: new Date(now + offset).toISOString() });
+      expect(res.status).toBe(offset > 0 ? 201 : 400);
+      expect(await MeetupModel.countDocuments()).toBe(offset > 0 ? 1 : 0);
+      if (offset <= 0) expect(res.body.error).toBe('Meeting time must be in the future.');
+    } finally {
+      clock.mockRestore();
+    }
+  });
   // Input: { title, scheduledAt } from a group member (not the group organizer)
   // Expected status code: 201
   // Expected behavior: meetup stored in SETUP with no participants; the caller is its organizer
   // Expected output: meetup with id, groupId, organizerId, title, scheduledAt (ISO), status SETUP, participants []
   test('Creates a meetup in SETUP', async () => {
     const { member, group } = await setupGroup();
+    const scheduledAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
     const res = await request(createApp())
       .post(`/api/groups/${group.id}/meetups`)
       .set('Authorization', bearer(member.id))
-      .send({ title: '  Library session ', scheduledAt: '2026-11-05T22:30:00Z' });
+      .send({ title: '  Library session ', scheduledAt });
 
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({
       groupId: group.id,
       organizerId: member.id,
       title: 'Library session',
-      scheduledAt: '2026-11-05T22:30:00.000Z',
+      scheduledAt,
       status: 'SETUP',
       participants: [],
     });

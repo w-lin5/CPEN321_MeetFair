@@ -2,6 +2,7 @@ package com.example.cpen321application.ui.meetup
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -71,7 +72,9 @@ class CreateMeetupViewModel(private val meetups: MeetupRepository, private val g
         val iso = localInputToIso(timeInput)
         
         if (iso == null) {
-            _state.value = FormState(error = "Time must look like $TIME_PATTERN, e.g. 2026-11-05T14:30")
+            _state.value = FormState(error = "Please choose a valid meeting date and time.")
+        } else if (!Instant.parse(iso).isAfter(Instant.now())) {
+            _state.value = FormState(error = "Meeting time must be later than now. Please choose a new time.")
         } else {
             viewModelScope.launch {
                 _state.value = FormState(submitting = true)
@@ -92,8 +95,17 @@ fun CreateMeetupScreen(container: AppContainer, groupId: String, onBack: () -> U
     val state by vm.state.collectAsState()
     var title by rememberSaveable { mutableStateOf("") }
     var time by rememberSaveable { mutableStateOf(defaultTimeInput()) }
+    var choosingTime by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(state.result) { state.result?.let { onCreated(it.id) } }
+
+    if (choosingTime) {
+        MeetingDateTimePicker(
+            initial = LocalDateTime.parse(time, TIME_INPUT_FORMAT),
+            onDismiss = { choosingTime = false },
+            onConfirm = { time = it.format(TIME_INPUT_FORMAT); choosingTime = false },
+        )
+    }
 
     ScreenColumn("New meetup", onBack) {
         OutlinedTextField(
@@ -103,13 +115,12 @@ fun CreateMeetupScreen(container: AppContainer, groupId: String, onBack: () -> U
             singleLine = true,
             modifier = Modifier.fillMaxWidth().testTag(TestTags.MEETUP_TITLE_INPUT),
         )
-        OutlinedTextField(
-            value = time,
-            onValueChange = { time = it },
-            label = { Text("Time ($TIME_PATTERN, device time zone)") },
-            singleLine = true,
+        Text("Meeting date and time", style = MaterialTheme.typography.titleMedium)
+        OutlinedButton(
+            onClick = { choosingTime = true },
+            enabled = !state.submitting,
             modifier = Modifier.fillMaxWidth().testTag(TestTags.MEETUP_TIME_INPUT),
-        )
+        ) { Text(TIME_DISPLAY_FORMAT.format(LocalDateTime.parse(time, TIME_INPUT_FORMAT))) }
         state.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag(TestTags.ERROR_TEXT))
         }

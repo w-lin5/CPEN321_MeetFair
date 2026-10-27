@@ -1,4 +1,4 @@
-import { NotFound, Conflict } from '../common/errors';
+import { BadRequest, NotFound, Conflict } from '../common/errors';
 import type { MeetupStatus } from '../common/types';
 import { groupService } from './group.service';
 import { MeetupModel, type MeetupWinner } from './models';
@@ -10,11 +10,15 @@ import { SERVER_EVENTS, meetupRoom } from '../realtime/events';
 // Create a meetup in SETUP (enum); the caller must be a group member and becomes its organizer
 async function create(userId: string, groupId: string, input: { title: string; scheduledAt: string }) {
   await groupService.requireMembership(groupId, userId);
+  const scheduledAt = new Date(input.scheduledAt);
+  if (!Number.isFinite(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now()) {
+    throw new BadRequest('Meeting time must be in the future.');
+  }
   return MeetupModel.create({
     groupId,
     organizerId: userId,
     title: input.title,
-    scheduledAt: new Date(input.scheduledAt),
+    scheduledAt,
   });
 }
 
