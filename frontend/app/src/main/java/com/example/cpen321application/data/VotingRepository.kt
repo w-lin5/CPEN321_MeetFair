@@ -9,6 +9,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class VotingRepository(private val api: ApiClient) {
+    /** Uses the backend's temporary Google Places selection and starts voting. */
+    suspend fun generateFromPlaces(meetupId: String): ApiResult<Recommendation> =
+        api.post("meetups/$meetupId/recommendations/from-places").parse { parseRecommendation(JSONObject(it)) }
+
     suspend fun recommendations(meetupId: String): ApiResult<Recommendation> =
         api.get("meetups/$meetupId/recommendations").parse { parseRecommendation(JSONObject(it)) }
 

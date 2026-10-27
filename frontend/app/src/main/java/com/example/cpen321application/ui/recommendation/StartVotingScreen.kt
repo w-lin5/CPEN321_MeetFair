@@ -97,6 +97,14 @@ class StartVotingViewModel(private val voting: VotingRepository, private val mee
         }
     }
 
+    fun generateFromPlaces() {
+        if (_state.value.submitting) return
+        _state.value = FormState(submitting = true)
+        viewModelScope.launch {
+            _state.value = voting.generateFromPlaces(meetupId).toFormState()
+        }
+    }
+
     companion object {
         fun factory(c: AppContainer, meetupId: String) =
             viewModelFactory { initializer { StartVotingViewModel(c.votingRepository, meetupId) } }
@@ -120,6 +128,12 @@ fun StartVotingScreen(container: AppContainer, meetupId: String, onBack: () -> U
                 "Enter the $CANDIDATE_COUNT places the group will vote on. Once voting starts, members " +
                     "can no longer change their details, and only members who entered them can vote.",
             )
+            Text("Or generate 3 places from cafes near UBC and start voting.")
+            Button(
+                onClick = vm::generateFromPlaces,
+                enabled = !state.submitting,
+                modifier = Modifier.testTag("generate_places_submit"),
+            ) { Text(if (state.submitting) "Generating..." else "Generate places and start voting") }
             inputs.forEachIndexed { index, input -> CandidateFields(index, input) { vm.update(index, it) } }
             state.error?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag(TestTags.ERROR_TEXT))
