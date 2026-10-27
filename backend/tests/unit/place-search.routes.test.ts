@@ -17,6 +17,15 @@ const searchMock = jest.mocked(searchNearby);
 const memberMock = jest.mocked(meetupService.getForMember);
 
 describe('POST /api/meetups/:meetupId/places/search', () => {
+  test('manual candidate submission endpoint has been removed', async () => {
+    const res = await request(createApp())
+      .post(`/api/meetups/${meetupId}/recommendations`)
+      .set('Authorization', bearer(organizerId))
+      .send({ candidates: [] });
+    expect(res.status).toBe(404);
+    expect(searchMock).not.toHaveBeenCalled();
+    expect(recommendationService.generate).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     jest.resetAllMocks();
     memberMock.mockResolvedValue({ organizerId, status: 'SETUP' } as unknown as Awaited<ReturnType<typeof meetupService.getForMember>>);

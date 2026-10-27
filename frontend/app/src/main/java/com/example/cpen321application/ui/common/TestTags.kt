@@ -66,12 +66,6 @@ object TestTags {
     fun preferenceChip(preference: String) = "preference_chip_$preference"
     fun profileGroupItem(groupId: String) = "profile_group_item_$groupId"
 
-    // Start-voting fields are tagged per candidate position (0-based)
-    fun candidateNameInput(index: Int) = "candidate_name_input_$index"
-    fun candidateAddressInput(index: Int) = "candidate_address_input_$index"
-    fun candidateLatInput(index: Int) = "candidate_lat_input_$index"
-    fun candidateLngInput(index: Int) = "candidate_lng_input_$index"
-
     // Voting rows are tagged per candidate placeId
     fun candidateItem(placeId: String) = "candidate_item_$placeId"
     fun voteButton(placeId: String) = "vote_button_$placeId"

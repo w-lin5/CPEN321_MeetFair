@@ -1,4 +1,5 @@
 import request from 'supertest';
+import * as placesClient from '../../src/integrations/places.client';
 
 import { createApp } from '../../src/app';
 import { RecommendationModel } from '../../src/recommendation/models';
@@ -8,6 +9,7 @@ import { clearDb, startDb, stopDb } from '../helpers/db';
 import { CANDIDATES, createGroup, createMeetup, createUserN } from '../helpers/factories';
 
 beforeAll(startDb);
+beforeEach(() => { jest.spyOn(placesClient, 'searchNearby').mockResolvedValue(CANDIDATES); });
 afterEach(async () => {
   jest.restoreAllMocks();
   await clearDb();
@@ -23,13 +25,12 @@ async function setup() {
 
 function generate(meetupId: string, userId: string) {
   return request(createApp())
-    .post(`/api/meetups/${meetupId}/recommendations`)
-    .set('Authorization', bearer(userId))
-    .send({ candidates: CANDIDATES });
+    .post(`/api/meetups/${meetupId}/recommendations/from-places`)
+    .set('Authorization', bearer(userId));
 }
 
-// Interface POST /api/meetups/:meetupId/recommendations
-describe('Mocked: POST /api/meetups/:meetupId/recommendations', () => {
+// Interface POST /api/meetups/:meetupId/recommendations/from-places
+describe('Mocked: POST /api/meetups/:meetupId/recommendations/from-places', () => {
   // Input: organizer of a SETUP meetup
   // Expected status code: 500
   // Expected behavior: the claimed VOTING status is rolled back to SETUP
