@@ -5,6 +5,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class GroupRepository(private val api: ApiClient) {
+    suspend fun removeMember(groupId: String, memberId: String): ApiResult<Unit> =
+        api.delete("groups/$groupId/members/$memberId").parse { Unit }
+
     suspend fun list(): ApiResult<List<Group>> =
         api.get("groups").parse { JSONArray(it).mapObjects(::parseGroup) }
 

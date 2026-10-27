@@ -8,6 +8,7 @@ export const CLIENT_EVENTS = {
 
 // Server -> client, always sent to the meetup's room
 export const SERVER_EVENTS = {
+  meetupUpdated: 'meetup:updated',
   voteUpdated: 'vote:updated',
   meetupStatus: 'meetup:status',
   recommendationsReady: 'recommendations:ready',

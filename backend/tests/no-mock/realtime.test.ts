@@ -8,7 +8,7 @@ import request from 'supertest';
 import { createApp } from '../../src/app';
 import { signSessionToken } from '../../src/common/session';
 import { attachRealtime } from '../../src/realtime/gateway';
-import { setTransport } from '../../src/realtime/publisher';
+import { setRevoker, setTransport } from '../../src/realtime/publisher';
 import { VoteModel } from '../../src/voting-fairness/models';
 import { clearDb, startDb, stopDb } from '../helpers/db';
 import {
@@ -17,6 +17,7 @@ import {
   PLACE_3,
   addMember,
   createGroup,
+  createMeetup,
   createUserN,
   createVotingMeetup,
 } from '../helpers/factories';
@@ -48,9 +49,27 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
+  setRevoker(null);
   setTransport(null);
   await ioServer.close();
   await stopDb();
+});
+
+test('removing a member disconnects their existing socket and denies a new room subscription', async () => {
+  const organizer = await createUserN(1);
+  const member = await createUserN(2);
+  const group = await createGroup(organizer.id);
+  await addMember(group.id, member.id);
+  const meetup = await createMeetup(group.id, organizer.id);
+  const socket = await client(signSessionToken(member.id));
+  expect(await join(socket, meetup.id)).toEqual({ ok: true });
+  const disconnected = nextEvent<string>(socket, 'disconnect');
+  const response = await request(app).delete(`/api/groups/${group.id}/members/${member.id}`)
+    .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
+  expect(response.status).toBe(204);
+  expect(await disconnected).toBe('io server disconnect');
+  const reconnected = await client(signSessionToken(member.id));
+  expect(await join(reconnected, meetup.id)).toMatchObject({ ok: false, error: 'Not a member of this group' });
 });
 
 // Connects with the given session token (or none) and resolves once connected or rejected

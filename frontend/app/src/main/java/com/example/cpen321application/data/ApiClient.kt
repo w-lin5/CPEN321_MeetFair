@@ -31,6 +31,9 @@ class ApiClient(baseUrl: String, private val http: OkHttpClient) {
     suspend fun get(path: String): ApiResult<String> =
         execute(Request.Builder().url(base + path).get().build())
 
+    suspend fun delete(path: String): ApiResult<String> =
+        execute(Request.Builder().url(base + path).delete().build())
+
     suspend fun post(path: String, body: JSONObject? = null): ApiResult<String> =
         execute(Request.Builder().url(base + path).post(asJsonBody(body)).build())
 

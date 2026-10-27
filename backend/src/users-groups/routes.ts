@@ -8,6 +8,7 @@ import {
   createGroupBody,
   createMeetupBody,
   groupParams,
+  groupMemberParams,
   joinGroupBody,
   meetupParams,
   participationBody,
@@ -15,6 +16,12 @@ import {
 import { userService } from './user.service';
 
 export const usersGroupsRouter = Router();
+
+usersGroupsRouter.delete('/groups/:groupId/members/:memberId', async (req, res) => {
+  const { groupId, memberId } = parseInput(groupMemberParams, req.params);
+  await groupService.removeMember(groupId, getUserId(req), memberId);
+  res.status(204).end();
+});
 
 // Return authenticated user's profile
 usersGroupsRouter.get('/users/me', async (req, res) => {

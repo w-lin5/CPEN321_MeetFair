@@ -3,11 +3,14 @@ package com.example.cpen321application.ui.groups
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -15,7 +18,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -43,6 +50,7 @@ import kotlinx.coroutines.launch
 
 /** A group together with its meetups, loaded as one unit so the screen has a single loading/error state. */
 data class GroupDetailData(val group: Group, val meetups: List<Meetup>)
+data class MemberRemovalState(val pending: Boolean = false, val error: String? = null)
 
 private fun combine(group: ApiResult<Group>, meetups: ApiResult<List<Meetup>>): UiState<GroupDetailData> =
     when (group) {
@@ -61,6 +69,22 @@ class GroupDetailViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow<UiState<GroupDetailData>>(UiState.Loading)
     val state: StateFlow<UiState<GroupDetailData>> = _state.asStateFlow()
+    private val _removal = MutableStateFlow(MemberRemovalState())
+    val removal: StateFlow<MemberRemovalState> = _removal.asStateFlow()
+
+    fun removeMember(memberId: String) {
+        if (_removal.value.pending) return
+        _removal.value = MemberRemovalState(pending = true)
+        viewModelScope.launch {
+            when (val result = groups.removeMember(groupId, memberId)) {
+                is ApiResult.Failure -> _removal.value = MemberRemovalState(error = result.error.message)
+                is ApiResult.Success -> {
+                    _state.value = combine(groups.detail(groupId), meetups.listForGroup(groupId))
+                    _removal.value = MemberRemovalState()
+                }
+            }
+        }
+    }
 
     fun load() {
         viewModelScope.launch {
@@ -86,15 +110,51 @@ fun GroupDetailScreen(
 ) {
     val vm: GroupDetailViewModel = screenViewModel(GroupDetailViewModel.factory(container, groupId))
     val state by vm.state.collectAsState()
+    val removal by vm.removal.collectAsState()
+    var selectedMemberId by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { vm.load() }
 
     ScreenColumn("Group", onBack) {
-        UiStateContent(state, onRetry = vm::load, emptyMessage = "") { GroupInfo(it, onNewMeetup, onOpenMeetup) }
+        UiStateContent(state, onRetry = vm::load, emptyMessage = "") { data ->
+            GroupInfo(data, onNewMeetup, onOpenMeetup,
+                canRemove = data.group.organizerId == container.sessionStore.currentUserId(),
+                removal = removal, onRemove = { selectedMemberId = it.userId })
+            val selected = data.group.members.firstOrNull { it.userId == selectedMemberId }
+            if (selected != null) {
+                val activeParticipation = data.meetups.any { meetup ->
+                    (meetup.status.name == "VOTING" || meetup.status.name == "FINALIZED") &&
+                        meetup.participants.any { it.userId == selected.userId }
+                }
+                AlertDialog(
+                    onDismissRequest = { selectedMemberId = null },
+                    title = { Text(if (activeParticipation) "Cannot remove member" else "Remove member?") },
+                    text = {
+                        Text(if (activeParticipation)
+                            "This member submitted details for a meetup whose voting has started. Settle that meetup before removing them."
+                        else "Remove ${selected.name ?: "this member"} from the group? Their meetup details and votes in this group will be deleted, and they will lose access.")
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            selectedMemberId = null
+                            if (!activeParticipation) vm.removeMember(selected.userId)
+                        }) { Text(if (activeParticipation) "OK" else "Remove") }
+                    },
+                    dismissButton = {
+                        if (!activeParticipation) {
+                            TextButton(onClick = { selectedMemberId = null }) { Text("Cancel") }
+                        }
+                    },
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun GroupInfo(data: GroupDetailData, onNewMeetup: () -> Unit, onOpenMeetup: (String) -> Unit) {
+private fun GroupInfo(
+    data: GroupDetailData, onNewMeetup: () -> Unit, onOpenMeetup: (String) -> Unit,
+    canRemove: Boolean, removal: MemberRemovalState, onRemove: (GroupMember) -> Unit,
+) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
         // Several composables in one lazy item would overlap, so each item has a single Column root
         item {
@@ -102,9 +162,22 @@ private fun GroupInfo(data: GroupDetailData, onNewMeetup: () -> Unit, onOpenMeet
                 Text(data.group.name, style = MaterialTheme.typography.titleLarge)
                 Text("Invite code: ${data.group.inviteCode}", modifier = Modifier.testTag(TestTags.INVITE_CODE_TEXT))
                 Text("Members", style = MaterialTheme.typography.titleMedium)
+                if (removal.pending) Text("Removing member...")
+                removal.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag(TestTags.ERROR_TEXT)) }
             }
         }
-        items(data.group.members, key = { it.userId }) { MemberRow(it) }
+        items(data.group.members, key = { it.userId }) { member ->
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                MemberRow(member, Modifier.weight(1f))
+                if (canRemove && member.userId != data.group.organizerId) {
+                    TextButton(
+                        onClick = { onRemove(member) },
+                        enabled = !removal.pending,
+                        modifier = Modifier.testTag("remove_member_${member.userId}"),
+                    ) { Text("Remove") }
+                }
+            }
+        }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
                 Text("Meetups", style = MaterialTheme.typography.titleMedium)
@@ -121,9 +194,9 @@ private fun GroupInfo(data: GroupDetailData, onNewMeetup: () -> Unit, onOpenMeet
 }
 
 @Composable
-private fun MemberRow(member: GroupMember) {
+private fun MemberRow(member: GroupMember, modifier: Modifier = Modifier) {
     val role = if (member.role == GroupRole.ORGANIZER) " (organizer)" else ""
-    Text("${member.name ?: "Unknown"}$role", modifier = Modifier.testTag(TestTags.MEMBER_ITEM))
+    Text("${member.name ?: "Unknown"}$role", modifier = modifier.testTag(TestTags.MEMBER_ITEM))
 }
 
 @Composable

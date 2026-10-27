@@ -6,6 +6,11 @@
 type Publish = (room: string, event: string, payload: unknown) => void;
 
 let transport: Publish | null = null;
+let revokeTransport: ((userId: string) => void) | null = null;
+
+export function setRevoker(revoke: ((userId: string) => void) | null): void {
+  revokeTransport = revoke;
+}
 
 export function setTransport(publish: Publish | null): void {
   transport = publish;
@@ -15,4 +20,8 @@ function publish(room: string, event: string, payload: unknown): void {
   transport?.(room, event, payload);
 }
 
-export const publisher = { publish };
+function revokeUser(userId: string): void {
+  revokeTransport?.(userId);
+}
+
+export const publisher = { publish, revokeUser };

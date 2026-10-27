@@ -193,7 +193,10 @@ class VotingViewModel(
             realtime.meetupEvents(meetupId).collect { event ->
                 edit { applyEvent(it, event) }
                 // The tally may have changed before the room was joined
-                if (event is MeetupEvent.Joined) refreshVotes()
+                if (event is MeetupEvent.Joined) {
+                    refreshVotes()
+                    reloadMeetup()
+                }
             }
         }
     }

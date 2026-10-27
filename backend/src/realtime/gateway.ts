@@ -9,7 +9,7 @@ import { verifySessionToken } from '../common/session';
 import { meetupService } from '../users-groups/meetup.service';
 import { meetupParams } from '../users-groups/schemas';
 import { CLIENT_EVENTS, meetupRoom } from './events';
-import { setTransport } from './publisher';
+import { setRevoker, setTransport } from './publisher';
 
 type Ack = (response: { ok: true } | { ok: false; error: string }) => void;
 
@@ -46,6 +46,13 @@ async function handleJoin(socket: Socket, payload: unknown, ack: Ack): Promise<v
     const { meetupId } = parseInput(meetupParams, payload);
     await meetupService.getForMember(meetupId, userIdOf(socket));
     await socket.join(meetupRoom(meetupId));
+    // Recheck after joining so an in-flight removal cannot leave an unauthorized subscription.
+    try {
+      await meetupService.getForMember(meetupId, userIdOf(socket));
+    } catch (err) {
+      await socket.leave(meetupRoom(meetupId));
+      throw err;
+    }
     ack({ ok: true });
   } catch (err) {
     ack({ ok: false, error: errorMessage(err) });
@@ -88,6 +95,12 @@ export function attachRealtime(httpServer: HttpServer | HttpsServer): Server {
 
   setTransport((room, event, payload) => {
     io.to(room).emit(event, payload);
+  });
+
+  setRevoker(userId => {
+    for (const socket of io.sockets.sockets.values()) {
+      if (userIdOf(socket) === userId) socket.disconnect(true);
+    }
   });
 
   return io;

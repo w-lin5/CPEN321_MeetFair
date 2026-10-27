@@ -37,7 +37,7 @@ async function candidatePlaceIds(meetupId: string): Promise<string[]> {
 // The same tally goes to every member, over REST and as vote:updated
 async function buildTally(meetup: MeetupDoc) {
   const meetupId = String(meetup._id);
-  const votes = await VoteModel.find({ meetupId });
+  const votes = await VoteModel.find({ meetupId, userId: { $in: meetup.participants.map(p => p.userId) } });
 
   return {
     meetupId,
@@ -135,7 +135,9 @@ async function finalize(meetupId: string, userId: string, manualPick: string | u
 
   const recommendation = await recommendationService.getByMeetupId(meetupId);
   const placeIds = recommendation.candidates.map((c) => c.placeId);
-  const winnerId = pickWinner(placeIds, await VoteModel.find({ meetupId }), manualPick);
+  const winnerId = pickWinner(placeIds, await VoteModel.find({
+    meetupId, userId: { $in: meetup.participants.map(p => p.userId) },
+  }), manualPick);
   const winner = recommendation.candidates.find((c) => c.placeId === winnerId);
   if (!winner?.location) throw new NotFound('Winning candidate not found');
 

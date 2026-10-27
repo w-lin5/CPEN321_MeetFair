@@ -1,8 +1,11 @@
 import { randomInt } from 'node:crypto';
 
-import { Conflict, Forbidden, NotFound } from '../common/errors';
+import { BadRequest, Conflict, Forbidden, NotFound } from '../common/errors';
 import { tuning } from '../config';
-import { GroupModel } from './models';
+import { GroupModel, MeetupModel } from './models';
+import { publisher } from '../realtime/publisher';
+import { SERVER_EVENTS, meetupRoom } from '../realtime/events';
+import { VoteModel } from '../voting-fairness/models';
 import { userService } from './user.service';
 
 function generateInviteCode(): string {
@@ -80,4 +83,38 @@ async function join(userId: string, inviteCode: string) {
   return GroupModel.findById(group._id).orFail();
 }
 
-export const groupService = { create, listForUser, requireMembership, getDetail, join };
+async function removeMember(groupId: string, organizerId: string, memberId: string) {
+  const group = await requireMembership(groupId, organizerId);
+  if (String(group.organizerId) !== organizerId) throw new Forbidden('Only the group organizer can remove members');
+  if (memberId === organizerId) throw new BadRequest('The group organizer cannot remove themselves');
+  if (!group.members.some(member => String(member.userId) === memberId)) throw new NotFound('Member not found in this group');
+  const participatingInActiveVote = await MeetupModel.exists({
+    groupId,
+    'participants.userId': memberId,
+    status: { $in: ['VOTING', 'FINALIZED'] },
+  });
+  if (participatingInActiveVote) {
+    throw new Conflict('This member has entered details for a meetup whose voting has started. Settle that meetup before removing them.');
+  }
+  const meetups = await MeetupModel.find({ groupId }).select('_id');
+  const meetupIds = meetups.map(meetup => meetup._id);
+  const result = await GroupModel.updateOne(
+    { _id: groupId, organizerId, 'members.userId': memberId },
+    { $pull: { members: { userId: memberId } } },
+  );
+  if (result.modifiedCount === 0) throw new Conflict('Group membership changed. Please refresh and try again.');
+  publisher.revokeUser(memberId);
+  // Membership is revoked first; remove all submitted inputs and votes in this group only.
+  await MeetupModel.updateMany({ groupId }, { $pull: { participants: { userId: memberId } } });
+  await VoteModel.deleteMany({ meetupId: { $in: meetupIds }, userId: memberId });
+  // A removed meetup organizer must not leave an active meetup without anyone able to manage it.
+  await MeetupModel.updateMany(
+    { groupId, organizerId: memberId, status: { $ne: 'SETTLED' } },
+    { $set: { organizerId } },
+  );
+  for (const meetupId of meetupIds) {
+    publisher.publish(meetupRoom(String(meetupId)), SERVER_EVENTS.meetupUpdated, { meetupId: String(meetupId) });
+  }
+}
+
+export const groupService = { create, listForUser, requireMembership, getDetail, join, removeMember };

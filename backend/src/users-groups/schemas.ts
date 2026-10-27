@@ -22,6 +22,11 @@ export const groupParams: Parser<{ groupId: string }> = (data) => ({
   groupId: objectId(fields(data, 'params'), 'groupId'),
 });
 
+export const groupMemberParams: Parser<{ groupId: string; memberId: string }> = (data) => {
+  const f = fields(data, 'params');
+  return { groupId: objectId(f, 'groupId'), memberId: objectId(f, 'memberId') };
+};
+
 export const createGroupBody: Parser<{ name: string }> = (data) => ({
   name: text(fields(data), 'name', tuning.groupNameMaxLength),
 });

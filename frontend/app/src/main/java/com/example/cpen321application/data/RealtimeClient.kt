@@ -37,6 +37,7 @@ private const val EVENT_JOIN = "meetup:join"
 private const val EVENT_VOTE_UPDATED = "vote:updated"
 private const val EVENT_STATUS = "meetup:status"
 private const val EVENT_RECOMMENDATIONS_READY = "recommendations:ready"
+private const val EVENT_MEETUP_UPDATED = "meetup:updated"
 
 /** Socket.IO client for live updates, authenticated with the session token. */
 class RealtimeClient(private val baseUrl: String, private val sessionStore: SessionStore) {
@@ -69,6 +70,8 @@ class RealtimeClient(private val baseUrl: String, private val sessionStore: Sess
         }
         socket.on(EVENT_STATUS) { args -> trySend(parseEvent(args, ::parseStatusEvent)) }
         socket.on(EVENT_RECOMMENDATIONS_READY) { trySend(MeetupEvent.RecommendationsReady) }
+        // Membership/participation changed; reload the meetup and tally over REST.
+        socket.on(EVENT_MEETUP_UPDATED) { trySend(MeetupEvent.Joined) }
         socket.connect()
 
         awaitClose {
