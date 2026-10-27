@@ -43,7 +43,7 @@ export async function createMeetup(
 export const PARTICIPATION = {
   startLocation: { lat: 49.2606, lng: -123.246, label: 'UBC' },
   travelMode: 'TRANSIT',
-  preferences: ['STUDY', 'COFFEE'],
+  preferences: ['FOOD', 'COFFEE'],
 } as const;
 
 export const MISSING_ID = '507f1f77bcf86cd799439011';

@@ -40,7 +40,7 @@ export const tuning = {
   groupNameMaxLength: 60,
   meetupTitleMaxLength: 100,
   locationLabelMaxLength: 120,
-  maxPreferences: 5,
+  maxPreferences: 4,
   maxLatitude: 90,
   maxLongitude: 180,
 

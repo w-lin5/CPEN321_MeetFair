@@ -231,7 +231,7 @@ describe('Unmocked: PUT /api/meetups/:meetupId/participation', () => {
       userId: member.id,
       startLocation: { lat: 49.2606, lng: -123.246, label: 'UBC' },
       travelMode: 'TRANSIT',
-      preferences: ['STUDY', 'COFFEE'],
+      preferences: ['FOOD', 'COFFEE'],
     });
   });
 
@@ -308,8 +308,8 @@ describe('Unmocked: PUT /api/meetups/:meetupId/participation', () => {
     [{ ...PARTICIPATION, travelMode: 'TELEPORT' }],
     [{ startLocation: PARTICIPATION.startLocation, preferences: [] }],
     [{ ...PARTICIPATION, preferences: ['KARAOKE'] }],
-    [{ ...PARTICIPATION, preferences: ['STUDY', 'STUDY', 'STUDY', 'STUDY', 'STUDY', 'STUDY'] }],
-    [{ ...PARTICIPATION, preferences: 'STUDY' }],
+    [{ ...PARTICIPATION, preferences: ['FOOD', 'FOOD', 'FOOD', 'FOOD', 'FOOD', 'FOOD'] }],
+    [{ ...PARTICIPATION, preferences: 'FOOD' }],
   ])('Invalid body %j', async (body) => {
     const { member, group } = await setupGroup();
     const meetup = await createMeetup(group.id, member.id);

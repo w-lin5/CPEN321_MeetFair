@@ -37,7 +37,6 @@ enum class TravelMode {
 
 // Placeholder values, mirrored from the backend and still undecided
 enum class Preference {
-    STUDY,
     COFFEE,
     FOOD,
     OUTDOORS,

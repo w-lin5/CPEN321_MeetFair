@@ -58,10 +58,10 @@ describe('POST /api/meetups/:meetupId/places/search', () => {
   test('uses only organizer preferences while keeping every submitted location in the center', async () => {
     memberMock.mockResolvedValue({ organizerId, status: 'SETUP', participants: [
       { userId: 'other', preferences: ['COFFEE'], startLocation: { lat: 40, lng: -74 } },
-      { userId: organizerId, preferences: ['OUTDOORS', 'STUDY'], startLocation: { lat: 42, lng: -72 } },
+      { userId: organizerId, preferences: ['OUTDOORS', 'FOOD'], startLocation: { lat: 42, lng: -72 } },
     ] } as unknown as Awaited<ReturnType<typeof meetupService.getForMember>>);
     expect((await search()).status).toBe(200);
-    expect(searchMock).toHaveBeenCalledWith({ lat: 41, lng: -73 }, ['park', 'library']);
+    expect(searchMock).toHaveBeenCalledWith({ lat: 41, lng: -73 }, ['park', 'restaurant']);
   });
 
   test('requires organizer participation even when another member submitted', async () => {
