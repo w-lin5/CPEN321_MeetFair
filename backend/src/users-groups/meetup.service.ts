@@ -3,6 +3,9 @@ import type { MeetupStatus } from '../common/types';
 import { groupService } from './group.service';
 import { MeetupModel, type MeetupWinner } from './models';
 import type { ParticipationInput } from './schemas';
+import { VoteModel } from '../voting-fairness/models';
+import { publisher } from '../realtime/publisher';
+import { SERVER_EVENTS, meetupRoom } from '../realtime/events';
 
 // Create a meetup in SETUP (enum); the caller must be a group member and becomes its organizer
 async function create(userId: string, groupId: string, input: { title: string; scheduledAt: string }) {
@@ -83,7 +86,20 @@ async function submitParticipation(meetupId: string, userId: string, input: Part
   return MeetupModel.findById(meetupId).orFail();
 }
 
+async function leave(meetupId: string, userId: string) {
+  const meetup = await getForMember(meetupId, userId);
+  if (meetup.status !== 'SETUP') throw new Conflict('You can only leave a meetup before voting starts.');
+  const result = await MeetupModel.updateOne(
+    { _id: meetupId, status: 'SETUP' },
+    { $pull: { participants: { userId } } },
+  );
+  if (result.matchedCount === 0) throw new Conflict('Voting has started. You can no longer leave this meetup.');
+  await VoteModel.deleteMany({ meetupId, userId });
+  publisher.publish(meetupRoom(meetupId), SERVER_EVENTS.meetupUpdated, { meetupId });
+}
+
 export const meetupService = {
+  leave,
   create,
   listForGroup,
   getById,

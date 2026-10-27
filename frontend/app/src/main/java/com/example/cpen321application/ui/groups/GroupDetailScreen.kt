@@ -79,6 +79,14 @@ class GroupDetailViewModel(
     val removal: StateFlow<MemberRemovalState> = _removal.asStateFlow()
     private val _deletion = MutableStateFlow(FormState<Unit>())
     val deletion: StateFlow<FormState<Unit>> = _deletion.asStateFlow()
+    private val _leaving = MutableStateFlow(FormState<Unit>())
+    val leaving: StateFlow<FormState<Unit>> = _leaving.asStateFlow()
+
+    fun leaveGroup() {
+        if (_leaving.value.submitting || _leaving.value.result != null || _deletion.value.submitting || _removal.value.pending) return
+        _leaving.value = FormState(submitting = true)
+        viewModelScope.launch { _leaving.value = groups.leave(groupId).toFormState() }
+    }
     private var deleted = false
     private val _missing = MutableStateFlow(false)
     val missing: StateFlow<Boolean> = _missing.asStateFlow()
@@ -99,13 +107,13 @@ class GroupDetailViewModel(
     }
 
     fun deleteGroup() {
-        if (_deletion.value.submitting || _deletion.value.result != null || _removal.value.pending) return
+        if (_deletion.value.submitting || _deletion.value.result != null || _removal.value.pending || _leaving.value.submitting) return
         _deletion.value = FormState(submitting = true)
         viewModelScope.launch { _deletion.value = groups.delete(groupId).toFormState() }
     }
 
     fun removeMember(memberId: String) {
-        if (_removal.value.pending || _deletion.value.submitting) return
+        if (_removal.value.pending || _deletion.value.submitting || _leaving.value.submitting) return
         _removal.value = MemberRemovalState(pending = true)
         viewModelScope.launch {
             when (val result = groups.removeMember(groupId, memberId)) {
@@ -153,6 +161,8 @@ fun GroupDetailScreen(
     val state by vm.state.collectAsState()
     val removal by vm.removal.collectAsState()
     val deletion by vm.deletion.collectAsState()
+    val leaving by vm.leaving.collectAsState()
+    var confirmLeave by rememberSaveable { mutableStateOf(false) }
     val notify = LocalNotify.current
     val missing by vm.missing.collectAsState()
     var exited by rememberSaveable { mutableStateOf(false) }
@@ -180,13 +190,34 @@ fun GroupDetailScreen(
     LaunchedEffect(missing) {
         if (missing && !exited) { exited = true; notify("This group is no longer available."); onBack() }
     }
+    LaunchedEffect(leaving.result) {
+        if (leaving.result != null && !exited) { exited = true; onBack() }
+    }
 
     ScreenColumn("Group", onBack) {
         UiStateContent(state, onRetry = vm::load, emptyMessage = "") { data ->
             GroupInfo(data, onNewMeetup, onOpenMeetup,
                 canRemove = data.group.organizerId == container.sessionStore.currentUserId(),
                 removal = removal, onRemove = { selectedMemberId = it.userId },
-                deletion = deletion, onDelete = { confirmDelete = true })
+                deletion = deletion, onDelete = { confirmDelete = true },
+                leaving = leaving, onLeave = { confirmLeave = true })
+            if (confirmLeave) {
+                val userId = container.sessionStore.currentUserId()
+                val voting = data.meetups.any { meetup ->
+                    meetup.status.name == "VOTING" && meetup.participants.any { it.userId == userId }
+                }
+                AlertDialog(
+                    onDismissRequest = { confirmLeave = false },
+                    title = { Text(if (voting) "Cannot leave group" else "Leave group?") },
+                    text = { Text(if (voting) "A meetup you joined is still voting. Wait until its voting ends before leaving."
+                        else "Your details in meetups that have not started voting will be deleted. Completed voting and Fair Credit history will remain.") },
+                    confirmButton = { TextButton(onClick = {
+                        confirmLeave = false
+                        if (!voting) vm.leaveGroup()
+                    }) { Text(if (voting) "OK" else "Leave") } },
+                    dismissButton = { if (!voting) TextButton(onClick = { confirmLeave = false }) { Text("Cancel") } },
+                )
+            }
             if (confirmDelete) {
                 DeleteConfirmation(
                     title = "Delete group?",
@@ -233,6 +264,7 @@ private fun GroupInfo(
     data: GroupDetailData, onNewMeetup: () -> Unit, onOpenMeetup: (String) -> Unit,
     canRemove: Boolean, removal: MemberRemovalState, onRemove: (GroupMember) -> Unit,
     deletion: FormState<Unit>, onDelete: () -> Unit,
+    leaving: FormState<Unit>, onLeave: () -> Unit,
 ) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
         // Several composables in one lazy item would overlap, so each item has a single Column root
@@ -246,6 +278,13 @@ private fun GroupInfo(
                         Text(if (deletion.submitting) "Deleting..." else "Delete group", color = MaterialTheme.colorScheme.error)
                     }
                 }
+                if (!canRemove) {
+                    TextButton(onClick = onLeave, enabled = !leaving.submitting,
+                        modifier = Modifier.testTag("leave_group")) {
+                        Text(if (leaving.submitting) "Leaving..." else "Leave group")
+                    }
+                }
+                leaving.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 deletion.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Text("Members", style = MaterialTheme.typography.titleMedium)
                 if (removal.pending) Text("Removing member...")

@@ -117,4 +117,27 @@ async function removeMember(groupId: string, organizerId: string, memberId: stri
   }
 }
 
-export const groupService = { create, listForUser, requireMembership, getDetail, join, removeMember };
+async function leave(groupId: string, userId: string) {
+  const group = await requireMembership(groupId, userId);
+  if (String(group.organizerId) === userId) throw new BadRequest('The group organizer cannot leave. Delete the group instead.');
+  if (await MeetupModel.exists({ groupId, status: 'VOTING', 'participants.userId': userId })) {
+    throw new Conflict('You cannot leave while a meetup you joined is still voting.');
+  }
+  const setupMeetups = await MeetupModel.find({ groupId, status: 'SETUP' }).select('_id');
+  const setupIds = setupMeetups.map(meetup => meetup._id);
+  await MeetupModel.updateMany({ groupId, status: 'SETUP' }, { $pull: { participants: { userId } } });
+  await VoteModel.deleteMany({ meetupId: { $in: setupIds }, userId });
+  await MeetupModel.updateMany(
+    { groupId, organizerId: userId, status: { $ne: 'SETTLED' } },
+    { $set: { organizerId: group.organizerId } },
+  );
+  const result = await GroupModel.updateOne({ _id: groupId, 'members.userId': userId }, { $pull: { members: { userId } } });
+  if (result.modifiedCount === 0) throw new Conflict('Group membership changed. Please refresh and try again.');
+  publisher.revokeUser(userId);
+  // Silent refresh only: leaving is not a deletion notification.
+  for (const meetupId of setupIds) {
+    publisher.publish(meetupRoom(String(meetupId)), SERVER_EVENTS.meetupUpdated, { meetupId: String(meetupId) });
+  }
+}
+
+export const groupService = { create, listForUser, requireMembership, getDetail, join, removeMember, leave };

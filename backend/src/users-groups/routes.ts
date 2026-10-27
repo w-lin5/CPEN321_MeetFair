@@ -18,6 +18,18 @@ import { userService } from './user.service';
 
 export const usersGroupsRouter = Router();
 
+usersGroupsRouter.post('/groups/:groupId/leave', async (req, res) => {
+  const { groupId } = parseInput(groupParams, req.params);
+  await groupService.leave(groupId, getUserId(req));
+  res.status(204).end();
+});
+
+usersGroupsRouter.delete('/meetups/:meetupId/participation', async (req, res) => {
+  const { meetupId } = parseInput(meetupParams, req.params);
+  await meetupService.leave(meetupId, getUserId(req));
+  res.status(204).end();
+});
+
 usersGroupsRouter.delete('/groups/:groupId', async (req, res) => {
   const { groupId } = parseInput(groupParams, req.params);
   await deletionService.deleteGroup(groupId, getUserId(req));

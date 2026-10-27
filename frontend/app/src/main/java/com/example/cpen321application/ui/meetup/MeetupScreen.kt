@@ -23,6 +23,8 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.cpen321application.AppContainer
 import com.example.cpen321application.data.MeetupRepository
+import com.example.cpen321application.data.ApiResult
+import androidx.compose.material3.AlertDialog
 import com.example.cpen321application.data.MeetupEvent
 import com.example.cpen321application.model.CalendarEventResult
 import com.example.cpen321application.model.Meetup
@@ -54,6 +56,22 @@ class MeetupViewModel(private val meetups: MeetupRepository, private val meetupI
     val calendar: StateFlow<FormState<CalendarEventResult>> = _calendar.asStateFlow()
     private val _deletion = MutableStateFlow(FormState<Unit>())
     val deletion: StateFlow<FormState<Unit>> = _deletion.asStateFlow()
+    private val _leaving = MutableStateFlow(FormState<Unit>())
+    val leaving: StateFlow<FormState<Unit>> = _leaving.asStateFlow()
+
+    fun leaveMeetup() {
+        if (_leaving.value.submitting || _deletion.value.submitting) return
+        _leaving.value = FormState(submitting = true)
+        viewModelScope.launch {
+            when (val result = meetups.leave(meetupId)) {
+                is ApiResult.Failure -> _leaving.value = FormState(error = result.error.message)
+                is ApiResult.Success -> {
+                    _state.value = meetups.get(meetupId).toUiState()
+                    _leaving.value = FormState()
+                }
+            }
+        }
+    }
 
     fun onStatusChanged(event: MeetupEvent.StatusChanged) {
         val current = (_state.value as? UiState.Success)?.data ?: return
@@ -61,7 +79,7 @@ class MeetupViewModel(private val meetups: MeetupRepository, private val meetupI
     }
 
     fun deleteMeetup() {
-        if (_deletion.value.submitting || _deletion.value.result != null) return
+        if (_deletion.value.submitting || _deletion.value.result != null || _leaving.value.submitting) return
         _deletion.value = FormState(submitting = true)
         viewModelScope.launch { _deletion.value = meetups.delete(meetupId).toFormState() }
     }
@@ -105,6 +123,8 @@ fun MeetupScreen(
     MeetupStatusNotifications((state as? UiState.Success)?.data)
     val calendar by vm.calendar.collectAsState()
     val deletion by vm.deletion.collectAsState()
+    val leaving by vm.leaving.collectAsState()
+    var confirmLeave by rememberSaveable { mutableStateOf(false) }
     val notify = LocalNotify.current
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var exited by rememberSaveable { mutableStateOf(false) }
@@ -128,6 +148,15 @@ fun MeetupScreen(
 
     ScreenColumn("Meetup", onBack) {
         UiStateContent(state, onRetry = vm::load, emptyMessage = "") { meetup ->
+            if (confirmLeave) {
+                AlertDialog(
+                    onDismissRequest = { confirmLeave = false },
+                    title = { Text("Leave meetup?") },
+                    text = { Text("Your starting location and preferences for this meetup will be deleted and will no longer affect place searches. You can join again by entering your details before voting starts.") },
+                    confirmButton = { TextButton(onClick = { confirmLeave = false; vm.leaveMeetup() }) { Text("Leave") } },
+                    dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text("Cancel") } },
+                )
+            }
             if (confirmDelete) {
                 DeleteConfirmation(
                     title = "Delete meetup?",
@@ -149,6 +178,13 @@ fun MeetupScreen(
                     onError = vm::setCalendarError,
                 )
             }
+            if (meetup.status == MeetupStatus.SETUP && meetup.participants.any { it.userId == userId }) {
+                TextButton(onClick = { confirmLeave = true }, enabled = !leaving.submitting && !deletion.submitting,
+                    modifier = Modifier.testTag("leave_meetup")) {
+                    Text(if (leaving.submitting) "Leaving..." else "Leave meetup")
+                }
+            }
+            leaving.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (meetup.organizerId == userId) {
                 TextButton(onClick = { confirmDelete = true }, enabled = !deletion.submitting,
                     modifier = Modifier.testTag("delete_meetup")) {
