@@ -7,14 +7,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -105,7 +111,8 @@ fun <T> SingleFieldFormScreen(
     }
 }
 
-/** Renders the matching view for each [UiState]; [content] is only invoked for [UiState.Success]. */
+/** Read-only screens refresh with a downward swipe; forms do not use this container. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun <T> UiStateContent(
     state: UiState<T>,
@@ -113,10 +120,24 @@ fun <T> UiStateContent(
     emptyMessage: String,
     content: @Composable (T) -> Unit,
 ) {
-    when (state) {
-        UiState.Loading -> LoadingView()
-        UiState.Empty -> EmptyView(emptyMessage)
-        is UiState.Error -> ErrorView(state.message, onRetry)
-        is UiState.Success -> content(state.data)
+    // Keep the same scrollable subtree while loading, preserving visible content and scroll position.
+    var lastDisplayedState by remember { mutableStateOf<UiState<T>>(UiState.Loading) }
+    SideEffect { if (state !is UiState.Loading) lastDisplayedState = state }
+    val displayedState = if (state is UiState.Loading) lastDisplayedState else state
+    PullToRefreshBox(
+        isRefreshing = state is UiState.Loading && lastDisplayedState !is UiState.Loading,
+        onRefresh = { if (state !is UiState.Loading) onRetry() },
+        modifier = Modifier.fillMaxSize().testTag("pull_to_refresh"),
+    ) {
+        when (displayedState) {
+            UiState.Loading -> LoadingView()
+            UiState.Empty -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                EmptyView(emptyMessage)
+            }
+            is UiState.Error -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                ErrorView(displayedState.message, onRetry)
+            }
+            is UiState.Success -> content(displayedState.data)
+        }
     }
 }
