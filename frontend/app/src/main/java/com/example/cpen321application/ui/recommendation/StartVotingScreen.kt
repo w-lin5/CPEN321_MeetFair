@@ -23,6 +23,7 @@ import com.example.cpen321application.data.VotingRepository
 import com.example.cpen321application.model.Recommendation
 import com.example.cpen321application.ui.common.FormState
 import com.example.cpen321application.ui.common.ScreenColumn
+import com.example.cpen321application.ui.common.LocalNotify
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.toFormState
 import com.example.cpen321application.ui.screenViewModel
@@ -59,8 +60,11 @@ class StartVotingViewModel(private val voting: VotingRepository, private val mee
 fun StartVotingScreen(container: AppContainer, meetupId: String, onBack: () -> Unit, onStarted: () -> Unit) {
     val vm: StartVotingViewModel = screenViewModel(StartVotingViewModel.factory(container, meetupId))
     val state by vm.state.collectAsState()
+    val notify = LocalNotify.current
 
-    LaunchedEffect(state.result) { if (state.result != null) onStarted() }
+    LaunchedEffect(state.result) {
+        if (state.result != null) { notify("Voting has started."); onStarted() }
+    }
 
     ScreenColumn("Start voting", onBack) {
         Column(

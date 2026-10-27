@@ -23,11 +23,13 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.cpen321application.AppContainer
 import com.example.cpen321application.data.MeetupRepository
+import com.example.cpen321application.data.MeetupEvent
 import com.example.cpen321application.model.CalendarEventResult
 import com.example.cpen321application.model.Meetup
 import com.example.cpen321application.model.MeetupStatus
 import com.example.cpen321application.ui.common.FormState
 import com.example.cpen321application.ui.common.LocalNotify
+import com.example.cpen321application.ui.common.MeetupStatusNotifications
 import com.example.cpen321application.ui.common.DeleteConfirmation
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
@@ -52,6 +54,11 @@ class MeetupViewModel(private val meetups: MeetupRepository, private val meetupI
     val calendar: StateFlow<FormState<CalendarEventResult>> = _calendar.asStateFlow()
     private val _deletion = MutableStateFlow(FormState<Unit>())
     val deletion: StateFlow<FormState<Unit>> = _deletion.asStateFlow()
+
+    fun onStatusChanged(event: MeetupEvent.StatusChanged) {
+        val current = (_state.value as? UiState.Success)?.data ?: return
+        _state.value = UiState.Success(current.copy(status = event.status, winner = event.winner ?: current.winner))
+    }
 
     fun deleteMeetup() {
         if (_deletion.value.submitting || _deletion.value.result != null) return
@@ -95,6 +102,7 @@ fun MeetupScreen(
 ) {
     val vm: MeetupViewModel = screenViewModel(MeetupViewModel.factory(container, meetupId))
     val state by vm.state.collectAsState()
+    MeetupStatusNotifications((state as? UiState.Success)?.data)
     val calendar by vm.calendar.collectAsState()
     val deletion by vm.deletion.collectAsState()
     val notify = LocalNotify.current
@@ -102,6 +110,11 @@ fun MeetupScreen(
     val userId = container.sessionStore.currentUserId()
     val actions = MeetupActions(onEnterDetails, onStartVoting, onOpenVoting)
     LaunchedEffect(Unit) { vm.load() }
+    LaunchedEffect(container, meetupId) {
+        container.realtimeClient.meetupEvents(meetupId).collect { event ->
+            if (event is MeetupEvent.StatusChanged) vm.onStatusChanged(event)
+        }
+    }
     LaunchedEffect(deletion.result) {
         if (deletion.result != null) { notify("Meetup deleted."); onBack() }
     }

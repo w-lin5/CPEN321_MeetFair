@@ -40,6 +40,7 @@ import com.example.cpen321application.model.PlaceCandidate
 import com.example.cpen321application.model.VoteTally
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.LocalNotify
+import com.example.cpen321application.ui.common.MeetupStatusNotifications
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.UiState
 import com.example.cpen321application.ui.common.UiStateContent
@@ -247,6 +248,7 @@ internal fun pickOptions(state: VotingState): List<String> {
 fun VotingScreen(container: AppContainer, meetupId: String, onBack: () -> Unit, onDeleted: () -> Unit = onBack) {
     val vm: VotingViewModel = screenViewModel(VotingViewModel.factory(container, meetupId))
     val state by vm.state.collectAsState()
+    MeetupStatusNotifications((state as? UiState.Success)?.data?.meetup)
     val deleted by vm.deleted.collectAsState()
     val notify = LocalNotify.current
     val userId = container.sessionStore.currentUserId()
