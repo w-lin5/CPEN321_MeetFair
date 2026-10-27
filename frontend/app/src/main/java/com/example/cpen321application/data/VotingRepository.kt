@@ -2,31 +2,17 @@ package com.example.cpen321application.data
 
 import com.example.cpen321application.model.Meetup
 import com.example.cpen321application.model.MyVote
-import com.example.cpen321application.model.PlaceCandidate
 import com.example.cpen321application.model.Recommendation
 import com.example.cpen321application.model.VotesSnapshot
-import org.json.JSONArray
 import org.json.JSONObject
 
 class VotingRepository(private val api: ApiClient) {
+    /** Uses the backend's temporary Google Places selection and starts voting. */
+    suspend fun generateFromPlaces(meetupId: String): ApiResult<Recommendation> =
+        api.post("meetups/$meetupId/recommendations/from-places").parse { parseRecommendation(JSONObject(it)) }
+
     suspend fun recommendations(meetupId: String): ApiResult<Recommendation> =
         api.get("meetups/$meetupId/recommendations").parse { parseRecommendation(JSONObject(it)) }
-
-    /**
-     * Organizer only; moves the meetup to VOTING. TEMPORARY: [candidates] are supplied by the caller
-     * (the server requires exactly three) until the recommendation engine generates them.
-     */
-    suspend fun generateRecommendations(meetupId: String, candidates: List<PlaceCandidate>): ApiResult<Recommendation> {
-        val items = candidates.map {
-            JSONObject()
-                .put("placeId", it.placeId)
-                .put("name", it.name)
-                .put("address", it.address)
-                .put("location", JSONObject().put("lat", it.lat).put("lng", it.lng))
-        }
-        val body = JSONObject().put("candidates", JSONArray(items))
-        return api.post("meetups/$meetupId/recommendations", body).parse { parseRecommendation(JSONObject(it)) }
-    }
 
     suspend fun votes(meetupId: String): ApiResult<VotesSnapshot> =
         api.get("meetups/$meetupId/votes").parse { parseVotesSnapshot(JSONObject(it)) }

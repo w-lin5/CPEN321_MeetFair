@@ -29,6 +29,8 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["MAPS_API_KEY"] = localProperty("MAPS_API_KEY")
+        buildConfigField("boolean", "MAPS_CONFIGURED", localProperty("MAPS_API_KEY").isNotBlank().toString())
 
         // Baked in at build time from local.properties — never hard-code URLs or
         // OAuth IDs in source. Emulator reaches the host via 10.0.2.2, not localhost.
@@ -71,6 +73,7 @@ kotlin {
 }
 
 dependencies {
+    implementation("com.google.maps.android:maps-compose:6.4.1")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)

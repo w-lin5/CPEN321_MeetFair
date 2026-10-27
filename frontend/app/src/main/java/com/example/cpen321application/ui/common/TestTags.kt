@@ -31,8 +31,9 @@ object TestTags {
     const val MEETUP_STATUS_TEXT = "meetup_status_text"
     const val PARTICIPATION_STATUS_TEXT = "participation_status_text"
     const val PARTICIPATION_BUTTON = "participation_button"
-    const val LAT_INPUT = "lat_input"
-    const val LNG_INPUT = "lng_input"
+    const val LOCATION_PICKER_BUTTON = "location_picker_button"
+    const val LOCATION_MAP = "location_map"
+    const val LOCATION_CONFIRM = "location_confirm"
     const val LABEL_INPUT = "label_input"
     const val PARTICIPATION_SUBMIT = "participation_submit"
     const val PROFILE_BUTTON = "profile_button"
@@ -65,12 +66,6 @@ object TestTags {
     fun modeChip(mode: String) = "mode_chip_$mode"
     fun preferenceChip(preference: String) = "preference_chip_$preference"
     fun profileGroupItem(groupId: String) = "profile_group_item_$groupId"
-
-    // Start-voting fields are tagged per candidate position (0-based)
-    fun candidateNameInput(index: Int) = "candidate_name_input_$index"
-    fun candidateAddressInput(index: Int) = "candidate_address_input_$index"
-    fun candidateLatInput(index: Int) = "candidate_lat_input_$index"
-    fun candidateLngInput(index: Int) = "candidate_lng_input_$index"
 
     // Voting rows are tagged per candidate placeId
     fun candidateItem(placeId: String) = "candidate_item_$placeId"

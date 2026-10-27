@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -297,13 +298,19 @@ private fun VotingHeader(state: VotingState, onRefresh: () -> Unit) {
 
 @Composable
 private fun CandidateCard(candidate: PlaceCandidate, state: VotingState, canVote: Boolean, onVote: () -> Unit) {
+    val context = LocalContext.current
     val total = state.tally?.totalFor(candidate.placeId)
     val mine = state.myVote?.placeId == candidate.placeId
     val winner = state.meetup.winner?.placeId == candidate.placeId
 
     OutlinedCard(modifier = Modifier.fillMaxWidth().testTag(TestTags.candidateItem(candidate.placeId))) {
         Column(Modifier.padding(Dimens.ScreenPadding), verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
-            Text(candidate.name, style = MaterialTheme.typography.titleMedium)
+            TextButton(
+                onClick = { openPlaceInMaps(context, candidate) },
+                modifier = Modifier.testTag("candidate_map_${candidate.placeId}"),
+            ) {
+                Text(candidate.name, style = MaterialTheme.typography.titleMedium)
+            }
             if (candidate.address.isNotBlank()) Text(candidate.address)
             if (total != null) {
                 val weight = "${formatWeight(total.weight)} (${formatShare(total.share)})"

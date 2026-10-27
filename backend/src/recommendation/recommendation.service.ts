@@ -10,11 +10,7 @@ function isDuplicateKey(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && err.code === tuning.mongoDuplicateKeyCode;
 }
 
-/**
- * Organizer stores the meetup's top candidates and moves it from SETUP to VOTING.
- * TEMPORARY: the candidates come from the request until feature 3 builds them from Places + Routes
- * and scores them; the endpoint, status transition and events already follow the final design.
- */
+/** Saves server-selected candidates and atomically moves SETUP to VOTING. */
 async function generate(meetupId: string, userId: string, candidates: CandidateInput[]) {
   const meetup = await meetupService.getForMember(meetupId, userId);
   if (String(meetup.organizerId) !== userId) {
