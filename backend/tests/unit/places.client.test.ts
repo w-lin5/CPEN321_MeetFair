@@ -24,9 +24,9 @@ describe('Google Places client', () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify(data), { status }));
   }
 
-  test('requests only the needed fields and searches cafes around UBC', async () => {
+  test('requests only the needed fields and searches cafes around the supplied center', async () => {
     respond({ places: [place, place] });
-    expect(await searchNearby()).toEqual([{
+    expect(await searchNearby({ lat: 40.75, lng: -73.98 })).toEqual([{
       placeId: 'cafe-1', name: 'Campus Cafe', address: 'UBC', location: { lat: 49.26, lng: -123.25 },
     }]);
     const [url, options] = fetchMock.mock.calls[0]!;
@@ -39,45 +39,52 @@ describe('Google Places client', () => {
     });
     expect(JSON.parse(String(options?.body))).toEqual({
       includedTypes: ['cafe'], maxResultCount: 10,
-      locationRestriction: { circle: { center: { latitude: 49.2606, longitude: -123.246 }, radius: 1500 } },
+      locationRestriction: { circle: { center: { latitude: 40.75, longitude: -73.98 }, radius: 1500 } },
     });
     expect(options?.signal).toBeInstanceOf(AbortSignal);
   });
 
   test.each([{}, { places: [] }])('accepts empty results: %j', async (data) => {
     respond(data);
-    await expect(searchNearby()).resolves.toEqual([]);
+    await expect(searchNearby({ lat: 40.75, lng: -73.98 })).resolves.toEqual([]);
+  });
+
+  test('sends preference types without adding cafes to the request', async () => {
+    respond({ places: [] });
+    await searchNearby({ lat: 40, lng: -74 }, ['park', 'library']);
+    const options = fetchMock.mock.calls[0]![1];
+    expect(JSON.parse(String(options?.body)).includedTypes).toEqual(['park', 'library']);
   });
 
   test('skips invalid places and allows missing addresses', async () => {
     respond({ places: [null, {}, { ...place, location: { latitude: 200, longitude: 0 } },
       { ...place, formattedAddress: undefined }] });
-    expect(await searchNearby()).toEqual([expect.objectContaining({ placeId: 'cafe-1', address: '' })]);
+    expect(await searchNearby({ lat: 40.75, lng: -73.98 })).toEqual([expect.objectContaining({ placeId: 'cafe-1', address: '' })]);
   });
 
   test.each([403, 429, 500])('sanitizes Google HTTP %i errors', async (status) => {
     respond({ error: 'test-places-secret' }, status);
-    await expect(searchNearby()).rejects.toThrow('Unable to retrieve nearby places. Please try again later.');
+    await expect(searchNearby({ lat: 40.75, lng: -73.98 })).rejects.toThrow('Unable to retrieve nearby places. Please try again later.');
   });
 
   test.each([null, [], { places: 'invalid' }])('rejects malformed responses: %j', async (data) => {
     respond(data);
-    await expect(searchNearby()).rejects.toBeInstanceOf(UpstreamError);
+    await expect(searchNearby({ lat: 40.75, lng: -73.98 })).rejects.toBeInstanceOf(UpstreamError);
   });
 
   test.each(['network failure', 'timeout'])('sanitizes %s', async () => {
     fetchMock.mockRejectedValue(new Error('test-places-secret'));
-    await expect(searchNearby()).rejects.toThrow('Unable to retrieve nearby places. Please try again later.');
+    await expect(searchNearby({ lat: 40.75, lng: -73.98 })).rejects.toThrow('Unable to retrieve nearby places. Please try again later.');
   });
 
   test('sanitizes invalid JSON', async () => {
     fetchMock.mockResolvedValue(new Response('invalid JSON'));
-    await expect(searchNearby()).rejects.toBeInstanceOf(UpstreamError);
+    await expect(searchNearby({ lat: 40.75, lng: -73.98 })).rejects.toBeInstanceOf(UpstreamError);
   });
 
   test('does not call Google without a key', async () => {
     delete process.env.GOOGLE_PLACES_API_KEY;
-    await expect(searchNearby()).rejects.toThrow('Missing required env var GOOGLE_PLACES_API_KEY');
+    await expect(searchNearby({ lat: 40.75, lng: -73.98 })).rejects.toThrow('Missing required env var GOOGLE_PLACES_API_KEY');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

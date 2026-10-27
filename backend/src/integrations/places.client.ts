@@ -1,10 +1,9 @@
+import type { LatLng } from '../common/types';
 import { UpstreamError } from '../common/errors';
 import { tuning } from '../config';
 import type { CandidateInput } from '../recommendation/schemas';
 
 const SEARCH = {
-  latitude: 49.2606,
-  longitude: -123.246,
   radiusMeters: 1500,
   maxResults: 10,
   timeoutMs: 10000,
@@ -37,8 +36,8 @@ function parsePlace(value: unknown): CandidateInput | undefined {
   };
 }
 
-/** First integration step: cafes within 1.5 km of UBC, without recommendation scoring. */
-export async function searchNearby(): Promise<CandidateInput[]> {
+/** Places matching any included type within 1.5 km of the supplied group center. */
+export async function searchNearby(center: LatLng, includedTypes: readonly string[] = ['cafe']): Promise<CandidateInput[]> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) {
     throw new Error('Missing required env var GOOGLE_PLACES_API_KEY');
@@ -56,13 +55,13 @@ export async function searchNearby(): Promise<CandidateInput[]> {
           'places.id,places.displayName,places.formattedAddress,places.location',
       },
       body: JSON.stringify({
-        includedTypes: ['cafe'],
+        includedTypes,
         maxResultCount: SEARCH.maxResults,
         locationRestriction: {
           circle: {
             center: {
-              latitude: SEARCH.latitude,
-              longitude: SEARCH.longitude,
+              latitude: center.lat,
+              longitude: center.lng,
             },
             radius: SEARCH.radiusMeters,
           },

@@ -36,7 +36,7 @@ internal fun StartLocationPicker(
     initialLat: Double?,
     initialLng: Double?,
     onDismiss: () -> Unit,
-    onConfirm: (Double, Double) -> Unit,
+    onConfirm: (Double, Double, String) -> Unit,
 ) {
     val initial = LatLng(initialLat ?: 49.2606, initialLng ?: -123.246)
     val marker = rememberMarkerState(position = initial)
@@ -45,6 +45,10 @@ internal fun StartLocationPicker(
     }
     var mapLoaded by remember { mutableStateOf(false) }
     var selected by rememberSaveable { mutableStateOf(initialLat != null && initialLng != null) }
+    var poiName by rememberSaveable { mutableStateOf("") }
+    var poiLat by rememberSaveable { mutableStateOf(Double.NaN) }
+    var poiLng by rememberSaveable { mutableStateOf(Double.NaN) }
+    val selectedName = if (marker.position.latitude == poiLat && marker.position.longitude == poiLng) poiName else ""
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -62,15 +66,24 @@ internal fun StartLocationPicker(
                         onMapClick = {
                             marker.position = it
                             selected = true
+                            poiName = ""
+                        },
+                        onPOIClick = {
+                            marker.position = it.latLng
+                            poiName = it.name
+                            poiLat = it.latLng.latitude
+                            poiLng = it.latLng.longitude
+                            selected = true
                         },
                     ) {
-                        Marker(state = marker, draggable = true, title = "Starting location")
+                        Marker(state = marker, draggable = true, title = selectedName.ifBlank { "Starting location" })
                     }
+                    if (selectedName.isNotBlank()) Text(selectedName)
                     // A dragged marker counts as an explicit selection, as does a map tap.
                     Button(
                         enabled = mapLoaded && (selected || marker.position != initial) && !marker.isDragging,
                         modifier = Modifier.testTag(TestTags.LOCATION_CONFIRM),
-                        onClick = { onConfirm(marker.position.latitude, marker.position.longitude) },
+                        onClick = { onConfirm(marker.position.latitude, marker.position.longitude, selectedName.take(120)) },
                     ) { Text("Use this location") }
                 } else {
                     Text("Map is unavailable. Please configure the Android Maps key and rebuild the app.")

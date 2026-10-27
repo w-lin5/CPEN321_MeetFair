@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -76,19 +77,36 @@ fun ParticipationScreen(container: AppContainer, meetupId: String, onBack: () ->
     var lng by rememberSaveable { mutableStateOf("") }
     var choosingLocation by rememberSaveable { mutableStateOf(false) }
     var label by rememberSaveable { mutableStateOf("") }
+    var selectedLocationName by rememberSaveable { mutableStateOf("") }
+    var needsAddress by rememberSaveable { mutableStateOf(false) }
+    var resolvingAddress by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
     var mode by rememberSaveable { mutableStateOf(TravelMode.WALK) }
     var preferences by rememberSaveable { mutableStateOf(emptySet<Preference>()) }
 
     LaunchedEffect(state.result) { if (state.result != null) onBack() }
+    LaunchedEffect(lat, lng, needsAddress) {
+        if (needsAddress && lat.isNotBlank() && lng.isNotBlank()) {
+            resolvingAddress = true
+            try {
+                selectedLocationName = locationAddress(context, lat.toDouble(), lng.toDouble()).orEmpty()
+                needsAddress = false
+            } finally {
+                resolvingAddress = false
+            }
+        }
+    }
 
     if (choosingLocation) {
         StartLocationPicker(
             initialLat = lat.toDoubleOrNull(),
             initialLng = lng.toDoubleOrNull(),
             onDismiss = { choosingLocation = false },
-            onConfirm = { latitude, longitude ->
+            onConfirm = { latitude, longitude, name ->
                 lat = latitude.toString()
                 lng = longitude.toString()
+                selectedLocationName = name
+                needsAddress = name.isBlank()
                 choosingLocation = false
             },
         )
@@ -100,7 +118,13 @@ fun ParticipationScreen(container: AppContainer, meetupId: String, onBack: () ->
             verticalArrangement = Arrangement.spacedBy(Dimens.Spacing),
         ) {
             Text("Starting location", style = MaterialTheme.typography.titleMedium)
-            if (lat.isNotBlank() && lng.isNotBlank()) Text("Selected: $lat, $lng")
+            if (lat.isNotBlank() && lng.isNotBlank()) {
+                Text(when {
+                    resolvingAddress || needsAddress -> "Finding location name..."
+                    selectedLocationName.isNotBlank() -> "Selected: $selectedLocationName"
+                    else -> "Location selected. Address unavailable; you can enter a name below."
+                })
+            }
             Button(
                 onClick = { choosingLocation = true },
                 enabled = !state.submitting,
@@ -111,6 +135,7 @@ fun ParticipationScreen(container: AppContainer, meetupId: String, onBack: () ->
             OutlinedTextField(
                 value = label,
                 onValueChange = { label = it },
+                enabled = !state.submitting,
                 label = { Text("Place name (optional)") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().testTag(TestTags.LABEL_INPUT),
@@ -122,7 +147,7 @@ fun ParticipationScreen(container: AppContainer, meetupId: String, onBack: () ->
             }
             Button(
                 onClick = { vm.submit(lat, lng, label, mode, preferences) },
-                enabled = !state.submitting && lat.isNotBlank() && lng.isNotBlank(),
+                enabled = !state.submitting && !resolvingAddress && !needsAddress && lat.isNotBlank() && lng.isNotBlank(),
                 modifier = Modifier.testTag(TestTags.PARTICIPATION_SUBMIT),
             ) { Text("Save") }
         }

@@ -20,6 +20,9 @@ async function setup() {
   const organizer = await createUserN(1);
   const group = await createGroup(organizer.id);
   const meetup = await createMeetup(group.id, organizer.id);
+  await MeetupModel.updateOne({ _id: meetup.id }, { $set: { participants: [{
+    userId: organizer.id, startLocation: { lat: 49.26, lng: -123.25 }, travelMode: 'WALK', preferences: [],
+  }] } });
   return { organizer, meetup };
 }
 

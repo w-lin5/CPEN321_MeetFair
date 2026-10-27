@@ -3,8 +3,9 @@ import { tuning } from '../config';
 import { searchNearby } from '../integrations/places.client';
 import { meetupService } from '../users-groups/meetup.service';
 import { recommendationService } from './recommendation.service';
+import { placeTypesForPreferences } from './preference-types';
 
-// Preview only: selecting and saving three candidates uses the existing recommendations endpoint.
+// Preview only; generate below saves the selected candidates and starts voting.
 async function search(meetupId: string, userId: string) {
   const meetup = await meetupService.getForMember(meetupId, userId);
   if (String(meetup.organizerId) !== userId) {
@@ -13,7 +14,28 @@ async function search(meetupId: string, userId: string) {
   if (meetup.status !== 'SETUP') {
     throw new Conflict('Places can only be searched while the meetup is in SETUP');
   }
-  const candidates = await searchNearby();
+  if (meetup.participants.length === 0) {
+    throw new BadRequest('At least one member must submit their starting location before searching for places.');
+  }
+  const locations = meetup.participants.map(participant => {
+    const location = participant.startLocation;
+    if (!location || !Number.isFinite(location.lat) || Math.abs(location.lat) > tuning.maxLatitude
+      || !Number.isFinite(location.lng) || Math.abs(location.lng) > tuning.maxLongitude) {
+      throw new BadRequest('A member has an invalid starting location. Please submit it again.');
+    }
+    return location;
+  });
+  // Simple geographic average for local meetups; travel-time fairness is a later step.
+  const center = {
+    lat: locations.reduce((sum, location) => sum + location.lat, 0) / locations.length,
+    lng: locations.reduce((sum, location) => sum + location.lng, 0) / locations.length,
+  };
+  const organizer = meetup.participants.find(participant => String(participant.userId) === String(meetup.organizerId));
+  if (!organizer) {
+    throw new BadRequest('The organizer must submit their starting location and preferences before searching for places.');
+  }
+  const includedTypes = placeTypesForPreferences(organizer.preferences);
+  const candidates = await searchNearby(center, includedTypes);
   return {
     candidates,
     message: candidates.length === 0 ? 'No nearby places found.' : null,

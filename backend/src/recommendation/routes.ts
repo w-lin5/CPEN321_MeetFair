@@ -13,7 +13,7 @@ recommendationRouter.post('/meetups/:meetupId/recommendations/from-places', asyn
   res.status(201).json(await placeSearchService.generate(meetupId, getUserId(req)));
 });
 
-// Fixed UBC cafe search for now; previews places without changing meetup state.
+// Cafe search around the members' starting locations; previews places without changing meetup state.
 recommendationRouter.post('/meetups/:meetupId/places/search', async (req, res) => {
   const { meetupId } = parseInput(meetupParams, req.params);
   res.json(await placeSearchService.search(meetupId, getUserId(req)));
