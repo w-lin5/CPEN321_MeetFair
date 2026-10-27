@@ -46,6 +46,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 /** Loads one meetup for the status hub and adds it to the user's Google Calendar once finalized. */
 class MeetupViewModel(private val meetups: MeetupRepository, private val meetupId: String) : ViewModel() {
@@ -58,6 +59,7 @@ class MeetupViewModel(private val meetups: MeetupRepository, private val meetupI
     val deletion: StateFlow<FormState<Unit>> = _deletion.asStateFlow()
     private val _leaving = MutableStateFlow(FormState<Unit>())
     val leaving: StateFlow<FormState<Unit>> = _leaving.asStateFlow()
+    private var loadJob: Job? = null
 
     fun leaveMeetup() {
         if (_leaving.value.submitting || _deletion.value.submitting) return
@@ -75,6 +77,7 @@ class MeetupViewModel(private val meetups: MeetupRepository, private val meetupI
 
     fun onStatusChanged(event: MeetupEvent.StatusChanged) {
         val current = (_state.value as? UiState.Success)?.data ?: return
+        loadJob?.cancel()
         _state.value = UiState.Success(current.copy(status = event.status, winner = event.winner ?: current.winner))
     }
 
@@ -85,9 +88,22 @@ class MeetupViewModel(private val meetups: MeetupRepository, private val meetupI
     }
 
     fun load() {
-        viewModelScope.launch {
-            _state.value = UiState.Loading
-            _state.value = meetups.get(meetupId).toUiState()
+        refresh(showLoading = true)
+    }
+
+    fun refreshLive() {
+        refresh(showLoading = false)
+    }
+
+    private fun refresh(showLoading: Boolean) {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            if (showLoading) _state.value = UiState.Loading
+            val result = meetups.get(meetupId)
+            // A temporary background failure must not replace a usable page.
+            if (result is ApiResult.Success || _state.value !is UiState.Success) {
+                _state.value = result.toUiState()
+            }
         }
     }
 
@@ -133,6 +149,8 @@ fun MeetupScreen(
     LaunchedEffect(Unit) { vm.load() }
     LaunchedEffect(container, meetupId) {
         container.realtimeClient.meetupEvents(meetupId).collect { event ->
+            // meetup:updated is mapped to Joined too; reload after reconnect and participation edits.
+            if (event is MeetupEvent.Joined || event is MeetupEvent.RecommendationsReady) vm.refreshLive()
             if (event is MeetupEvent.StatusChanged) vm.onStatusChanged(event)
             if (event is MeetupEvent.Deleted && !vm.deletion.value.submitting &&
                 vm.deletion.value.result == null && !exited) {

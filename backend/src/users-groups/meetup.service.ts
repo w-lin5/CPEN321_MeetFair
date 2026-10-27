@@ -87,7 +87,9 @@ async function submitParticipation(meetupId: string, userId: string, input: Part
     if (added.modifiedCount === 0) throw new Conflict('Meetup is no longer accepting participation');
   }
 
-  return MeetupModel.findById(meetupId).orFail();
+  const updated = await MeetupModel.findById(meetupId).orFail();
+  publisher.publish(meetupRoom(meetupId), SERVER_EVENTS.meetupUpdated, { meetupId });
+  return updated;
 }
 
 async function leave(meetupId: string, userId: string) {

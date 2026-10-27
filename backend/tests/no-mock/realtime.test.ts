@@ -15,6 +15,7 @@ import {
   MISSING_ID,
   PLACE_2,
   PLACE_3,
+  PARTICIPATION,
   addMember,
   createGroup,
   createMeetup,
@@ -33,6 +34,38 @@ let httpServer: HttpServer;
 let ioServer: Server;
 let url: string;
 const clients: Socket[] = [];
+
+test('entering, editing and leaving details silently updates an already-open meetup', async () => {
+  const organizer = await createUserN(1);
+  const member = await createUserN(2);
+  const group = await createGroup(organizer.id);
+  await addMember(group.id, member.id);
+  const meetup = await createMeetup(group.id, organizer.id);
+  const viewer = await client(signSessionToken(organizer.id));
+  expect(await join(viewer, meetup.id)).toEqual({ ok: true });
+  const notices = recorder(viewer, 'group:meetup-deleted');
+  const auth = `Bearer ${signSessionToken(member.id)}`;
+  const read = () => request(app).get(`/api/meetups/${meetup.id}`).set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
+
+  let update = nextEvent<{ meetupId: string }>(viewer, 'meetup:updated');
+  expect((await request(app).put(`/api/meetups/${meetup.id}/participation`).set('Authorization', auth).send(PARTICIPATION)).status).toBe(200);
+  expect(await update).toEqual({ meetupId: meetup.id });
+  expect((await read()).body.participants).toHaveLength(1);
+
+  update = nextEvent<{ meetupId: string }>(viewer, 'meetup:updated');
+  const edit = { ...PARTICIPATION, startLocation: { lat: 40, lng: -74, label: 'New location' } };
+  expect((await request(app).put(`/api/meetups/${meetup.id}/participation`).set('Authorization', auth).send(edit)).status).toBe(200);
+  await update;
+  const edited = await read();
+  expect(edited.body.participants).toHaveLength(1);
+  expect(edited.body.participants[0].startLocation).toMatchObject(edit.startLocation);
+
+  update = nextEvent<{ meetupId: string }>(viewer, 'meetup:updated');
+  expect((await request(app).delete(`/api/meetups/${meetup.id}/participation`).set('Authorization', auth)).status).toBe(204);
+  await update;
+  expect((await read()).body.participants).toHaveLength(0);
+  expect(notices).toEqual([]);
+});
 
 beforeAll(async () => {
   await startDb();
