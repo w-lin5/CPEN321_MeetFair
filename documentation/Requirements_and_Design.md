@@ -5,6 +5,7 @@
 | **Change Date**   | **Modified Sections** | **Rationale** |
 | ----------------- | --------------------- | ------------- |
 | 2026-10-19 | All Sections | Initial submission for CP1 |
+| 2026-10-28 | 3.1, 3.3, 3.4, 3.6, 3.7, 4.1, 4.3, 4.4, 4.7 | Document map and time pickers, membership management, deletion, refresh and in-app notifications. |
 ---
 
 ## 2. Project Description
@@ -17,16 +18,17 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
 ### **3.1. List of Features**
 1. **Sign in with Google**: Users sign in with their Google account. The back end verifies the Google ID token and issues a MeetFair session that lasts 7 days or until the user signs out.
-2. **Groups and meetups**: Any user can create a group and invite others with its 6-character invite code. Any member can create a meetup with a title and the time the group already agreed on. Each member enters their start location, travel mode (walk, transit or drive) and the type of meetup they prefer (study, coffee, food, outdoors, social).
+2. **Groups and meetups**: Any user can create a group and invite others with its 6-character invite code. Any member can create a meetup with a title and a future time selected using a calendar followed by hour and minute wheels. Joining a group does not automatically join its meetups: a member participates by submitting their starting location, travel mode (walk, transit or drive) and preferences. Starting locations are selected on a map rather than entered as coordinates. Members can leave eligible meetups or groups; organizers can remove eligible members and delete the groups or meetups they manage, with confirmation before deletion.
 3. **Fair spot recommendation**: The back end collects candidate places (Google Places API), gets each member's travel time to each candidate (Google Routes API), then scores every candidate with our own fairness and preference algorithm and returns the top 3 (if there are 3). *Status at CP1: until the Google Maps integration is complete, the organizer enters the three candidate places by hand to open voting.*
 4. **Weighted voting**: Members vote on the top 3 and lock their vote. A locked vote is weighted by the member's Fair Credit in the group (how much more than the group average they travelled in past meetups): 1 + 0.1 per hour of credit, between 1 and 1.5. Votes appear live; the organizer finalizes the vote, and each member can add the meetup at the winning place to their own Google Calendar.
 5. **Live commute tracking**: On meetup day, members tap "I'm leaving" and share live location; the group sees who is on the way. The commute ends when they tap "I'm here," or automatically when their location reaches the venue. The actual commute time updates their Fair Credit for the next meetup. If someone never starts tracking, we fall back to the Google Maps estimate. *Status at CP1: planned.*
+6. **Refresh and in-app notifications**: Data pages support pull-to-refresh. Participation changes update connected meetup pages automatically. Voting status changes and deletions produce temporary bottom Snackbars on the relevant subscribed pages.
 ### **3.2. Use Case Diagram**
 ![Use Case Diagram](images/Use_Case_Diagram.png)
 
 ### **3.3. Actors Description**
 1. **Member**: A signed-in user who belongs to a group. A member creates or joins groups, creates meetups, enters their start location and preferences, votes, adds finalized meetups to their calendar and shares their live location on the way so their actual commute time is recorded.
-2. **Organizer**: The member who created a meetup. Besides everything a member can do, the organizer starts voting on the meetup's recommended places and finalizes the vote.
+2. **Organizer**: A group organizer is the user who created the group and can remove eligible members or delete that group. A meetup organizer is the member who created the meetup and can start voting, finalize the vote or delete that meetup. These roles are separate: being the group organizer does not automatically grant organizer permissions over another member's meetup. When a departing or removed member manages an unsettled meetup, its organizer role is transferred to the group organizer.
 3. **Google Sign-In**: Google's identity service. It authenticates the user for sign-in and, with the user's consent, issues the short-lived access token used to add events to their Google Calendar.
 4. **Google Maps Platform**: Finds candidate places (Places API) and returns every member's travel time to every candidate (Routes API).
 5. **Google Calendar**: Stores the finalized meetup as an event in the member's own calendar.
@@ -38,9 +40,14 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 3. **Edit Profile**: A member changes the name other members see, or goes back to their Google name.
 - Use cases for feature 2: Groups and Meetups
 1. **Create Group**: A member creates a new group in the app and receives a code to invite other members.
-2. **Create Meetup**: A member creates a new meetup in their group with a title and the agreed time, and becomes its organizer; members can then add their details.
+2. **Create Meetup**: A member creates a new meetup in their group with a title and the agreed time, and becomes its organizer. The member first selects a date from a calendar, then chooses hours and minutes using two scrolling wheels in the device's time zone. Cancelling preserves the previous value. Both the app and backend reject times at or before the current time; members can then add their details.
 3. **Join Group**: A member uses a code to associate their account with an existing group.
-4. **Enter Start Location & Preferences**: A member enters their start location, travel mode and meetup preferences (e.g., study, coffee) for a meetup that is still being set up.
+4. **Enter Start Location & Preferences**: A member submits their start location, travel mode and meetup preferences for a meetup in SETUP. The map supports panning, zooming, tapping a location or named place, and dragging the marker. Confirming applies the position; cancelling preserves the previous selection. A place name or resolved address is displayed when available. Submitting or changing details updates connected meetup pages without requiring manual refresh.
+5. **Leave Meetup**: A participant may leave only while the meetup is in SETUP. After confirmation, their participation details are removed and are no longer available to subsequent place generation or voting. Connected meetup pages refresh silently; no Snackbar is shown for leaving.
+6. **Leave Group**: A member other than the group organizer may leave unless a meetup they have joined is in VOTING. Unrelated voting meetups do not block leaving; joined meetups in FINALIZED or SETTLED do not block it either. After confirmation, membership and participation details in SETUP meetups are removed, while completed voting history is retained. Leaving does not display Snackbars to the departing member or others.
+7. **Remove Member**: Only the group organizer can remove another member. Removal is blocked if that member submitted details for any meetup in VOTING or FINALIZED; those meetups must first reach SETTLED. Otherwise, after confirmation, the system removes membership and that member's participation entries and votes within the group. Unrelated
+8. **Delete Meetup**: Only the meetup organizer can delete the meetup, in any status. A confirmation dialog includes an additional warning when the meetup is in VOTING. The system removes the meetup, its recommendations and votes. Existing Google Calendar events are not removed.
+9. **Delete Group**: Only the group organizer can delete the group, in any status. A confirmation dialog includes an additional warning if any meetup in the group is in VOTING. The system removes the group and its associated meetup data. Connected group members receive a deletion notice, and deleted pages are closed or refreshed.
 - Use cases for feature 3: Fair Spot Recommendation
 1. **Get Recommendations**: The organizer starts voting; the system collects the members' locations and preferences, calculates commute fairness, and outputs the top 3 candidate locations.
 - Use cases for feature 4: Voting and Fairness
@@ -247,7 +254,7 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
     - 9a1. The system prevents duplicate Fair Credit changes for the same participant and meetup.
     
 ### **3.6. Screen Mock-ups**
-None. The screens are standard Material Design 3 forms and lists and are described in the use cases above.
+No separate mock-ups are included. The UI uses Material Design 3 forms, lists, confirmation dialogs and temporary bottom Snackbars, together with an interactive map picker and a calendar followed by hour and minute wheels. These interactions are described in Section 3.4.
 
 
 ### **3.7. Non-Functional Requirements**
@@ -295,7 +302,7 @@ None. The screens are standard Material Design 3 forms and lists and are describ
         6. `POST /api/groups/join` — body `{ inviteCode: String }` -> `200 Group`
             - **Purpose**: Adds the caller to the group with that invite code.
         7. `POST /api/groups/:groupId/meetups` — body `{ title: String, scheduledAt: ISO-8601 String }` -> `201 Meetup`
-            - **Purpose**: Creates a meetup in SETUP; the caller becomes its organizer.
+            - **Purpose**: Creates a meetup in SETUP; the caller becomes its organizer. The scheduled time must be strictly in the future; invalid or past times return 400.
         8. `GET /api/groups/:groupId/meetups` -> `200 List<Meetup>`
             - **Purpose**: Lists the group's meetups.
         9. `GET /api/meetups/:meetupId` -> `200 Meetup`
@@ -316,6 +323,16 @@ None. The screens are standard Material Design 3 forms and lists and are describ
             - **Purpose**: Resolves members' names for other components.
         17. `Profile getProfile(String userId)` / `Profile updateProfile(String userId, String displayName)`
             - **Purpose**: Account information and groups for the profile screen; a null display name returns to the Google name.
+        18. `DELETE /api/groups/:groupId/members/:memberId` -> `204`
+            - **Purpose**: Group organizer only; removes another member under the rules in Section 3.4. Returns 409 if the target participates in a VOTING or FINALIZED meetup.
+        19. `POST /api/groups/:groupId/leave` -> `204`
+            - **Purpose**: Leaves the group and removes the caller's participation details from SETUP meetups. The group organizer cannot leave; participation in a VOTING meetup returns 409.
+        20. `DELETE /api/meetups/:meetupId/participation` -> `204`
+            - **Purpose**: Removes the caller's participation while the meetup is in SETUP; otherwise returns 409. Publishes a silent participation update.
+        21. `DELETE /api/groups/:groupId` -> `204`
+            - **Purpose**: Group organizer only; deletes the group and associated data regardless of meetup statuses, and publishes deletion events.
+        22. `DELETE /api/meetups/:meetupId` -> `204`
+            - **Purpose**: Meetup organizer only; deletes the meetup and its recommendations and votes regardless of status, and publishes deletion events.
 2. **Recommendation Engine**
     - **Purpose**: Owns the `recommendations` collection. It builds the meetup's candidate places from Google Places and Google Routes, scores them with our fairness algorithm, stores the top 3 and opens voting. All slow and failure-prone Google Maps calls are kept in this one component, and the scoring itself is pure functions (search area, preference mapping, scoring) that can be tested without Google.
     - **Interfaces**:
@@ -361,6 +378,14 @@ None. The screens are standard Material Design 3 forms and lists and are describ
             - **Purpose**: Live changes pushed to everyone in the meetup's room.
         4. `void publish(String room, String event, Object payload)`
             - **Purpose**: Lets the other components send an update to a meetup's room.
+        5. Server -> client `meetup:updated` — `{ meetupId }`
+            - **Purpose**: Requests a reload after participation is submitted, edited or removed. Connected meetup pages update without a Snackbar.
+        6. Server -> client `meetup:deleted` — `{ meetupId, participantIds }`
+            - **Purpose**: Invalidates the deleted meetup for everyone viewing it. The app uses the participant IDs to show a deletion notice only to members who submitted details; the meetup room is then closed.
+        7. Server -> client `group:deleted` — `{ groupId }`; `group:meetup-deleted` — `{ groupId, meetupId, notifyParticipant }`
+            - **Purpose**: Updates group pages through authenticated private user rooms, which the server joins automatically. Group deletion notifies group members; meetup deletion refreshes affected lists but shows a notice only when `notifyParticipant` is true.
+        8. `void revokeUser(String userId)` / `void closeRoom(String room)`
+            - **Purpose**: Disconnects a departing or removed member's existing sockets, or removes subscriptions to a deleted meetup. Reconnection and later API requests must pass membership checks again.
 
 
 ### **4.2. Databases**
@@ -374,6 +399,8 @@ None. The screens are standard Material Design 3 forms and lists and are describ
     - **Purpose**: Nearby Search finds candidate places that match the meetup type; Routes `computeRouteMatrix` returns every member's travel time to every candidate in one batched request per travel mode. It provides travel times for all three modes, including transit.
 3. **Google Calendar API**
     - **Purpose**: `events.insert` adds the finalized meetup to the member's own primary calendar, using the member's token, so MeetFair never needs calendar credentials of its own.
+4. **Google Maps SDK for Android and Android Geocoder**
+    - **Purpose**: The Maps SDK displays the starting-location picker and supports map gestures, named-place taps and marker dragging. Android Geocoder resolves a selected coordinate to a readable address when available; address resolution failure does not prevent coordinate selection. The Android Maps key is configured separately from backend credentials.
 
 
 ### **4.4. Frameworks and Libraries**
@@ -413,6 +440,12 @@ None. The screens are standard Material Design 3 forms and lists and are describ
 12. **Docker Compose**
     - **Purpose**: Runs the back end with MongoDB on the cloud VM.
     - **Reason**: One-command deployment for the team and TAs.
+13. **Maps Compose**
+    - **Purpose**: Embeds the Google Maps SDK in the Compose participation form's location picker.
+    - **Reason**: Provides map, camera and marker interactions within the existing Compose UI.
+14. **Material 3 DatePicker and PullToRefreshBox; Android NumberPicker**
+    - **Purpose**: Calendar date selection, pull-to-refresh on data pages, and separate scrolling hour and minute wheels.
+    - **Reason**: Uses existing UI components for date, time and refresh interactions without requiring users to type dates or times.
 
 
 ### **4.5. Dependencies Diagram**
@@ -451,3 +484,4 @@ The Mermaid sources of these diagrams are in [`res/`](res/).
 
 4. [**Usability and Accessibility**](#nfr4)
     - **Implementation**: Show the selected candidate, locked-vote state, current vote totals, meetup status, and winner in text. Display loading and error messages near the relevant action, and ask for confirmation before the organizer finalizes while some participants have not locked their votes. **Planned**: check the main screens with Android font scaling, screen readers, and different screen sizes.
+    - **Implemented refresh and feedback**: A shared PullToRefreshBox retains the last displayed content during refresh and supports empty and error states. Participation events reload connected meetup pages. A shared Snackbar host survives navigation and dismisses transient notices automatically. Status notifications are triggered by transitions rather than initial data loading. Meetup-deletion notices are limited to participants, while nonparticipants silently leave invalid pages; group deletion notifies group members. Leaving does not produce Snackbars.

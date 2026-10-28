@@ -63,6 +63,7 @@ cp backend/.env.example backend/.env
 
 Set at least:
 - `JWT_SECRET`: a long random string used to sign auth tokens.
+- `GOOGLE_PLACES_API_KEY`: a backend API key from a Google Cloud project with Places API (New) enabled. If the key has API restrictions, allow Places API (New). Keep this key in `backend/.env`, not in the Android app.
 - `MONGODB_URI`: only needed for local development (default in `.env.example` assumes MongoDB on `localhost:27017`). Ignored when running via Docker Compose.
 - `PORT` (optional): defaults to `3000` if unset.
 
@@ -70,8 +71,9 @@ Set at least:
 ### Option 1: Run locally
 
 **Requirements:** 
-- [Node.js](https://nodejs.org/en/download/) 22+
+- [Node.js](https://nodejs.org/en/download/) 22.x (as required by `backend/package.json`)
 - [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) 10+
+- A running MongoDB instance reachable through `MONGODB_URI` (the Docker Compose option starts MongoDB automatically).
 
 **Setup:** 
 1. Install dependencies:
