@@ -24,16 +24,23 @@ import com.example.cpen321application.ui.voting.VotingScreen
 
 /** Token present -> app, token absent (sign-out or 401 status code) -> sign-in. */
 @Composable
-fun MeetFairApp(container: AppContainer) {
+fun MeetFairApp(container: AppContainer, reminderMeetupId: String? = null, onReminderOpened: () -> Unit = {}) {
     val token by container.sessionStore.token.collectAsState()
     val current = token
-    if (current == null) SignInScreen(container) else AuthedApp(container, current)
+    if (current == null) SignInScreen(container) else AuthedApp(container, current, reminderMeetupId, onReminderOpened)
 }
 
 /** Signed in shell: owns the saveable back stack and routes system back to [Navigator.pop]. */
 @Composable
-private fun AuthedApp(container: AppContainer, token: String) {
+private fun AuthedApp(container: AppContainer, token: String, reminderMeetupId: String?, onReminderOpened: () -> Unit) {
     val navigator = rememberSaveable(saver = Navigator.Saver) { Navigator.initial() }
+    com.example.cpen321application.notifications.ReminderSetup(container)
+    androidx.compose.runtime.LaunchedEffect(reminderMeetupId) {
+        if (reminderMeetupId != null) {
+            if (navigator.current.route != Route.Meetup(reminderMeetupId)) navigator.push(Route.Meetup(reminderMeetupId))
+            onReminderOpened()
+        }
+    }
     BackHandler(enabled = navigator.stack.size > 1) { navigator.pop() }
     val entry = navigator.current
     NotificationHost {

@@ -8,14 +8,24 @@ import com.example.cpen321application.model.TravelMode
 import org.json.JSONArray
 import org.json.JSONObject
 
-class MeetupRepository(private val api: ApiClient) {
+class MeetupRepository(
+    private val api: ApiClient,
+    private val reminders: com.example.cpen321application.notifications.MeetupReminders? = null,
+    private val session: SessionStore? = null,
+) {
     suspend fun leave(meetupId: String): ApiResult<Unit> = api.delete("meetups/$meetupId/participation").parse { Unit }
+        .also { if (it is ApiResult.Success) reminders?.cancel(meetupId) }
     suspend fun delete(meetupId: String): ApiResult<Unit> = api.delete("meetups/$meetupId").parse { Unit }
+        .also { if (it is ApiResult.Success) reminders?.cancel(meetupId) }
     suspend fun listForGroup(groupId: String): ApiResult<List<Meetup>> =
-        api.get("groups/$groupId/meetups").parse { JSONArray(it).mapObjects(::parseMeetup) }
+        api.get("groups/$groupId/meetups").parse { JSONArray(it).mapObjects(::parseMeetup) }.also { result ->
+            if (result is ApiResult.Success) result.data.forEach { reminders?.update(it, session?.currentUserId()) }
+        }
 
     suspend fun get(meetupId: String): ApiResult<Meetup> =
-        api.get("meetups/$meetupId").parse { parseMeetup(JSONObject(it)) }
+        api.get("meetups/$meetupId").parse { parseMeetup(JSONObject(it)) }.also { result ->
+            if (result is ApiResult.Success) reminders?.update(result.data, session?.currentUserId())
+        }
 
     /** [scheduledAt] is an ISO-8601 instant. */
     suspend fun create(groupId: String, title: String, scheduledAt: String): ApiResult<Meetup> {
@@ -38,7 +48,9 @@ class MeetupRepository(private val api: ApiClient) {
             .put("startLocation", location)
             .put("travelMode", travelMode.name)
             .put("preferences", JSONArray(preferences.map { it.name }))
-        return api.put("meetups/$meetupId/participation", body).parse { parseMeetup(JSONObject(it)) }
+        return api.put("meetups/$meetupId/participation", body).parse { parseMeetup(JSONObject(it)) }.also { result ->
+            if (result is ApiResult.Success) reminders?.update(result.data, session?.currentUserId())
+        }
     }
 
     /**

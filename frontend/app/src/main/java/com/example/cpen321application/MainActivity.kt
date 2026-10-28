@@ -9,15 +9,24 @@ import com.example.cpen321application.ui.theme.CPEN321ApplicationTheme
 
 /** Single activity host; all UI is Compose, and navigation lives in [MeetFairApp]. */
 class MainActivity : ComponentActivity() {
+    private val reminderMeetup = androidx.compose.runtime.mutableStateOf<String?>(null)
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        reminderMeetup.value = intent.getStringExtra(com.example.cpen321application.notifications.REMINDER_MEETUP_ID)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        reminderMeetup.value = intent.getStringExtra(com.example.cpen321application.notifications.REMINDER_MEETUP_ID)
         
         // Dependencies are built once per process in MeetFairApplication so they outlive the activity.
         val container = (application as MeetFairApplication).container
         setContent {
             CPEN321ApplicationTheme {
-                MeetFairApp(container)
+                MeetFairApp(container, reminderMeetup.value) { reminderMeetup.value = null }
             }
         }
     }

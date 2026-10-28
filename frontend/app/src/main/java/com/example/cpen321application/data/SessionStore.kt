@@ -12,7 +12,7 @@ private const val KEY_USER_ID = "user_id"
 private const val KEY_USER_NAME = "user_name"
 
 // Token + current user in SharedPreferences, so the session survives process death
-class SessionStore(context: Context) {
+class SessionStore(private val context: Context) {
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val _token = MutableStateFlow(prefs.getString(KEY_TOKEN, null))
     private val _userName = MutableStateFlow(prefs.getString(KEY_USER_NAME, null))
@@ -35,6 +35,7 @@ class SessionStore(context: Context) {
     }
 
     fun clear() {
+        com.example.cpen321application.notifications.MeetupReminders(context).clear()
         prefs.edit().clear().commit()
         _token.value = null
         _userName.value = null
