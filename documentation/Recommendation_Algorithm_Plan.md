@@ -146,11 +146,11 @@ Where:
 - $P_{ij}=0$: Candidate location $j$ fully matches member $i$'s preferences.
 - $P_{ij}=1$: Candidate location $j$ does not match member $i$'s preferences.
 
-The initial implementation will use the five preference categories currently supported by MeetFair:
+The initial implementation will use the four preference categories currently supported by MeetFair:
 
-`STUDY / COFFEE / FOOD / OUTDOORS / SOCIAL`
+`COFFEE / FOOD / OUTDOORS / SOCIAL`
 
-A mapping between Google Places location types and these five categories must be established to calculate preference mismatch scores.
+A mapping between Google Places location types and these four categories must be established to calculate preference mismatch scores.
 
 ### 3.2 Fair Credit–Weighted Preference Penalty
 
