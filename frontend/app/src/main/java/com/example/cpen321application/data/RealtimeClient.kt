@@ -19,6 +19,7 @@ sealed interface MeetupEvent {
     data class Deleted(val notifyParticipant: Boolean) : MeetupEvent
     /** The meetup room was (re)joined; reload over REST so nothing published before the join is missed. */
     data object Joined : MeetupEvent
+    data object TripUpdated : MeetupEvent
 
     /** Fresh tally: sent every time a participant votes, changes or locks a vote. */
     data class VoteUpdated(val tally: VoteTally) : MeetupEvent
@@ -101,6 +102,7 @@ class RealtimeClient(private val baseUrl: String, private val sessionStore: Sess
         socket.on(EVENT_RECOMMENDATIONS_READY) { trySend(MeetupEvent.RecommendationsReady) }
         // Membership/participation changed; reload the meetup and tally over REST.
         socket.on(EVENT_MEETUP_UPDATED) { trySend(MeetupEvent.Joined) }
+        socket.on("trip:updated") { trySend(MeetupEvent.TripUpdated) }
         socket.on(EVENT_MEETUP_DELETED) { args ->
             val payload = args.firstOrNull() as? JSONObject
             val participants = payload?.optJSONArray("participantIds")

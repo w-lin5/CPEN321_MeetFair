@@ -38,4 +38,5 @@ class AppContainer(context: Context) {
     val fairnessRepository = FairnessRepository(api)
     val votingRepository = VotingRepository(api)
     val realtimeClient = RealtimeClient(BuildConfig.API_BASE_URL, sessionStore)
+    val tripRepository = com.example.cpen321application.data.TripRepository(api)
 }

@@ -239,6 +239,7 @@ internal fun applyEvent(state: VotingState, event: MeetupEvent): VotingState = w
     )
     // The candidates are already loaded once this screen is open
     MeetupEvent.RecommendationsReady -> state
+    MeetupEvent.TripUpdated -> state
     is MeetupEvent.Unavailable -> state.copy(live = false)
 }
 

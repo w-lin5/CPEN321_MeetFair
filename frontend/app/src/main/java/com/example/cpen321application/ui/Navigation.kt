@@ -30,6 +30,7 @@ sealed interface Route {
     data class Participation(val meetupId: String) : Meetups
     data class StartVoting(val meetupId: String) : Meetups
     data class Voting(val meetupId: String) : Meetups
+    data class LiveLocation(val meetupId: String) : Meetups
 
     data object Profile : Profiles
     data class GroupFairness(val groupId: String) : Profiles
@@ -60,6 +61,7 @@ fun Route.encode(): String = when (this) {
     is Route.Participation -> "$PARTICIPATION$ARG_SEP$meetupId"
     is Route.StartVoting -> "$START_VOTING$ARG_SEP$meetupId"
     is Route.Voting -> "$VOTING$ARG_SEP$meetupId"
+    is Route.LiveLocation -> "live_location$ARG_SEP$meetupId"
     Route.Profile -> PROFILE
     is Route.GroupFairness -> "$GROUP_FAIRNESS$ARG_SEP$groupId"
 }
@@ -78,6 +80,7 @@ fun decodeRoute(text: String): Route? {
         PARTICIPATION -> arg?.let { Route.Participation(it) }
         START_VOTING -> arg?.let { Route.StartVoting(it) }
         VOTING -> arg?.let { Route.Voting(it) }
+        "live_location" -> arg?.let { Route.LiveLocation(it) }
         PROFILE -> Route.Profile
         GROUP_FAIRNESS -> arg?.let { Route.GroupFairness(it) }
         else -> null

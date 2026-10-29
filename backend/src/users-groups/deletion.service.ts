@@ -5,6 +5,7 @@ import { publisher } from '../realtime/publisher';
 import { FairCreditEntryModel, FairCreditModel, VoteModel } from '../voting-fairness/models';
 import { groupService } from './group.service';
 import { GroupModel, MeetupModel } from './models';
+import { TripModel } from '../live-location/models';
 
 function notifyDeleted(meetups: { meetupId: string; participantIds: string[] }[]): void {
   for (const { meetupId, participantIds } of meetups) {
@@ -26,6 +27,7 @@ async function deleteMeetup(meetupId: string, userId: string): Promise<void> {
   notifyDeleted([{ meetupId, participantIds }]);
   await RecommendationModel.deleteMany({ meetupId });
   await VoteModel.deleteMany({ meetupId });
+  await TripModel.deleteMany({ meetupId });
   for (const member of group.members) {
     publisher.publish(userRoom(String(member.userId)), SERVER_EVENTS.groupMeetupDeleted, {
       groupId: String(group._id), meetupId, notifyParticipant: participantIds.includes(String(member.userId)),
@@ -47,6 +49,7 @@ async function deleteGroup(groupId: string, userId: string): Promise<void> {
   await MeetupModel.deleteMany({ groupId });
   await RecommendationModel.deleteMany({ meetupId: { $in: meetupIds } });
   await VoteModel.deleteMany({ meetupId: { $in: meetupIds } });
+  await TripModel.deleteMany({ meetupId: { $in: meetupIds } });
   await FairCreditEntryModel.deleteMany({ groupId });
   await FairCreditModel.deleteMany({ groupId });
   for (const member of group.members) {

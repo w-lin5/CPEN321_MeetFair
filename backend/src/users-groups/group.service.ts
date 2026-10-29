@@ -7,6 +7,7 @@ import { publisher } from '../realtime/publisher';
 import { SERVER_EVENTS, meetupRoom } from '../realtime/events';
 import { VoteModel } from '../voting-fairness/models';
 import { userService } from './user.service';
+import { TripModel } from '../live-location/models';
 
 function generateInviteCode(): string {
   const alphabet = tuning.inviteCodeAlphabet;
@@ -107,6 +108,7 @@ async function removeMember(groupId: string, organizerId: string, memberId: stri
   // Membership is revoked first; remove all submitted inputs and votes in this group only.
   await MeetupModel.updateMany({ groupId }, { $pull: { participants: { userId: memberId } } });
   await VoteModel.deleteMany({ meetupId: { $in: meetupIds }, userId: memberId });
+  await TripModel.updateMany({ meetupId: { $in: meetupIds }, userId: memberId }, { $set: { sharing: false, location: null } });
   // A removed meetup organizer must not leave an active meetup without anyone able to manage it.
   await MeetupModel.updateMany(
     { groupId, organizerId: memberId, status: { $ne: 'SETTLED' } },
@@ -124,6 +126,8 @@ async function leave(groupId: string, userId: string) {
     throw new Conflict('You cannot leave while a meetup you joined is still voting.');
   }
   const setupMeetups = await MeetupModel.find({ groupId, status: 'SETUP' }).select('_id');
+  const allMeetups = await MeetupModel.find({ groupId }).select('_id');
+  await TripModel.updateMany({ meetupId: { $in: allMeetups.map(m => m._id) }, userId }, { $set: { sharing: false, location: null } });
   const setupIds = setupMeetups.map(meetup => meetup._id);
   await MeetupModel.updateMany({ groupId, status: 'SETUP' }, { $pull: { participants: { userId } } });
   await VoteModel.deleteMany({ meetupId: { $in: setupIds }, userId });

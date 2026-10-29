@@ -110,7 +110,7 @@ class MeetupReminders(private val context: Context) {
                 .putExtra(REMINDER_MEETUP_ID, meetup.id)
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val message = "Your meetup time has arrived. Open the meetup to prepare for departure. 'I am leaving' location sharing is coming soon."
+        val message = "Your meetup time has arrived. Open the meetup and tap 'I am leaving' to share your live location."
         val notification = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(com.example.cpen321application.R.drawable.ic_meetup_reminder)
             .setContentTitle("Time for ${meetup.title}")

@@ -6,6 +6,7 @@ import { recommendationRouter } from './recommendation/routes';
 import { authRouter } from './users-groups/auth.routes';
 import { usersGroupsRouter } from './users-groups/routes';
 import { votingFairnessRouter } from './voting-fairness/routes';
+import { tripRouter } from './live-location/routes';
 
 export function createApp(): Express {
   const app = express();
@@ -21,6 +22,7 @@ export function createApp(): Express {
   api.use(usersGroupsRouter);
   api.use(recommendationRouter);
   api.use(votingFairnessRouter);
+  api.use(tripRouter);
   app.use('/api', api);
 
   app.use((_req, res) => {

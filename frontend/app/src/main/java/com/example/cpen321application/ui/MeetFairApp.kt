@@ -88,7 +88,13 @@ private fun MeetupRoutes(container: AppContainer, navigator: Navigator, route: R
             onEnterDetails = { navigator.push(Route.Participation(route.meetupId)) },
             onStartVoting = { navigator.push(Route.StartVoting(route.meetupId)) },
             onOpenVoting = { navigator.push(Route.Voting(route.meetupId)) },
+            onOpenLiveLocation = { navigator.push(Route.LiveLocation(route.meetupId)) },
         )
+        is Route.LiveLocation -> com.example.cpen321application.ui.meetup.LiveLocationScreen(
+            container, route.meetupId, onBack = navigator::pop, onDeleted = {
+                navigator.pop()
+                if (navigator.current.route == Route.Meetup(route.meetupId)) navigator.pop()
+            })
         is Route.Participation -> ParticipationScreen(container, route.meetupId, onBack = navigator::pop)
         // Once voting is open, back from the voting screen returns to the meetup, not to the finished form
         is Route.StartVoting -> StartVotingScreen(container, route.meetupId, onBack = navigator::pop, onStarted = {

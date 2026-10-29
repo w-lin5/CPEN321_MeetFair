@@ -13,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -133,6 +134,7 @@ fun MeetupScreen(
     onEnterDetails: () -> Unit,
     onStartVoting: () -> Unit,
     onOpenVoting: () -> Unit,
+    onOpenLiveLocation: () -> Unit = {},
 ) {
     val vm: MeetupViewModel = screenViewModel(MeetupViewModel.factory(container, meetupId))
     val state by vm.state.collectAsState()
@@ -145,6 +147,16 @@ fun MeetupScreen(
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var exited by rememberSaveable { mutableStateOf(false) }
     val userId = container.sessionStore.currentUserId()
+    var now by remember { mutableStateOf(java.time.Instant.now()) }
+    var ownTrip by remember { mutableStateOf<com.example.cpen321application.data.MeetupTrip?>(null) }
+    val refreshTrip: suspend () -> Unit = {
+        val result = container.tripRepository.list(meetupId)
+        if (result is ApiResult.Success) ownTrip = result.data.find { it.userId == userId }
+    }
+    LaunchedEffect(meetupId) {
+        refreshTrip()
+        while (true) { now = java.time.Instant.now(); kotlinx.coroutines.delay(1000) }
+    }
     val actions = MeetupActions(onEnterDetails, onStartVoting, onOpenVoting)
     LaunchedEffect(Unit) { vm.load() }
     LaunchedEffect(container, meetupId) {
@@ -152,6 +164,7 @@ fun MeetupScreen(
             // meetup:updated is mapped to Joined too; reload after reconnect and participation edits.
             if (event is MeetupEvent.Joined || event is MeetupEvent.RecommendationsReady) vm.refreshLive()
             if (event is MeetupEvent.StatusChanged) vm.onStatusChanged(event)
+            if (event is MeetupEvent.TripUpdated || event is MeetupEvent.Joined) refreshTrip()
             if (event is MeetupEvent.Deleted && !vm.deletion.value.submitting &&
                 vm.deletion.value.result == null && !exited) {
                 exited = true
@@ -195,6 +208,14 @@ fun MeetupScreen(
                     onToken = vm::addToCalendar,
                     onError = vm::setCalendarError,
                 )
+            }
+            if (meetup.status == MeetupStatus.FINALIZED && meetup.winner != null) {
+                Button(onClick = onOpenLiveLocation) { Text("View live locations") }
+                if (meetup.participants.any { it.userId == userId } && ownTrip?.status != "ARRIVED" &&
+                    runCatching { !java.time.Instant.parse(meetup.scheduledAt).isAfter(now) }.getOrDefault(false)) {
+                    StartTripButton(container, meetupId, if (ownTrip == null) "I am leaving" else "Resume sharing", onOpenLiveLocation)
+                }
+                if (ownTrip?.status == "ARRIVED") Text("You arrived. Actual commute: ${ownTrip?.actualSeconds ?: 0} seconds.")
             }
             if (meetup.status == MeetupStatus.SETUP && meetup.participants.any { it.userId == userId }) {
                 TextButton(onClick = { confirmLeave = true }, enabled = !leaving.submitting && !deletion.submitting,

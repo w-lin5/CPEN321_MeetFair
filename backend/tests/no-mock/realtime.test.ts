@@ -21,7 +21,9 @@ import {
   createMeetup,
   createUserN,
   createVotingMeetup,
+  createFinalizedMeetup,
 } from '../helpers/factories';
+import { MeetupModel } from '../../src/users-groups/models';
 
 type Ack = { ok: true } | { ok: false; error: string };
 
@@ -34,6 +36,25 @@ let httpServer: HttpServer;
 let ioServer: Server;
 let url: string;
 const clients: Socket[] = [];
+
+test('trip updates invalidate a connected group member map without broadcasting coordinates', async () => {
+  const organizer = await createUserN(1);
+  const member = await createUserN(2);
+  const group = await createGroup(organizer.id);
+  await addMember(group.id, member.id);
+  const meetup = await createFinalizedMeetup(group.id, organizer.id, [member.id]);
+  await MeetupModel.updateOne({ _id: meetup.id }, { $set: { scheduledAt: new Date(Date.now() - 60000) } });
+  const socket = await client(signSessionToken(organizer.id));
+  expect(await join(socket, meetup.id)).toEqual({ ok: true });
+  let update = nextEvent(socket, 'trip:updated');
+  expect((await request(app).post(`/api/meetups/${meetup.id}/trip/start`)
+    .set('Authorization', `Bearer ${signSessionToken(member.id)}`)).status).toBe(200);
+  expect(await update).toEqual({ meetupId: meetup.id });
+  update = nextEvent(socket, 'trip:updated');
+  expect((await request(app).put(`/api/meetups/${meetup.id}/trip/location`)
+    .set('Authorization', `Bearer ${signSessionToken(member.id)}`).send({ lat: 49, lng: -123, accuracyM: 5 })).status).toBe(200);
+  expect(await update).toEqual({ meetupId: meetup.id });
+});
 
 test('entering, editing and leaving details silently updates an already-open meetup', async () => {
   const organizer = await createUserN(1);
