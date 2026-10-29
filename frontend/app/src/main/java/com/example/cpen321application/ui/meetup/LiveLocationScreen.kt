@@ -107,7 +107,16 @@ fun LiveLocationScreen(container: AppContainer, meetupId: String, onBack: () -> 
             Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (destination != null) Text("Destination: ${destination.name}. Pan or zoom to find members. Locations older than 90 seconds are hidden.")
-            if (sharing.meetupId == meetupId) Text(sharing.message)
+            if (sharing.meetupId == meetupId) {
+                Text(sharing.message)
+                if (!androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+                    Text("Notifications are disabled. Enable them to see reminders that your location is being shared in the background.")
+                    TextButton(onClick = {
+                        context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName))
+                    }) { Text("Enable sharing notifications") }
+                }
+            }
             else if (own?.status == "ACTIVE") Text("This device is not sharing. Your commute timer is still running. Resume sharing to update your location, or tap I arrived to finish your trip.")
             if (own?.status == "ARRIVED") Text("You arrived. Actual commute: ${formatTripDuration(own.actualSeconds ?: 0)}.")
             if (own?.status == "ACTIVE") {

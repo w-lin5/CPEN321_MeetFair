@@ -11,6 +11,20 @@ import com.example.cpen321application.ui.theme.CPEN321ApplicationTheme
 class MainActivity : ComponentActivity() {
     private val reminderMeetup = androidx.compose.runtime.mutableStateOf<String?>(null)
 
+    override fun onStart() {
+        super.onStart()
+        com.example.cpen321application.location.LiveSharingNotifications(this).dismissBackground()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) {
+            com.example.cpen321application.location.LiveLocationService.status.value.meetupId?.let {
+                com.example.cpen321application.location.LiveSharingNotifications(this).showBackground(it)
+            }
+        }
+    }
+
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)

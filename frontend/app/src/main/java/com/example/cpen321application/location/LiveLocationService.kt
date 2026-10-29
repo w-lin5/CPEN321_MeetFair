@@ -1,9 +1,6 @@
 package com.example.cpen321application.location
 
 import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -15,14 +12,10 @@ import android.location.LocationManager
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
-import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
-import com.example.cpen321application.MainActivity
 import com.example.cpen321application.MeetFairApplication
-import com.example.cpen321application.R
 import com.example.cpen321application.data.ApiResult
-import com.example.cpen321application.notifications.REMINDER_MEETUP_ID
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,18 +39,10 @@ class LiveLocationService : Service(), LocationListener {
         if (meetupId == id && task?.isActive == true) return START_NOT_STICKY
         if (meetupId != null && meetupId != id) { stopSelf(); return START_NOT_STICKY }
         meetupId = id
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel("live_location", "Live location sharing", NotificationManager.IMPORTANCE_LOW))
-        val open = PendingIntent.getActivity(this, 1, Intent(this, MainActivity::class.java)
-            .putExtra(REMINDER_MEETUP_ID, id).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val notice = NotificationCompat.Builder(this, "live_location").setSmallIcon(R.drawable.ic_meetup_reminder)
-            .setContentTitle("MeetFair is sharing your location")
-            .setContentText("Open your meetup to mark arrival or stop sharing.")
-            .setContentIntent(open).setOngoing(true).setCategory(NotificationCompat.CATEGORY_SERVICE).build()
+        val notice = LiveSharingNotifications(this).ongoing(id)
         try {
             val serviceType = if (android.os.Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0
-            ServiceCompat.startForeground(this, 4001, notice, serviceType)
+            ServiceCompat.startForeground(this, SHARING_NOTIFICATION_ID, notice, serviceType)
             if (!hasLocationPermission(this)) throw SecurityException("Location permission is required")
             var requested = false
             for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
@@ -74,6 +59,7 @@ class LiveLocationService : Service(), LocationListener {
             mutableStatus.value = SharingStatus(message = error.message.orEmpty())
             stopSelf(); return START_NOT_STICKY
         }
+        mutableStatus.value = SharingStatus(id, "Waiting for a fresh location fix...")
         val sharingUser = container.sessionStore.currentUserId()
         sessionTask = scope.launch {
             container.sessionStore.token.collect { if (it == null || container.sessionStore.currentUserId() != sharingUser) stopSelf() }
@@ -119,6 +105,8 @@ class LiveLocationService : Service(), LocationListener {
     override fun onDestroy() {
         runCatching { locations.removeUpdates(this) }
         scope.cancel()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        LiveSharingNotifications(this).clear()
         if (mutableStatus.value.meetupId != null) mutableStatus.value = SharingStatus()
         super.onDestroy()
     }

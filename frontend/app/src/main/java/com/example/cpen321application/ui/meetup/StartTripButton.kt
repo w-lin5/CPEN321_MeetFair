@@ -54,6 +54,13 @@ internal fun StartTripButton(container: AppContainer, meetupId: String, label: S
         if (LiveLocationService.hasLocationPermission(context)) start()
         else error = "Location permission is required to share your trip. No trip was started."
     }
+    val requestLocation = {
+        if (LiveLocationService.hasLocationPermission(context)) start()
+        else permission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+    }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { _ ->
+        requestLocation()
+    }
     Button(onClick = { confirm = true }, enabled = !busy) { Text(if (busy) "Starting..." else label) }
     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     if (confirm) AlertDialog(
@@ -61,8 +68,10 @@ internal fun StartTripButton(container: AppContainer, meetupId: String, label: S
         text = { Text("Members of this group can see your latest location and profile picture during this trip. Sharing continues with a system notification when the app is in the background. Tap I arrived to stop sharing and save your commute duration. Pause sharing stops location updates but keeps your commute timer running until you tap I arrived.") },
         confirmButton = { TextButton(onClick = {
             confirm = false
-            if (LiveLocationService.hasLocationPermission(context)) start()
-            else permission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            if (android.os.Build.VERSION.SDK_INT >= 33 && androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else requestLocation()
         }) { Text("Share and start trip") } },
         dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
     )
