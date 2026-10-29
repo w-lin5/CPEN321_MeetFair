@@ -40,6 +40,7 @@ fun LiveLocationScreen(container: AppContainer, meetupId: String, onBack: () -> 
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var confirmArrival by remember { mutableStateOf(false) }
+    var confirmPause by remember { mutableStateOf(false) }
     var now by remember { mutableStateOf(Instant.now()) }
     val sharing by LiveLocationService.status.collectAsState()
     val notify = LocalNotify.current
@@ -83,7 +84,8 @@ fun LiveLocationScreen(container: AppContainer, meetupId: String, onBack: () -> 
         }
     }
     ScreenColumn("Live location", onBack) {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Keep the map outside scrolling containers so they cannot intercept its pan gestures.
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(meetup?.title ?: "Loading meetup...", style = MaterialTheme.typography.titleLarge)
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             val destination = meetup?.winner
@@ -91,7 +93,7 @@ fun LiveLocationScreen(container: AppContainer, meetupId: String, onBack: () -> 
                 val camera = rememberCameraPositionState {
                     position = CameraPosition.fromLatLngZoom(LatLng(destination.lat, destination.lng), 12f)
                 }
-                GoogleMap(Modifier.fillMaxWidth().height(360.dp), cameraPositionState = camera) {
+                GoogleMap(Modifier.fillMaxWidth().weight(1.2f), cameraPositionState = camera) {
                     Marker(state = rememberMarkerState(position = LatLng(destination.lat, destination.lng)), title = destination.name)
                     for (trip in trips) {
                         val point = trip.location
@@ -101,26 +103,19 @@ fun LiveLocationScreen(container: AppContainer, meetupId: String, onBack: () -> 
                         }
                     }
                 }
-                Text("Destination: ${destination.name}. Pan or zoom to find members. Locations older than 90 seconds are hidden.")
             } else if (!BuildConfig.MAPS_CONFIGURED) Text("Configure the Android Maps key to display the live map.")
+            Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (destination != null) Text("Destination: ${destination.name}. Pan or zoom to find members. Locations older than 90 seconds are hidden.")
             if (sharing.meetupId == meetupId) Text(sharing.message)
-            else if (own?.status == "ACTIVE") Text("This device is not sharing. Resume to share your location; the original trip start time is preserved.")
-            if (own?.status == "ARRIVED") Text("You arrived. Actual commute: ${own.actualSeconds ?: 0} seconds.")
+            else if (own?.status == "ACTIVE") Text("This device is not sharing. Your commute timer is still running. Resume sharing to update your location, or tap I arrived to finish your trip.")
+            if (own?.status == "ARRIVED") Text("You arrived. Actual commute: ${formatTripDuration(own.actualSeconds ?: 0)}.")
             if (own?.status == "ACTIVE") {
                 val elapsed = runCatching { maxOf(0, now.epochSecond - Instant.parse(own.startedAt).epochSecond) }.getOrDefault(0)
-                Text("Time since departure: ${elapsed / 60} min ${elapsed % 60} sec")
+                Text("Time since departure: ${formatTripDuration(elapsed)}")
+                Text("Pausing location sharing does not pause your commute timer. Tap I arrived to stop timing.")
                 Button(onClick = { confirmArrival = true }, enabled = !busy) { Text("I arrived") }
-                TextButton(onClick = {
-                    LiveLocationService.stop(context)
-                    scope.launch {
-                        busy = true
-                        when (val response = container.tripRepository.stop(meetupId)) {
-                            is ApiResult.Failure -> error = response.error.message
-                            is ApiResult.Success -> reload()
-                        }
-                        busy = false
-                    }
-                }, enabled = !busy) { Text("Stop sharing") }
+                TextButton(onClick = { confirmPause = true }, enabled = !busy && (own.sharing || sharing.meetupId == meetupId)) { Text("Pause sharing") }
             }
             val joined = meetup?.participants?.any { it.userId == userId } == true
             val due = meetup?.let { it.status == com.example.cpen321application.model.MeetupStatus.FINALIZED &&
@@ -131,18 +126,35 @@ fun LiveLocationScreen(container: AppContainer, meetupId: String, onBack: () -> 
                 }
             }
             for (trip in trips) Text("${trip.name}: " + when {
-                trip.status == "ARRIVED" -> "Arrived (${trip.actualSeconds ?: 0} seconds)"
+                trip.status == "ARRIVED" -> "Arrived (${formatTripDuration(trip.actualSeconds ?: 0)})"
                 trip.sharing -> "On the way"
                 else -> "On the way · sharing paused"
             })
             if (trips.isEmpty()) Text("Nobody has started a trip yet.")
             Text("Tap I arrived when you reach the destination. This stops location sharing and records your travel time.")
+            }
         }
+        if (confirmPause) AlertDialog(onDismissRequest = { confirmPause = false },
+            title = { Text("Pause location sharing?") },
+            text = { Text("Your location updates will stop, but your commute time will continue to be counted until you tap I arrived. Resuming sharing will not reset the timer.") },
+            confirmButton = { TextButton(onClick = {
+                confirmPause = false
+                if (sharing.meetupId == meetupId) LiveLocationService.stop(context)
+                scope.launch {
+                    busy = true
+                    when (val response = container.tripRepository.stop(meetupId)) {
+                        is ApiResult.Failure -> error = response.error.message
+                        is ApiResult.Success -> reload()
+                    }
+                    busy = false
+                }
+            }) { Text("Pause sharing") } },
+            dismissButton = { TextButton(onClick = { confirmPause = false }) { Text("Cancel") } })
         if (confirmArrival) AlertDialog(onDismissRequest = { confirmArrival = false },
             title = { Text("Have you arrived?") }, text = { Text("This ends your trip and location sharing, and saves the actual travel time. You cannot restart this trip.") },
             confirmButton = { TextButton(onClick = {
                 confirmArrival = false
-                LiveLocationService.stop(context)
+                if (sharing.meetupId == meetupId) LiveLocationService.stop(context)
                 scope.launch {
                     busy = true
                     when (val response = container.tripRepository.arrive(meetupId)) {

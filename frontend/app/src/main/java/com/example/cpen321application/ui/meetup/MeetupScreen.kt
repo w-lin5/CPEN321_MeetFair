@@ -215,7 +215,7 @@ fun MeetupScreen(
                     runCatching { !java.time.Instant.parse(meetup.scheduledAt).isAfter(now) }.getOrDefault(false)) {
                     StartTripButton(container, meetupId, if (ownTrip == null) "I am leaving" else "Resume sharing", onOpenLiveLocation)
                 }
-                if (ownTrip?.status == "ARRIVED") Text("You arrived. Actual commute: ${ownTrip?.actualSeconds ?: 0} seconds.")
+                if (ownTrip?.status == "ARRIVED") Text("You arrived. Actual commute: ${formatTripDuration(ownTrip?.actualSeconds ?: 0)}.")
             }
             if (meetup.status == MeetupStatus.SETUP && meetup.participants.any { it.userId == userId }) {
                 TextButton(onClick = { confirmLeave = true }, enabled = !leaving.submitting && !deletion.submitting,

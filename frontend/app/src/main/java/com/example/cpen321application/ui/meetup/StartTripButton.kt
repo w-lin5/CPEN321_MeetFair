@@ -58,7 +58,7 @@ internal fun StartTripButton(container: AppContainer, meetupId: String, label: S
     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     if (confirm) AlertDialog(
         onDismissRequest = { confirm = false }, title = { Text("Share your live location?") },
-        text = { Text("Members of this group can see your latest location and profile picture during this trip. Sharing continues with a system notification when the app is in the background. Tap I arrived to stop sharing and save your commute duration, or Stop sharing to pause location updates.") },
+        text = { Text("Members of this group can see your latest location and profile picture during this trip. Sharing continues with a system notification when the app is in the background. Tap I arrived to stop sharing and save your commute duration. Pause sharing stops location updates but keeps your commute timer running until you tap I arrived.") },
         confirmButton = { TextButton(onClick = {
             confirm = false
             if (LiveLocationService.hasLocationPermission(context)) start()
