@@ -178,3 +178,4 @@ describe('Unmocked: fairCreditService settlement', () => {
     expect(await fairCreditService.getVoteWeight(grace.id, groupA.id)).toBe(1);
   });
 });
+

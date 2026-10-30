@@ -352,3 +352,4 @@ describe('Unmocked: POST /api/meetups/:meetupId/finalize', () => {
     expect((await MeetupModel.findById(meetup.id).orFail()).winner?.placeId).toBe(PLACE_1);
   });
 });
+

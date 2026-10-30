@@ -200,3 +200,4 @@ describe('Mocked: PUT /api/meetups/:meetupId/participation', () => {
     expect(update).toHaveBeenCalledTimes(1);
   });
 });
+

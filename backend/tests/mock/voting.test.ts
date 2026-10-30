@@ -162,3 +162,4 @@ describe('Mocked: POST /api/meetups/:meetupId/finalize', () => {
     expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('VOTING');
   });
 });
+

@@ -109,3 +109,4 @@ describe('Unmocked: POST /api/meetups/:meetupId/calendar-event', () => {
     expect(res.body).toEqual({ error: 'This meetup is already in your calendar' });
   });
 });
+

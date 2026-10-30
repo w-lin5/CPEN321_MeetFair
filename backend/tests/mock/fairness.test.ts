@@ -114,3 +114,4 @@ describe('Mocked: fairCreditService.settleMeetup', () => {
     expect(await FairCreditEntryModel.findOne({ userId: extra.id }).orFail()).toMatchObject({ source: 'ESTIMATED' });
   });
 });
+

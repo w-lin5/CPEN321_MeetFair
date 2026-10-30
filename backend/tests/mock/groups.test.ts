@@ -205,3 +205,4 @@ describe('Mocked: POST /api/groups/join', () => {
     expect((await GroupModel.findById(group.id).orFail()).members).toHaveLength(1);
   });
 });
+

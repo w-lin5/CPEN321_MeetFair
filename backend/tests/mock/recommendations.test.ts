@@ -85,3 +85,4 @@ describe('Mocked: GET /api/meetups/:meetupId/recommendations', () => {
     expect(res.body).toEqual({ error: 'Internal Server Error' });
   });
 });
+

@@ -142,3 +142,4 @@ describe('Unmocked: GET /api/users/me', () => {
     expect(res.body).toEqual({ error: 'User not found' });
   });
 });
+
