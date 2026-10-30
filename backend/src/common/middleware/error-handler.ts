@@ -1,6 +1,15 @@
-import type { ErrorRequestHandler } from 'express';
+import type { ErrorRequestHandler, Request, RequestHandler, Response } from 'express';
 
 import { HttpError, ValidationError } from '../errors';
+
+// Wraps an async route handler so a rejected promise is forwarded to a synchronous errorHandler via next()
+export function asyncHandler(handler: (req: Request, res: Response) => Promise<void>): RequestHandler {
+  return (req, res, next) => {
+    handler(req, res).catch((err: unknown) => {
+      next(err);
+    });
+  };
+}
 
 // Identifies malformed JSON errors raised by Express body parser
 function isBodyParseError(err: unknown): boolean {
