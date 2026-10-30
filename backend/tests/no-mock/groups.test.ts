@@ -1,4 +1,4 @@
-import request from 'supertest';
+import request, { type Test } from 'supertest';
 
 import { createApp } from '../../src/app';
 import { GroupModel } from '../../src/users-groups/models';
@@ -246,7 +246,7 @@ describe('Unmocked: POST /api/groups/join', () => {
     const joiner = await createUserN(2);
     const group = await createGroup(organizer.id);
     const app = createApp();
-    const join = () =>
+    const join = (): Test =>
       request(app).post('/api/groups/join').set('Authorization', bearer(joiner.id)).send({ inviteCode: 'ABC234' });
 
     const results = await Promise.all([join(), join()]);

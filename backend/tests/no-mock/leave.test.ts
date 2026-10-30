@@ -1,4 +1,4 @@
-import request from 'supertest';
+import request, { type Test } from 'supertest';
 import { createApp } from '../../src/app';
 import * as placesClient from '../../src/integrations/places.client';
 import { setTransport } from '../../src/realtime/publisher';
@@ -27,11 +27,11 @@ async function setup() {
   return { organizer, member, outsider, group, meetup };
 }
 
-function leaveMeetup(id: string, userId?: string) {
+function leaveMeetup(id: string, userId?: string): Test {
   const req = request(createApp()).delete(`/api/meetups/${id}/participation`);
   return userId ? req.set('Authorization', bearer(userId)) : req;
 }
-function leaveGroup(id: string, userId?: string) {
+function leaveGroup(id: string, userId?: string): Test {
   const req = request(createApp()).post(`/api/groups/${id}/leave`);
   return userId ? req.set('Authorization', bearer(userId)) : req;
 }

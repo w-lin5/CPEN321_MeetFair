@@ -1,4 +1,4 @@
-import request from 'supertest';
+import request, { type Test } from 'supertest';
 import { createApp } from '../../src/app';
 import { setRevoker } from '../../src/realtime/publisher';
 import { GroupModel, MeetupModel } from '../../src/users-groups/models';
@@ -22,7 +22,7 @@ async function setup() {
   return { organizer, member, outsider, group };
 }
 
-function remove(groupId: string, targetId: string, callerId?: string) {
+function remove(groupId: string, targetId: string, callerId?: string): Test {
   const req = request(createApp()).delete(`/api/groups/${groupId}/members/${targetId}`);
   return callerId ? req.set('Authorization', bearer(callerId)) : req;
 }

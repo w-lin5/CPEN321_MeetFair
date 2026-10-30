@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import request from 'supertest';
+import request, { type Test } from 'supertest';
 
 import { createApp } from '../../src/app';
 import { UpstreamError } from '../../src/common/errors';
@@ -35,7 +35,7 @@ async function setup() {
   return { user, meetup };
 }
 
-function addToCalendar(meetupId: string, userId: string) {
+function addToCalendar(meetupId: string, userId: string): Test {
   return request(createApp())
     .post(`/api/meetups/${meetupId}/calendar-event`)
     .set('Authorization', bearer(userId))

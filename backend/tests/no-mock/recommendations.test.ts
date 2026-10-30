@@ -1,4 +1,4 @@
-import request from 'supertest';
+import request, { type Test } from 'supertest';
 
 import { createApp } from '../../src/app';
 import { setTransport } from '../../src/realtime/publisher';
@@ -94,7 +94,7 @@ describe('Unmocked: GET /api/meetups/:meetupId/recommendations', () => {
   test('Not generated yet and outsider', async () => {
     const { organizer, meetup } = await setup();
     const outsider = await createUserN(3);
-    const get = (userId: string) => request(createApp())
+    const get = (userId: string): Test => request(createApp())
       .get(`/api/meetups/${meetup.id}/recommendations`)
       .set('Authorization', bearer(userId));
 

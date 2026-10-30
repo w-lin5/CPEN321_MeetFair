@@ -1,4 +1,4 @@
-import request from 'supertest';
+import request, { type Test } from 'supertest';
 
 import { createApp } from '../../src/app';
 import { MeetupModel } from '../../src/users-groups/models';
@@ -285,7 +285,7 @@ describe('Unmocked: PUT /api/meetups/:meetupId/participation', () => {
     const { member, group } = await setupGroup();
     const meetup = await createMeetup(group.id, member.id);
     const app = createApp();
-    const submit = () =>
+    const submit = (): Test =>
       request(app).put(`/api/meetups/${meetup.id}/participation`).set('Authorization', bearer(member.id)).send(PARTICIPATION);
 
     const first = await submit();

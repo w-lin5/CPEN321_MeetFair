@@ -1,4 +1,4 @@
-import request from 'supertest';
+import request, { type Agent, type Test } from 'supertest';
 
 import { createApp } from '../../src/app';
 import { setTransport } from '../../src/realtime/publisher';
@@ -49,17 +49,17 @@ async function setup() {
   return { organizer, ada, grace, bystander, group, meetup };
 }
 
-const app = () => request(createApp());
+const app = (): Agent => request(createApp());
 
-function vote(meetupId: string, userId: string, placeId: unknown) {
+function vote(meetupId: string, userId: string, placeId: unknown): Test {
   return app().put(`/api/meetups/${meetupId}/vote`).set('Authorization', bearer(userId)).send({ placeId });
 }
 
-function lock(meetupId: string, userId: string) {
+function lock(meetupId: string, userId: string): Test {
   return app().post(`/api/meetups/${meetupId}/vote/lock`).set('Authorization', bearer(userId));
 }
 
-function finalize(meetupId: string, userId: string, body?: object) {
+function finalize(meetupId: string, userId: string, body?: object): Test {
   const req = app().post(`/api/meetups/${meetupId}/finalize`).set('Authorization', bearer(userId));
   return body === undefined ? req : req.send(body);
 }

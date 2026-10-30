@@ -1,4 +1,4 @@
-import request from 'supertest';
+import request, { type Test } from 'supertest';
 import * as placesClient from '../../src/integrations/places.client';
 
 import { createApp } from '../../src/app';
@@ -26,7 +26,7 @@ async function setup() {
   return { organizer, meetup };
 }
 
-function generate(meetupId: string, userId: string) {
+function generate(meetupId: string, userId: string): Test {
   return request(createApp())
     .post(`/api/meetups/${meetupId}/recommendations/from-places`)
     .set('Authorization', bearer(userId));

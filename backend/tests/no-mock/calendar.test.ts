@@ -1,4 +1,4 @@
-import request from 'supertest';
+import request, { type Test } from 'supertest';
 
 import { createApp } from '../../src/app';
 import { MeetupModel } from '../../src/users-groups/models';
@@ -19,7 +19,7 @@ afterAll(stopDb);
 
 const BODY = { accessToken: 'google-access-token' };
 
-function post(meetupId: string, userId?: string, body: object = BODY) {
+function post(meetupId: string, userId?: string, body: object = BODY): Test {
   const req = request(createApp()).post(`/api/meetups/${meetupId}/calendar-event`);
   return (userId === undefined ? req : req.set('Authorization', bearer(userId))).send(body);
 }

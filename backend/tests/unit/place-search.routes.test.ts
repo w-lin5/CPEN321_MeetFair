@@ -1,4 +1,4 @@
-import request from 'supertest';
+import request, { type Test } from 'supertest';
 
 import { createApp } from '../../src/app';
 import { Forbidden, NotFound, UpstreamError } from '../../src/common/errors';
@@ -22,7 +22,7 @@ beforeEach(() => {
   searchMock.mockResolvedValue([]);
 });
 
-function search(userId = organizerId, id = meetupId) {
+function search(userId = organizerId, id = meetupId): Test {
   return request(createApp()).post(`/api/meetups/${id}/places/search`).set('Authorization', bearer(userId));
 }
 

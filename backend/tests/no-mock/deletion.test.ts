@@ -1,4 +1,4 @@
-import request from 'supertest';
+import request, { type Test } from 'supertest';
 import { createApp } from '../../src/app';
 import { RecommendationModel } from '../../src/recommendation/models';
 import { setRoomCloser, setTransport } from '../../src/realtime/publisher';
@@ -28,7 +28,7 @@ async function setup(status: 'SETUP' | 'VOTING' | 'FINALIZED' | 'SETTLED' = 'VOT
   return { organizer, member, outsider, group, meetup };
 }
 
-function del(path: string, userId?: string) {
+function del(path: string, userId?: string): Test {
   const req = request(createApp()).delete(`/api/${path}`);
   return userId ? req.set('Authorization', bearer(userId)) : req;
 }

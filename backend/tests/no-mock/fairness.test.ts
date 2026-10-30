@@ -1,4 +1,4 @@
-import request from 'supertest';
+import request, { type Test } from 'supertest';
 
 import { createApp } from '../../src/app';
 import { MeetupModel } from '../../src/users-groups/models';
@@ -31,7 +31,7 @@ function trip(userId: string, minutes: number, source: 'TRACKED' | 'ESTIMATED' =
   return { userId, mode: 'TRANSIT' as const, actualSeconds: minutes * MINUTE, source };
 }
 
-function getFairness(groupId: string, userId: string) {
+function getFairness(groupId: string, userId: string): Test {
   return request(createApp()).get(`/api/groups/${groupId}/fairness`).set('Authorization', bearer(userId));
 }
 

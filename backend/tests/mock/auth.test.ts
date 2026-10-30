@@ -163,10 +163,12 @@ describe('Mocked: GET /api/users/me', () => {
 
 // Interface POST /api/auth/google (Google library behind idTokenClient)
 describe('Mocked: POST /api/auth/google with the Google library', () => {
+  function ticket(payload: Record<string, unknown> | undefined): LoginTicket {
+    return { getPayload: () => payload } as unknown as LoginTicket;
+  }
+
   function mockTicket(payload: Record<string, unknown> | undefined) {
-    return jest.spyOn(OAuth2Client.prototype, 'verifyIdToken').mockResolvedValue({
-      getPayload: () => payload,
-    } as unknown as LoginTicket as never);
+    jest.spyOn(OAuth2Client.prototype, 'verifyIdToken').mockResolvedValue(ticket(payload) as never);
   }
 
   // Input: { idToken: "valid" }
@@ -175,7 +177,8 @@ describe('Mocked: POST /api/auth/google with the Google library', () => {
   // Expected output: { token, user } with email, name and photoUrl from Google
   // Mocked behavior: OAuth2Client.verifyIdToken resolves a payload with every field
   test('Full Google profile is accepted', async () => {
-    const verify = mockTicket({ sub: 'g-1', email: 'a@x.com', name: 'A', picture: 'http://img/a.png' });
+    const verify = jest.spyOn(OAuth2Client.prototype, 'verifyIdToken')
+      .mockResolvedValue(ticket({ sub: 'g-1', email: 'a@x.com', name: 'A', picture: 'http://img/a.png' }) as never);
 
     const res = await request(createApp()).post('/api/auth/google').send({ idToken: 'valid' });
 

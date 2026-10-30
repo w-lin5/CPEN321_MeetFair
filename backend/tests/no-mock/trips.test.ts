@@ -1,4 +1,4 @@
-import request from 'supertest';
+import request, { type Test } from 'supertest';
 import { createApp } from '../../src/app';
 import { signSessionToken } from '../../src/common/session';
 import { TripModel } from '../../src/live-location/models';
@@ -21,7 +21,7 @@ async function setup() {
   const meetup = await createFinalizedMeetup(group.id, organizer.id, [organizer.id, member.id]);
   await MeetupModel.updateOne({ _id: meetup.id }, { $set: { scheduledAt: new Date(Date.now() - 60000) } });
   const auth = (id: string) => `Bearer ${signSessionToken(id)}`;
-  const call = (action: string, id = member.id) => request(app).post(`/api/meetups/${meetup.id}/trip/${action}`).set('Authorization', auth(id));
+  const call = (action: string, id = member.id): Test => request(app).post(`/api/meetups/${meetup.id}/trip/${action}`).set('Authorization', auth(id));
   return { organizer, member, viewer, outsider, group, meetup, auth, call };
 }
 

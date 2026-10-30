@@ -1,4 +1,4 @@
-import request from 'supertest';
+import request, { type Agent } from 'supertest';
 
 import { createApp } from '../../src/app';
 import { NotFound } from '../../src/common/errors';
@@ -31,7 +31,7 @@ async function setup() {
   return { organizer, ada, meetup };
 }
 
-const app = () => request(createApp());
+const app = (): Agent => request(createApp());
 
 // Interface PUT /api/meetups/:meetupId/vote
 describe('Mocked: PUT /api/meetups/:meetupId/vote', () => {

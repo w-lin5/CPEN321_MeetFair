@@ -3,7 +3,7 @@ import { type Server as HttpServer, createServer } from 'node:http';
 
 import type { Server } from 'socket.io';
 import { type Socket, io as connect } from 'socket.io-client';
-import request from 'supertest';
+import request, { type Test } from 'supertest';
 
 import { createApp } from '../../src/app';
 import { signSessionToken } from '../../src/common/session';
@@ -107,7 +107,7 @@ async function setup() {
   return { organizer, member, outsider, meetup };
 }
 
-function vote(meetupId: string, userId: string, placeId: string) {
+function vote(meetupId: string, userId: string, placeId: string): Test {
   return request(app)
     .put(`/api/meetups/${meetupId}/vote`)
     .set('Authorization', `Bearer ${signSessionToken(userId)}`)
@@ -273,7 +273,7 @@ describe('Unmocked: trip and participation updates', () => {
     expect(await join(viewer, meetup.id)).toEqual({ ok: true });
     const notices = recorder(viewer, 'group:meetup-deleted');
     const auth = `Bearer ${signSessionToken(member.id)}`;
-    const read = () => request(app).get(`/api/meetups/${meetup.id}`).set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
+    const read = (): Test => request(app).get(`/api/meetups/${meetup.id}`).set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
 
     let update = nextEvent<{ meetupId: string }>(viewer, 'meetup:updated');
     expect((await request(app).put(`/api/meetups/${meetup.id}/participation`).set('Authorization', auth).send(PARTICIPATION)).status).toBe(200);
