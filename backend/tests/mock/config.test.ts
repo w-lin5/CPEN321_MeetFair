@@ -44,6 +44,7 @@ afterEach(() => {
 
 // Interface: config (env + tuning)
 describe('Mocked: config', () => {
+  // Mocked behavior: dotenv/config is replaced with an empty module, so backend/.env is not read
   // Input: NODE_ENV=test with no other variables
   // Expected behavior: test defaults are supplied; PORT defaults to 3000
   // Expected output: env filled with test defaults
@@ -58,6 +59,7 @@ describe('Mocked: config', () => {
     });
   });
 
+  // Mocked behavior: dotenv/config is replaced with an empty module, so backend/.env is not read
   // Input: NODE_ENV=test with empty-string variables
   // Expected behavior: empty strings are treated as unset
   test('Empty strings count as unset', () => {
@@ -73,6 +75,7 @@ describe('Mocked: config', () => {
     expect(env.jwtSecret).toBe('test-secret');
   });
 
+  // Mocked behavior: dotenv/config is replaced with an empty module, so backend/.env is not read
   // Input: every variable provided, outside the test environment
   // Expected behavior: provided values are used verbatim
   test('Provided values win over defaults', () => {
@@ -92,6 +95,7 @@ describe('Mocked: config', () => {
     });
   });
 
+  // Mocked behavior: dotenv/config is replaced with an empty module, so backend/.env is not read
   // Input: outside the test environment, a required variable is missing
   // Expected behavior: loading the config throws, naming the variable
   test.each([['MONGODB_URI'], ['JWT_SECRET'], ['GOOGLE_CLIENT_ID']])('Missing %s is fatal in production', (missing) => {
@@ -106,12 +110,14 @@ describe('Mocked: config', () => {
     expect(() => loadConfig(vars)).toThrow(`Missing required env var ${missing}`);
   });
 
+  // Mocked behavior: dotenv/config is replaced with an empty module, so backend/.env is not read
   // Input: PORT that is not a number / below 1 / above 65535
   // Expected behavior: loading the config throws
   test.each([['abc'], ['0'], ['65536'], ['-5']])('Invalid PORT %j is rejected', (port) => {
     expect(() => loadConfig({ NODE_ENV: 'test', PORT: port })).toThrow(`Invalid PORT: ${port}`);
   });
 
+  // Mocked behavior: dotenv/config is replaced with an empty module, so backend/.env is not read
   // Input: PORT at the lowest and highest valid values
   // Expected behavior: accepted
   test.each([[1], [65535]])('PORT %p is accepted', (port) => {

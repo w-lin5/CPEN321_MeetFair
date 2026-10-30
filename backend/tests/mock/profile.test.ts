@@ -24,6 +24,7 @@ function quietConsole() {
 describe('Mocked: GET /api/users/me/profile', () => {
   // Input: authenticated user in one group
   // Expected status code: 500
+  // Expected behavior: the database error is reported without leaking details
   // Expected output: { error: "Internal Server Error" }
   // Mocked behavior: loading the Fair Credit balances rejects
   test('Fair Credit lookup failure', async () => {

@@ -114,6 +114,7 @@ afterEach(() => {
 
 // Interface: server bootstrap (src/index.ts)
 describe('Mocked: index bootstrap', () => {
+  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on/exit and console are fakes; connectDb resolves; fs reports no PEM files
   // Input: normal startup, no certificate files in backend/certs/
   // Expected behavior: DB connected with the configured URI, app listens over plain HTTP on the configured port,
   //                    Socket.IO is attached to the HTTP server, startup is logged,
@@ -131,6 +132,7 @@ describe('Mocked: index bootstrap', () => {
     expect(h.exit).not.toHaveBeenCalled();
   });
 
+  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on/exit and console are fakes; fs reports both PEM files and returns stub contents
   // Input: startup with backend/certs/fullchain.pem and privkey.pem present
   // Expected behavior: an HTTPS server is built from the PEM files around the Express app, listens on the
   //                    configured port, gets Socket.IO attached, and startup is logged as https
@@ -148,6 +150,7 @@ describe('Mocked: index bootstrap', () => {
     expect(h.exit).not.toHaveBeenCalled();
   });
 
+  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on/exit and console are fakes; fs reports only one of the two PEM files
   // Input: startup with only one of the two PEM files present (certificate only / key only)
   // Expected behavior: startup fails with a message naming both files instead of silently falling back to HTTP;
   //                    the server never listens; exit code 1
@@ -166,6 +169,7 @@ describe('Mocked: index bootstrap', () => {
     expect(h.exit).toHaveBeenCalledWith(1);
   });
 
+  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on/exit and console are fakes; connectDb and disconnectDb resolve; process.on captures the signal handlers
   // Input: SIGINT / SIGTERM after a successful startup, DB disconnects cleanly
   // Expected behavior: Socket.IO and the server are closed, DB disconnected, process exits with 0
   test.each<Signal>(['SIGINT', 'SIGTERM'])('%s shuts down gracefully', async (signal) => {
@@ -181,6 +185,7 @@ describe('Mocked: index bootstrap', () => {
     expect(h.exit).toHaveBeenCalledWith(0);
   });
 
+  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on/exit and console are fakes; disconnectDb rejects with an Error
   // Input: shutdown signal, but the DB fails to disconnect
   // Expected behavior: process exits with 1
   test('Shutdown exits with 1 when disconnect fails', async () => {
@@ -194,6 +199,7 @@ describe('Mocked: index bootstrap', () => {
     expect(h.exit).not.toHaveBeenCalledWith(0);
   });
 
+  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on/exit and console are fakes; connectDb rejects with Error("no db")
   // Input: DB connection fails with an Error
   // Expected behavior: only the error message is logged; the server never listens; exit code 1
   test('Startup failure with an Error exits with 1', async () => {
@@ -205,6 +211,7 @@ describe('Mocked: index bootstrap', () => {
     expect(h.exit).toHaveBeenCalledWith(1);
   });
 
+  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on/exit and console are fakes; connectDb rejects with the string "weird"
   // Input: DB connection fails with a non-Error value
   // Expected behavior: a generic message is logged instead of the raw value; exit code 1
   test('Startup failure with a non-Error exits with 1', async () => {

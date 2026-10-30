@@ -10,6 +10,7 @@ afterEach(() => jest.restoreAllMocks());
 
 // Interface: signSessionToken / verifySessionToken
 describe('Mocked: session token expiry', () => {
+  // Mocked behavior: Date.now returns T0 while signing, then T0 + TTL - 1 ms while verifying
   // Input: token verified 1 ms before the TTL elapses (i.e., "app reopened days later")
   // Expected behavior: still valid, so the user stays signed in
   // Expected output: USER_ID
@@ -21,6 +22,7 @@ describe('Mocked: session token expiry', () => {
     expect(verifySessionToken(token)).toBe(USER_ID);
   });
 
+  // Mocked behavior: Date.now returns T0 while signing, then T0 + TTL while verifying
   // Input: token verified exactly at the TTL
   // Expected behavior: rejected with Unauthorized
   test('Rejected at expiry', () => {
