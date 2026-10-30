@@ -43,5 +43,8 @@
     "tsx": "^4.23.5",
     "typescript": "~5.9",
     "@shelf/jest-mongodb": "^6.0.2"
+  },
+  "overrides": {
+    "proxy-addr": "2.0.8"
   }
 }
