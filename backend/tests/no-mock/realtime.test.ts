@@ -98,7 +98,9 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
-  clients.splice(0).forEach((c) => c.disconnect());
+  clients.splice(0).forEach((c) => {
+    c.disconnect();
+  });
   await clearDb();
 });
 
@@ -194,8 +196,9 @@ function client(token?: string): Promise<Socket> {
   });
 }
 
-function join(socket: Socket, meetupId: unknown): Promise<Ack> {
-  return socket.timeout(EVENT_TIMEOUT_MS).emitWithAck('meetup:join', { meetupId });
+async function join(socket: Socket, meetupId: unknown): Promise<Ack> {
+  const ack: Ack = await socket.timeout(EVENT_TIMEOUT_MS).emitWithAck('meetup:join', { meetupId });
+  return ack;
 }
 
 function nextEvent<T>(socket: Socket, event: string): Promise<T> {

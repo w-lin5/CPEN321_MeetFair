@@ -20,7 +20,7 @@ describe('Unmocked: userService.findByIds', () => {
 
     const found = await userService.findByIds([ada._id, grace._id, new Types.ObjectId()]);
 
-    expect(found.map((u) => u.id).sort()).toEqual([ada.id, grace.id].sort());
+    expect(found.map((u) => String(u.id)).sort()).toEqual([ada.id, grace.id].sort());
   });
 
   // Input: empty id list

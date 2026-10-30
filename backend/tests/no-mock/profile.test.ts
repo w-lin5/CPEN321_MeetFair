@@ -56,7 +56,8 @@ describe('Unmocked: GET /api/users/me/profile', () => {
       hasCustomDisplayName: false,
       photoUrl: null,
     });
-    const groups = new Map(res.body.groups.map((g: { groupId: string }) => [g.groupId, g]));
+    const bodyGroups: { groupId: string }[] = res.body.groups;
+    const groups = new Map(bodyGroups.map((g) => [g.groupId, g]));
     expect(groups.get(groupA.id)).toMatchObject({ name: 'Study Crew', role: 'ORGANIZER', fairCredit: 300 });
     expect(groups.get(groupB.id)).toMatchObject({ name: 'Climbing', role: 'ORGANIZER', fairCredit: 0 });
   });
@@ -132,7 +133,7 @@ describe('Unmocked: PUT /api/users/me/profile', () => {
   // Expected behavior: sign-in refreshes the Google name but keeps the custom display name
   test('Google sign-in does not overwrite the custom name', async () => {
     const user = await UserModel.create({ googleSub: GOOGLE_PROFILE.sub, email: 'old@example.com', name: 'Old Name' });
-    await profileService.updateProfile(user.id, { displayName: 'Ada L.' });
+    await profileService.updateProfile(String(user.id), { displayName: 'Ada L.' });
 
     const refreshed = await userService.upsertFromGoogle({ ...GOOGLE_PROFILE, name: 'Ada Lovelace' });
 

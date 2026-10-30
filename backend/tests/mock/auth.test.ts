@@ -32,7 +32,7 @@ describe('Mocked: POST /api/auth/google', () => {
     expect(res.status).toBe(200);
     expect(res.body.user).toMatchObject({ email: 'ada@example.com', name: 'Ada Lovelace', photoUrl: null });
     expect(res.body.user._id).toBeUndefined();
-    expect(verifySessionToken(res.body.token)).toBe(res.body.user.id);
+    expect(verifySessionToken(String(res.body.token))).toBe(res.body.user.id);
     expect(await UserModel.countDocuments()).toBe(1);
   });
 

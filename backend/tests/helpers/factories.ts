@@ -1,6 +1,16 @@
+import type { Types } from 'mongoose';
+
 import { RecommendationModel } from '../../src/recommendation/models';
 import { GroupModel, MeetupModel } from '../../src/users-groups/models';
-import { createUser } from './auth';
+import { type CreatedDoc, createUser } from './auth';
+
+export interface CreatedGroup extends CreatedDoc {
+  inviteCode: string;
+}
+
+export interface CreatedMeetup extends CreatedDoc {
+  groupId: Types.ObjectId;
+}
 
 // Creates the nth distinct user (createUser alone always makes the same Google account)
 export async function createUserN(n: number) {
@@ -8,14 +18,18 @@ export async function createUserN(n: number) {
 }
 
 // A group whose only member is its organizer
-export async function createGroup(organizerId: string, overrides: Partial<{ name: string; inviteCode: string }> = {}) {
-  return GroupModel.create({
+export async function createGroup(
+  organizerId: string,
+  overrides: Partial<{ name: string; inviteCode: string }> = {},
+): Promise<CreatedGroup> {
+  const group: CreatedGroup = await GroupModel.create({
     name: 'Study Crew',
     inviteCode: 'ABC234',
     organizerId,
     members: [{ userId: organizerId, role: 'ORGANIZER' }],
     ...overrides,
   });
+  return group;
 }
 
 export async function addMember(groupId: string, userId: string) {
@@ -29,14 +43,15 @@ export async function createMeetup(
   groupId: string,
   organizerId: string,
   overrides: Partial<{ title: string; scheduledAt: Date; status: 'SETUP' | 'VOTING' | 'FINALIZED' | 'SETTLED' }> = {},
-) {
-  return MeetupModel.create({
+): Promise<CreatedMeetup> {
+  const meetup: CreatedMeetup = await MeetupModel.create({
     groupId,
     organizerId,
     title: 'Library session',
     scheduledAt: new Date('2026-11-05T22:30:00Z'),
     ...overrides,
   });
+  return meetup;
 }
 
 // A valid PUT /meetups/:id/participation body
@@ -66,17 +81,27 @@ export async function addParticipants(meetupId: string, userIds: string[]) {
 }
 
 // A meetup in VOTING over CANDIDATES whose participants are `participantIds`, created directly in the DB
-export async function createVotingMeetup(groupId: string, organizerId: string, participantIds: string[]) {
+export async function createVotingMeetup(
+  groupId: string,
+  organizerId: string,
+  participantIds: string[],
+): Promise<CreatedMeetup> {
   const meetup = await createMeetup(groupId, organizerId, { status: 'VOTING' });
   await addParticipants(meetup.id, participantIds);
   await RecommendationModel.create({ meetupId: meetup.id, candidates: CANDIDATES });
-  return MeetupModel.findById(meetup._id).orFail();
+  const voting: CreatedMeetup = await MeetupModel.findById(meetup._id).orFail();
+  return voting;
 }
 
 // A FINALIZED meetup at CANDIDATES[0] whose participants entered PARTICIPATION
-export async function createFinalizedMeetup(groupId: string, organizerId: string, participantIds: string[]) {
+export async function createFinalizedMeetup(
+  groupId: string,
+  organizerId: string,
+  participantIds: string[],
+): Promise<CreatedMeetup> {
   const meetup = await createMeetup(groupId, organizerId, { status: 'FINALIZED' });
   await addParticipants(meetup.id, participantIds);
   await MeetupModel.updateOne({ _id: meetup._id }, { $set: { winner: CANDIDATES[0], finalizedAt: new Date() } });
-  return MeetupModel.findById(meetup._id).orFail();
+  const finalized: CreatedMeetup = await MeetupModel.findById(meetup._id).orFail();
+  return finalized;
 }

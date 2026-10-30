@@ -19,6 +19,12 @@ function f(entries: Record<string, unknown>) {
   return fields(entries);
 }
 
+// expect.objectContaining is typed any; give toThrow a typed matcher for the expected details
+function errorWithDetails(details: string[]): Error {
+  const matcher: Error = expect.objectContaining({ details });
+  return matcher;
+}
+
 // Interface: parseInput
 describe('Unmocked: parseInput', () => {
   // Input: a parser and some data
@@ -51,9 +57,9 @@ describe('Unmocked: fields', () => {
 
   test('Error message uses the supplied name', () => {
     expect(() => fields(null, 'params')).toThrow(
-      expect.objectContaining({ details: ['params must be an object'] }),
+      errorWithDetails(['params must be an object']),
     );
-    expect(() => fields(null)).toThrow(expect.objectContaining({ details: ['body must be an object'] }));
+    expect(() => fields(null)).toThrow(errorWithDetails(['body must be an object']));
   });
 });
 
@@ -130,7 +136,7 @@ describe('Unmocked: oneOf', () => {
   // Expected behavior: ValidationError listing the allowed values
   test.each([[{}], [{ k: 'pink' }], [{ k: 1 }]])('Rejects %j', (body) => {
     expect(() => oneOf(f(body), 'k', COLORS)).toThrow(
-      expect.objectContaining({ details: ['k must be one of red, green, blue'] }),
+      errorWithDetails(['k must be one of red, green, blue']),
     );
   });
 });

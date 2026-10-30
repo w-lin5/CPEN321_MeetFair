@@ -37,7 +37,9 @@ beforeAll(async () => {
 
 afterEach(async () => {
   jest.restoreAllMocks();
-  clients.splice(0).forEach((c) => c.disconnect());
+  clients.splice(0).forEach((c) => {
+    c.disconnect();
+  });
   await clearDb();
 });
 
@@ -56,8 +58,9 @@ function client(auth: Record<string, unknown>): Promise<Socket> {
   });
 }
 
-function join(socket: Socket, meetupId: string): Promise<Ack> {
-  return socket.timeout(EVENT_TIMEOUT_MS).emitWithAck('meetup:join', { meetupId });
+async function join(socket: Socket, meetupId: string): Promise<Ack> {
+  const ack: Ack = await socket.timeout(EVENT_TIMEOUT_MS).emitWithAck('meetup:join', { meetupId });
+  return ack;
 }
 
 async function setup() {

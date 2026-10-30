@@ -251,7 +251,7 @@ describe('Unmocked: POST /api/groups/join', () => {
 
     const results = await Promise.all([join(), join()]);
 
-    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+    expect(results.map((r) => Number(r.status)).sort()).toEqual([200, 409]);
     expect((await GroupModel.findById(group.id).orFail()).members).toHaveLength(2);
   });
 

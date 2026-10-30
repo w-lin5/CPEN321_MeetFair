@@ -28,7 +28,7 @@ async function setup() {
 test('server times one trip, accepts latest positions, and clears location on idempotent arrival', async () => {
   const { meetup, member, viewer, auth, call } = await setup();
   const starts = await Promise.all([call('start'), call('start')]);
-  expect(starts.map(r => r.status)).toEqual([200, 200]);
+  expect(starts.map(r => Number(r.status))).toEqual([200, 200]);
   expect(await TripModel.countDocuments({ meetupId: meetup.id })).toBe(1);
   const startedAt = starts[0]?.body.startedAt as string;
   expect(starts[1]?.body.startedAt).toBe(startedAt);
