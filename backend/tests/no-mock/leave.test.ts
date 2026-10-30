@@ -36,7 +36,13 @@ function leaveGroup(id: string, userId?: string) {
   return userId ? req.set('Authorization', bearer(userId)) : req;
 }
 
-describe('voluntary leave', () => {
+// Interface DELETE /api/meetups/:meetupId/participation
+describe('Unmocked: DELETE /api/meetups/:meetupId/participation', () => {
+  // Input: member leaves a SETUP meetup in which both members submitted details; organizer then searches places (Google search stubbed to capture its arguments)
+  // Expected status code: 204
+  // Expected behavior: only the member's participation is removed; group membership is kept; the place search uses only the
+  //   organizer's location and FOOD preference; one "meetup:updated" event is published
+  // Expected output: None
   test('leaving SETUP meetup removes inputs, excludes them from search and keeps group membership', async () => {
     const { organizer, member, group, meetup } = await setup();
     const events: string[] = [];
@@ -50,6 +56,10 @@ describe('voluntary leave', () => {
     expect(events).toEqual(['meetup:updated']);
   });
 
+  // Input: member leaves a meetup that is in VOTING, FINALIZED or SETTLED
+  // Expected status code: 409
+  // Expected behavior: both participations are kept
+  // Expected output: None
   test.each(['VOTING', 'FINALIZED', 'SETTLED'] as const)('cannot leave a meetup in %s', async status => {
     const { member, meetup } = await setup();
     await MeetupModel.updateOne({ _id: meetup.id }, { $set: { status } });
@@ -57,6 +67,25 @@ describe('voluntary leave', () => {
     expect((await MeetupModel.findById(meetup.id).orFail()).participants).toHaveLength(2);
   });
 
+  // Input: request without a token; outsider; malformed meetup id; unknown meetup id
+  // Expected status code: 401; 403; 400; 404
+  // Expected behavior: every request is rejected
+  // Expected output: None
+  test('authorization and invalid identifiers', async () => {
+    const { member, outsider, meetup } = await setup();
+    expect((await leaveMeetup(meetup.id)).status).toBe(401);
+    expect((await leaveMeetup(meetup.id, outsider.id)).status).toBe(403);
+    expect((await leaveMeetup('invalid', member.id)).status).toBe(400);
+    expect((await leaveMeetup(MISSING_ID, member.id)).status).toBe(404);
+  });
+});
+
+// Interface POST /api/groups/:groupId/leave
+describe('Unmocked: POST /api/groups/:groupId/leave', () => {
+  // Input: member leaves a group while participating in one of its VOTING meetups
+  // Expected status code: 409
+  // Expected behavior: group membership and SETUP participations are unchanged
+  // Expected output: None
   test('group leave blocks only joined VOTING meetups and makes no changes on refusal', async () => {
     const { member, group, meetup } = await setup();
     const voting = await createMeetup(group.id, member.id, { status: 'VOTING' });
@@ -66,6 +95,13 @@ describe('voluntary leave', () => {
     expect((await MeetupModel.findById(meetup.id).orFail()).participants).toHaveLength(2);
   });
 
+  // Input: member leaves a group with SETUP, FINALIZED (organized by the member, with a locked vote), SETTLED and unjoined VOTING meetups;
+  //   the member also belongs to another group; afterwards the member reads the group and rejoins with the invite code
+  // Expected status code: 204; then 403 for the group read
+  // Expected behavior: only SETUP participation is removed; FINALIZED/SETTLED participation and the vote are kept; the FINALIZED meetup is
+  //   transferred to the group organizer; the other group is untouched; only "meetup:updated" events are published; rejoining does
+  //   not restore the removed SETUP details
+  // Expected output: None
   test('group leave allows finished votes, clears only SETUP and preserves other groups', async () => {
     const { organizer, member, group, meetup } = await setup();
     const finalized = await createMeetup(group.id, member.id, { status: 'FINALIZED' });
@@ -92,16 +128,16 @@ describe('voluntary leave', () => {
     expect((await MeetupModel.findById(meetup.id).orFail()).participants).toHaveLength(1);
   });
 
+  // Input: request without a token; outsider; group organizer; malformed group id; unknown group id
+  // Expected status code: 401; 403; 400; 400; 404
+  // Expected behavior: every request is rejected; the organizer must delete the group instead of leaving
+  // Expected output: None
   test('authorization, invalid identifiers and group organizer protection', async () => {
-    const { organizer, member, outsider, group, meetup } = await setup();
+    const { organizer, member, outsider, group } = await setup();
     expect((await leaveGroup(group.id)).status).toBe(401);
-    expect((await leaveMeetup(meetup.id)).status).toBe(401);
     expect((await leaveGroup(group.id, outsider.id)).status).toBe(403);
-    expect((await leaveMeetup(meetup.id, outsider.id)).status).toBe(403);
     expect((await leaveGroup(group.id, organizer.id)).status).toBe(400);
     expect((await leaveGroup('invalid', member.id)).status).toBe(400);
-    expect((await leaveMeetup('invalid', member.id)).status).toBe(400);
     expect((await leaveGroup(MISSING_ID, member.id)).status).toBe(404);
-    expect((await leaveMeetup(MISSING_ID, member.id)).status).toBe(404);
   });
 });

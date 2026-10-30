@@ -32,8 +32,13 @@ async function setup() {
   return { organizer, member, group, meetup };
 }
 
+// Interface recommendationService.generate
 // Exercise internal persistence without calling Google or exposing manual HTTP input.
 describe('Unmocked: server-selected recommendation persistence', () => {
+  // Input: organizer generates recommendations from 3 candidates for a SETUP meetup
+  // Expected behavior: the candidates are stored, the meetup moves to VOTING, and "recommendations:ready" then
+  //   "meetup:status" (VOTING) are published to the meetup room
+  // Expected output: recommendation whose candidates are the 3 supplied places
   test('saves candidates, starts voting and publishes events', async () => {
     const { organizer, meetup } = await setup();
     const published: { room: string; event: string; payload: unknown }[] = [];
@@ -47,6 +52,9 @@ describe('Unmocked: server-selected recommendation persistence', () => {
     ]);
   });
 
+  // Input: non-organizer member generates; unknown meetup id
+  // Expected behavior: rejected with status 403; rejected with status 404; the meetup stays in SETUP
+  // Expected output: None
   test('rejects non-organizers and missing meetups', async () => {
     const { member, meetup } = await setup();
     await expect(recommendationService.generate(meetup.id, member.id, CANDIDATES)).rejects.toMatchObject({ status: 403 });
@@ -54,6 +62,9 @@ describe('Unmocked: server-selected recommendation persistence', () => {
     expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
   });
 
+  // Input: organizer generates twice for the same meetup
+  // Expected behavior: the second call is rejected with status 409
+  // Expected output: None
   test('rejects a second generation', async () => {
     const { organizer, meetup } = await setup();
     await recommendationService.generate(meetup.id, organizer.id, CANDIDATES);

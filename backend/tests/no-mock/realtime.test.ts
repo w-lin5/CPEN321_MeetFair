@@ -37,57 +37,6 @@ let ioServer: Server;
 let url: string;
 const clients: Socket[] = [];
 
-test('trip updates invalidate a connected group member map without broadcasting coordinates', async () => {
-  const organizer = await createUserN(1);
-  const member = await createUserN(2);
-  const group = await createGroup(organizer.id);
-  await addMember(group.id, member.id);
-  const meetup = await createFinalizedMeetup(group.id, organizer.id, [member.id]);
-  await MeetupModel.updateOne({ _id: meetup.id }, { $set: { scheduledAt: new Date(Date.now() - 60000) } });
-  const socket = await client(signSessionToken(organizer.id));
-  expect(await join(socket, meetup.id)).toEqual({ ok: true });
-  let update = nextEvent(socket, 'trip:updated');
-  expect((await request(app).post(`/api/meetups/${meetup.id}/trip/start`)
-    .set('Authorization', `Bearer ${signSessionToken(member.id)}`)).status).toBe(200);
-  expect(await update).toEqual({ meetupId: meetup.id });
-  update = nextEvent(socket, 'trip:updated');
-  expect((await request(app).put(`/api/meetups/${meetup.id}/trip/location`)
-    .set('Authorization', `Bearer ${signSessionToken(member.id)}`).send({ lat: 49, lng: -123, accuracyM: 5 })).status).toBe(200);
-  expect(await update).toEqual({ meetupId: meetup.id });
-});
-
-test('entering, editing and leaving details silently updates an already-open meetup', async () => {
-  const organizer = await createUserN(1);
-  const member = await createUserN(2);
-  const group = await createGroup(organizer.id);
-  await addMember(group.id, member.id);
-  const meetup = await createMeetup(group.id, organizer.id);
-  const viewer = await client(signSessionToken(organizer.id));
-  expect(await join(viewer, meetup.id)).toEqual({ ok: true });
-  const notices = recorder(viewer, 'group:meetup-deleted');
-  const auth = `Bearer ${signSessionToken(member.id)}`;
-  const read = () => request(app).get(`/api/meetups/${meetup.id}`).set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
-
-  let update = nextEvent<{ meetupId: string }>(viewer, 'meetup:updated');
-  expect((await request(app).put(`/api/meetups/${meetup.id}/participation`).set('Authorization', auth).send(PARTICIPATION)).status).toBe(200);
-  expect(await update).toEqual({ meetupId: meetup.id });
-  expect((await read()).body.participants).toHaveLength(1);
-
-  update = nextEvent<{ meetupId: string }>(viewer, 'meetup:updated');
-  const edit = { ...PARTICIPATION, startLocation: { lat: 40, lng: -74, label: 'New location' } };
-  expect((await request(app).put(`/api/meetups/${meetup.id}/participation`).set('Authorization', auth).send(edit)).status).toBe(200);
-  await update;
-  const edited = await read();
-  expect(edited.body.participants).toHaveLength(1);
-  expect(edited.body.participants[0].startLocation).toMatchObject(edit.startLocation);
-
-  update = nextEvent<{ meetupId: string }>(viewer, 'meetup:updated');
-  expect((await request(app).delete(`/api/meetups/${meetup.id}/participation`).set('Authorization', auth)).status).toBe(204);
-  await update;
-  expect((await read()).body.participants).toHaveLength(0);
-  expect(notices).toEqual([]);
-});
-
 beforeAll(async () => {
   await startDb();
   app = createApp();
@@ -110,80 +59,6 @@ afterAll(async () => {
   setTransport(null);
   await ioServer.close();
   await stopDb();
-});
-
-test('deleting a voting meetup notifies members, clears the room and prevents joining again', async () => {
-  const { organizer, member, meetup } = await setup();
-  const socket = await client(signSessionToken(member.id));
-  expect(await join(socket, meetup.id)).toEqual({ ok: true });
-  const deleted = nextEvent<{ meetupId: string }>(socket, 'meetup:deleted');
-  const res = await request(app).delete(`/api/meetups/${meetup.id}`)
-    .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
-  expect(res.status).toBe(204);
-  expect(await deleted).toEqual({ meetupId: meetup.id, participantIds: [organizer.id, member.id] });
-  expect(ioServer.sockets.adapter.rooms.has(`meetup:${meetup.id}`)).toBe(false);
-  expect(await join(socket, meetup.id)).toMatchObject({ ok: false, error: 'Meetup not found' });
-});
-
-test('group deletion notifies members without a meetup subscription, but not outsiders', async () => {
-  const { organizer, member, outsider, meetup } = await setup();
-  const memberSocket = await client(signSessionToken(member.id));
-  const outsiderSocket = await client(signSessionToken(outsider.id));
-  const outsideEvents = recorder(outsiderSocket, 'group:deleted');
-  const notification = nextEvent<{ groupId: string }>(memberSocket, 'group:deleted');
-  const groupId = String(meetup.groupId);
-  const res = await request(app).delete(`/api/groups/${groupId}`)
-    .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
-  expect(res.status).toBe(204);
-  expect(await notification).toEqual({ groupId });
-  await silence();
-  expect(outsideEvents).toEqual([]);
-});
-
-test('meetup deletion notifies the group detail listener without joining the meetup', async () => {
-  const { organizer, member, outsider, meetup } = await setup();
-  const memberSocket = await client(signSessionToken(member.id));
-  const outsiderSocket = await client(signSessionToken(outsider.id));
-  const outsideEvents = recorder(outsiderSocket, 'group:meetup-deleted');
-  const notification = nextEvent<{ groupId: string; meetupId: string }>(memberSocket, 'group:meetup-deleted');
-  const res = await request(app).delete(`/api/meetups/${meetup.id}`)
-    .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
-  expect(res.status).toBe(204);
-  expect(await notification).toEqual({ groupId: String(meetup.groupId), meetupId: meetup.id, notifyParticipant: true });
-  await silence();
-  expect(outsideEvents).toEqual([]);
-});
-
-test('removing a member disconnects their existing socket and denies a new room subscription', async () => {
-  const organizer = await createUserN(1);
-  const member = await createUserN(2);
-  const group = await createGroup(organizer.id);
-  await addMember(group.id, member.id);
-  const meetup = await createMeetup(group.id, organizer.id);
-  const socket = await client(signSessionToken(member.id));
-  expect(await join(socket, meetup.id)).toEqual({ ok: true });
-  const disconnected = nextEvent<string>(socket, 'disconnect');
-  const response = await request(app).delete(`/api/groups/${group.id}/members/${member.id}`)
-    .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
-  expect(response.status).toBe(204);
-  expect(await disconnected).toBe('io server disconnect');
-  const reconnected = await client(signSessionToken(member.id));
-  expect(await join(reconnected, meetup.id)).toMatchObject({ ok: false, error: 'Not a member of this group' });
-});
-
-test('non-participants get silent list invalidation and no deletion notice eligibility', async () => {
-  const { organizer, member, meetup } = await setup();
-  const observer = await createUserN(4);
-  await addMember(String(meetup.groupId), observer.id);
-  const socket = await client(signSessionToken(observer.id));
-  expect(await join(socket, meetup.id)).toEqual({ ok: true });
-  const listUpdate = nextEvent<{ notifyParticipant: boolean }>(socket, 'group:meetup-deleted');
-  const pageUpdate = nextEvent<{ participantIds: string[] }>(socket, 'meetup:deleted');
-  const res = await request(app).delete(`/api/meetups/${meetup.id}`)
-    .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
-  expect(res.status).toBe(204);
-  expect(await listUpdate).toMatchObject({ notifyParticipant: false });
-  expect((await pageUpdate).participantIds).toEqual([organizer.id, member.id]);
 });
 
 // Connects with the given session token (or none) and resolves once connected or rejected
@@ -355,5 +230,165 @@ describe('Unmocked: live meetup updates', () => {
       .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
 
     expect(await status).toMatchObject({ status: 'FINALIZED', winner: { placeId: PLACE_3 } });
+  });
+});
+
+// Interface "trip:updated" and "meetup:updated" broadcasts
+describe('Unmocked: trip and participation updates', () => {
+  // Input: organizer joins the room of a FINALIZED meetup; a participant starts a trip, then sends a location over REST
+  // Expected status code: 200 for both REST calls
+  // Expected behavior: the organizer receives "trip:updated" after each call
+  // Expected output: each event is { meetupId } only, without coordinates
+  test('trip updates invalidate a connected group member map without broadcasting coordinates', async () => {
+    const organizer = await createUserN(1);
+    const member = await createUserN(2);
+    const group = await createGroup(organizer.id);
+    await addMember(group.id, member.id);
+    const meetup = await createFinalizedMeetup(group.id, organizer.id, [member.id]);
+    await MeetupModel.updateOne({ _id: meetup.id }, { $set: { scheduledAt: new Date(Date.now() - 60000) } });
+    const socket = await client(signSessionToken(organizer.id));
+    expect(await join(socket, meetup.id)).toEqual({ ok: true });
+    let update = nextEvent(socket, 'trip:updated');
+    expect((await request(app).post(`/api/meetups/${meetup.id}/trip/start`)
+      .set('Authorization', `Bearer ${signSessionToken(member.id)}`)).status).toBe(200);
+    expect(await update).toEqual({ meetupId: meetup.id });
+    update = nextEvent(socket, 'trip:updated');
+    expect((await request(app).put(`/api/meetups/${meetup.id}/trip/location`)
+      .set('Authorization', `Bearer ${signSessionToken(member.id)}`).send({ lat: 49, lng: -123, accuracyM: 5 })).status).toBe(200);
+    expect(await update).toEqual({ meetupId: meetup.id });
+  });
+
+  // Input: organizer joins the room of a SETUP meetup; a member submits, edits, then leaves their participation over REST
+  // Expected status code: 200; 200; 204
+  // Expected behavior: the organizer receives "meetup:updated" after each change and no "group:meetup-deleted" notice;
+  //   the meetup read after each change shows the member's current details
+  // Expected output: each event is { meetupId }
+  test('entering, editing and leaving details silently updates an already-open meetup', async () => {
+    const organizer = await createUserN(1);
+    const member = await createUserN(2);
+    const group = await createGroup(organizer.id);
+    await addMember(group.id, member.id);
+    const meetup = await createMeetup(group.id, organizer.id);
+    const viewer = await client(signSessionToken(organizer.id));
+    expect(await join(viewer, meetup.id)).toEqual({ ok: true });
+    const notices = recorder(viewer, 'group:meetup-deleted');
+    const auth = `Bearer ${signSessionToken(member.id)}`;
+    const read = () => request(app).get(`/api/meetups/${meetup.id}`).set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
+
+    let update = nextEvent<{ meetupId: string }>(viewer, 'meetup:updated');
+    expect((await request(app).put(`/api/meetups/${meetup.id}/participation`).set('Authorization', auth).send(PARTICIPATION)).status).toBe(200);
+    expect(await update).toEqual({ meetupId: meetup.id });
+    expect((await read()).body.participants).toHaveLength(1);
+
+    update = nextEvent<{ meetupId: string }>(viewer, 'meetup:updated');
+    const edit = { ...PARTICIPATION, startLocation: { lat: 40, lng: -74, label: 'New location' } };
+    expect((await request(app).put(`/api/meetups/${meetup.id}/participation`).set('Authorization', auth).send(edit)).status).toBe(200);
+    await update;
+    const edited = await read();
+    expect(edited.body.participants).toHaveLength(1);
+    expect(edited.body.participants[0].startLocation).toMatchObject(edit.startLocation);
+
+    update = nextEvent<{ meetupId: string }>(viewer, 'meetup:updated');
+    expect((await request(app).delete(`/api/meetups/${meetup.id}/participation`).set('Authorization', auth)).status).toBe(204);
+    await update;
+    expect((await read()).body.participants).toHaveLength(0);
+    expect(notices).toEqual([]);
+  });
+});
+
+// Interface "meetup:deleted", "group:deleted", "group:meetup-deleted" broadcasts and socket revocation
+describe('Unmocked: deletion and removal notifications', () => {
+  // Input: member joins a VOTING meetup room; the organizer deletes the meetup; the member then joins again
+  // Expected status code: 204
+  // Expected behavior: the member receives "meetup:deleted"; the room is closed; the second join is rejected
+  // Expected output: event { meetupId, participantIds: [organizer, member] }; ack { ok: false, error: "Meetup not found" }
+  test('deleting a voting meetup notifies members, clears the room and prevents joining again', async () => {
+    const { organizer, member, meetup } = await setup();
+    const socket = await client(signSessionToken(member.id));
+    expect(await join(socket, meetup.id)).toEqual({ ok: true });
+    const deleted = nextEvent<{ meetupId: string }>(socket, 'meetup:deleted');
+    const res = await request(app).delete(`/api/meetups/${meetup.id}`)
+      .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
+    expect(res.status).toBe(204);
+    expect(await deleted).toEqual({ meetupId: meetup.id, participantIds: [organizer.id, member.id] });
+    expect(ioServer.sockets.adapter.rooms.has(`meetup:${meetup.id}`)).toBe(false);
+    expect(await join(socket, meetup.id)).toMatchObject({ ok: false, error: 'Meetup not found' });
+  });
+
+  // Input: member and outsider are connected without joining any meetup room; the organizer deletes the group
+  // Expected status code: 204
+  // Expected behavior: the member receives "group:deleted" through their user room; the outsider receives nothing
+  // Expected output: event { groupId }
+  test('group deletion notifies members without a meetup subscription, but not outsiders', async () => {
+    const { organizer, member, outsider, meetup } = await setup();
+    const memberSocket = await client(signSessionToken(member.id));
+    const outsiderSocket = await client(signSessionToken(outsider.id));
+    const outsideEvents = recorder(outsiderSocket, 'group:deleted');
+    const notification = nextEvent<{ groupId: string }>(memberSocket, 'group:deleted');
+    const groupId = String(meetup.groupId);
+    const res = await request(app).delete(`/api/groups/${groupId}`)
+      .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
+    expect(res.status).toBe(204);
+    expect(await notification).toEqual({ groupId });
+    await silence();
+    expect(outsideEvents).toEqual([]);
+  });
+
+  // Input: member and outsider are connected without joining the meetup room; the organizer deletes the meetup
+  // Expected status code: 204
+  // Expected behavior: the member receives "group:meetup-deleted" through their user room; the outsider receives nothing
+  // Expected output: event { groupId, meetupId, notifyParticipant: true }
+  test('meetup deletion notifies the group detail listener without joining the meetup', async () => {
+    const { organizer, member, outsider, meetup } = await setup();
+    const memberSocket = await client(signSessionToken(member.id));
+    const outsiderSocket = await client(signSessionToken(outsider.id));
+    const outsideEvents = recorder(outsiderSocket, 'group:meetup-deleted');
+    const notification = nextEvent<{ groupId: string; meetupId: string }>(memberSocket, 'group:meetup-deleted');
+    const res = await request(app).delete(`/api/meetups/${meetup.id}`)
+      .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
+    expect(res.status).toBe(204);
+    expect(await notification).toEqual({ groupId: String(meetup.groupId), meetupId: meetup.id, notifyParticipant: true });
+    await silence();
+    expect(outsideEvents).toEqual([]);
+  });
+
+  // Input: member joins a meetup room; the organizer removes the member from the group; the member reconnects and joins again
+  // Expected status code: 204
+  // Expected behavior: the server disconnects the member's existing socket; the new join is rejected
+  // Expected output: disconnect reason "io server disconnect"; ack { ok: false, error: "Not a member of this group" }
+  test('removing a member disconnects their existing socket and denies a new room subscription', async () => {
+    const organizer = await createUserN(1);
+    const member = await createUserN(2);
+    const group = await createGroup(organizer.id);
+    await addMember(group.id, member.id);
+    const meetup = await createMeetup(group.id, organizer.id);
+    const socket = await client(signSessionToken(member.id));
+    expect(await join(socket, meetup.id)).toEqual({ ok: true });
+    const disconnected = nextEvent<string>(socket, 'disconnect');
+    const response = await request(app).delete(`/api/groups/${group.id}/members/${member.id}`)
+      .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
+    expect(response.status).toBe(204);
+    expect(await disconnected).toBe('io server disconnect');
+    const reconnected = await client(signSessionToken(member.id));
+    expect(await join(reconnected, meetup.id)).toMatchObject({ ok: false, error: 'Not a member of this group' });
+  });
+
+  // Input: a group member who is not a participant joins the meetup room; the organizer deletes the meetup
+  // Expected status code: 204
+  // Expected behavior: the observer receives both "group:meetup-deleted" and "meetup:deleted"
+  // Expected output: notifyParticipant is false; participantIds lists only the organizer and the member
+  test('non-participants get silent list invalidation and no deletion notice eligibility', async () => {
+    const { organizer, member, meetup } = await setup();
+    const observer = await createUserN(4);
+    await addMember(String(meetup.groupId), observer.id);
+    const socket = await client(signSessionToken(observer.id));
+    expect(await join(socket, meetup.id)).toEqual({ ok: true });
+    const listUpdate = nextEvent<{ notifyParticipant: boolean }>(socket, 'group:meetup-deleted');
+    const pageUpdate = nextEvent<{ participantIds: string[] }>(socket, 'meetup:deleted');
+    const res = await request(app).delete(`/api/meetups/${meetup.id}`)
+      .set('Authorization', `Bearer ${signSessionToken(organizer.id)}`);
+    expect(res.status).toBe(204);
+    expect(await listUpdate).toMatchObject({ notifyParticipant: false });
+    expect((await pageUpdate).participantIds).toEqual([organizer.id, member.id]);
   });
 });

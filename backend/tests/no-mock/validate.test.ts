@@ -55,6 +55,9 @@ describe('Unmocked: fields', () => {
     expect(() => fields(data)).toThrow(ValidationError);
   });
 
+  // Input: null with the name "params", then null with no name
+  // Expected behavior: ValidationError thrown
+  // Expected output: details ["params must be an object"]; details ["body must be an object"]
   test('Error message uses the supplied name', () => {
     expect(() => fields(null, 'params')).toThrow(
       errorWithDetails(['params must be an object']),

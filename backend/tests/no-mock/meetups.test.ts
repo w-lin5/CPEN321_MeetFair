@@ -28,6 +28,10 @@ async function setupGroup() {
 
 // Interface POST /api/groups/:groupId/meetups
 describe('Unmocked: POST /api/groups/:groupId/meetups', () => {
+  // Input: scheduledAt 60 s in the past, exactly now, and 60 s in the future (clock fixed)
+  // Expected status code: 400; 400; 201
+  // Expected behavior: a meetup is stored only for the future time
+  // Expected output: { error: "Meeting time must be in the future." } for the rejected times
   test.each([-60_000, 0, 60_000])('requires a future time, offset from now: %i ms', async offset => {
     const { member, group } = await setupGroup();
     const now = Date.now();
