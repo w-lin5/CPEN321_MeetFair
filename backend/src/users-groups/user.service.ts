@@ -18,7 +18,7 @@ async function signInWithGoogle(idToken: string) {
   // Verify Google ID token before trusting profile contents
   const profile = await idTokenClient.verifyIdToken(idToken);
   const user = await upsertFromGoogle(profile);
-  return { token: signSessionToken(user.id), user };
+  return { token: signSessionToken(String(user.id)), user };
 }
 
 async function getById(userId: string) {

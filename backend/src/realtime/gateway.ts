@@ -19,7 +19,8 @@ function handshakeToken(socket: Socket): string | undefined {
   const fromAuth = typeof auth === 'object' && auth !== null && 'token' in auth ? auth.token : undefined;
   if (typeof fromAuth === 'string' && fromAuth !== '') return fromAuth;
 
-  const [scheme, token] = (socket.handshake.headers.authorization ?? '').split(' ');
+  const header: unknown = socket.handshake.headers.authorization;
+  const [scheme, token] = (typeof header === 'string' ? header : '').split(' ');
   return scheme === 'Bearer' && token !== undefined && token !== '' ? token : undefined;
 }
 

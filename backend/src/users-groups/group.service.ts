@@ -56,7 +56,7 @@ async function requireMembership(groupId: string, userId: string) {
 async function getDetail(groupId: string, userId: string) {
   const group = await requireMembership(groupId, userId);
   const users = await userService.findByIds(group.members.map((m) => m.userId));
-  const names = new Map(users.map((u): [string, string] => [u.id, userService.displayNameOf(u)]));
+  const names = new Map(users.map((u): [string, string] => [String(u.id), userService.displayNameOf(u)]));
 
   return {
     ...group.toJSON(),

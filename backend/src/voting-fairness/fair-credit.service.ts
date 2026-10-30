@@ -39,13 +39,14 @@ async function getVoteWeight(userId: string, groupId: string): Promise<number> {
 
 // Adds each group's Fair Credit to a users-groups profile
 async function withFairCredit(userId: string, profile: Awaited<ReturnType<typeof profileService.getProfile>>) {
-  const balances = await balancesForUser(userId, profile.groups.map((g) => g.groupId));
+  const groupIds: string[] = profile.groups.map((g) => String(g.groupId));
+  const balances = await balancesForUser(userId, groupIds);
 
   return {
     ...profile,
     groups: profile.groups.map((group) => ({
       ...group,
-      fairCredit: balances.get(group.groupId) ?? tuning.initialFairCredit,
+      fairCredit: balances.get(String(group.groupId)) ?? tuning.initialFairCredit,
     })),
   };
 }
@@ -69,7 +70,7 @@ async function getGroupFairness(groupId: string, userId: string) {
     FairCreditModel.find({ groupId }),
     FairCreditEntryModel.find({ groupId }).sort({ createdAt: -1 }),
   ]);
-  const names = new Map(users.map((u): [string, string] => [u.id, userService.displayNameOf(u)]));
+  const names = new Map(users.map((u): [string, string] => [String(u.id), userService.displayNameOf(u)]));
   const balances = new Map(credits.map((c): [string, number] => [String(c.userId), c.balance]));
   const meetupIds = [...new Set(ledger.map((entry) => String(entry.meetupId)))];
   const meetups = meetupIds.length ? await MeetupModel.find({ _id: { $in: meetupIds }, groupId }) : [];
