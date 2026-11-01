@@ -67,6 +67,13 @@ export const tuning = {
   placeIdMaxLength: 256,
   placeNameMaxLength: 200,
   placeAddressMaxLength: 300,
+  // Score = weighted travel + beta x max travel + gamma x imbalance + mu x weighted preference mismatch,
+  // all in minutes of mode-normalized travel; lower is better [TBD: calibrate beta, gamma, mu through testing]
+  recommendationMaxTravelWeight: 0.5,
+  recommendationImbalanceWeight: 0.5,
+  recommendationPreferencePenaltyMinutes: 10,
+  // Scores closer than this count as a tie, broken by placeId so the same inputs always rank the same
+  recommendationScoreEpsilon: 1e-9,
 
   // Voting: weighted totals closer than this count as a tie (guards against floating-point drift)
   voteWeightEpsilon: 1e-9,
