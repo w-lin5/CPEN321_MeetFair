@@ -3,7 +3,7 @@ import { UpstreamError } from '../../src/common/errors';
 
 const place = {
   id: 'cafe-1', displayName: { text: 'Campus Cafe' }, formattedAddress: 'UBC',
-  location: { latitude: 49.26, longitude: -123.25 },
+  location: { latitude: 49.26, longitude: -123.25 }, types: ['cafe', 7, 'food'],
 };
 
 // Interface searchNearby (integrations/places.client)
@@ -27,13 +27,14 @@ describe('Mocked: searchNearby', () => {
 
   // Mocked behavior: fetch returns 200 with the same place twice
   // Input: center (40.75, -73.98), default types
-  // Expected behavior: one POST to places:searchNearby with the API key, the 4-field mask, includedTypes ["cafe"],
+  // Expected behavior: one POST to places:searchNearby with the API key, the 5-field mask, includedTypes ["cafe"],
   //   10 results within 1500 m of the center, and an abort signal
-  // Expected output: the place once, as { placeId, name, address, location }
+  // Expected output: the place once, as { placeId, name, address, location, types } with non-string types dropped
   test('requests only the needed fields and searches cafes around the supplied center', async () => {
     respond({ places: [place, place] });
     expect(await searchNearby({ lat: 40.75, lng: -73.98 })).toEqual([{
       placeId: 'cafe-1', name: 'Campus Cafe', address: 'UBC', location: { lat: 49.26, lng: -123.25 },
+      types: ['cafe', 'food'],
     }]);
     const [url, options] = fetchMock.mock.calls[0]!;
     expect(url).toBe('https://places.googleapis.com/v1/places:searchNearby');
@@ -41,7 +42,7 @@ describe('Mocked: searchNearby', () => {
     expect(options?.headers).toEqual({
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': 'test-places-secret',
-      'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location',
+      'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.types',
     });
     expect(JSON.parse(String(options?.body))).toEqual({
       includedTypes: ['cafe'], maxResultCount: 10,
@@ -73,11 +74,12 @@ describe('Mocked: searchNearby', () => {
   // Mocked behavior: fetch returns null, {}, a place with latitude 200, and a valid place without an address
   // Input: center (40.75, -73.98)
   // Expected behavior: invalid entries are dropped
-  // Expected output: only the valid place, with address ""
-  test('skips invalid places and allows missing addresses', async () => {
+  // Expected output: only the valid place, with address "" and types []
+  test('skips invalid places and allows missing addresses and types', async () => {
     respond({ places: [null, {}, { ...place, location: { latitude: 200, longitude: 0 } },
-      { ...place, formattedAddress: undefined }] });
-    expect(await searchNearby({ lat: 40.75, lng: -73.98 })).toEqual([expect.objectContaining({ placeId: 'cafe-1', address: '' })]);
+      { ...place, formattedAddress: undefined, types: undefined }] });
+    expect(await searchNearby({ lat: 40.75, lng: -73.98 }))
+      .toEqual([expect.objectContaining({ placeId: 'cafe-1', address: '', types: [] })]);
   });
 
   // Mocked behavior: fetch returns HTTP 403, 429 or 500 with a body containing the API key
