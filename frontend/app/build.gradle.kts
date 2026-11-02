@@ -63,6 +63,9 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 // Pins the JDK used to compile Kotlin and Java so the build does not depend on
@@ -86,6 +89,7 @@ dependencies {
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     // Identity AuthorizationClient: short-lived Google Calendar access token (calendar.events scope)
     implementation("com.google.android.gms:play-services-auth:21.2.0")
+    implementation(libs.androidx.uiautomator)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
     implementation("io.socket:socket.io-client:2.1.0")
     implementation(libs.androidx.credentials)
@@ -95,6 +99,7 @@ dependencies {
     testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.androidx.test.uiautomator)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
