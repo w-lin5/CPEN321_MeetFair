@@ -63,7 +63,7 @@ cp backend/.env.example backend/.env
 
 Set at least:
 - `JWT_SECRET`: a long random string used to sign auth tokens.
-- `GOOGLE_PLACES_API_KEY`: a backend API key from a Google Cloud project with Places API (New) enabled. If the key has API restrictions, allow Places API (New). Keep this key in `backend/.env`, not in the Android app.
+- `GOOGLE_PLACES_API_KEY`: a backend API key from a Google Cloud project with Places API (New) and Routes API enabled (Routes estimates each member's travel time to every candidate place). If the key has API restrictions, allow both. Keep this key in `backend/.env`, not in the Android app.
 - `MONGODB_URI`: only needed for local development (default in `.env.example` assumes MongoDB on `localhost:27017`). Ignored when running via Docker Compose.
 - `PORT` (optional): defaults to `3000` if unset.
 

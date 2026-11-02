@@ -10,6 +10,7 @@ import {
   CANDIDATES,
   MISSING_ID,
   addMember,
+  addParticipants,
   createGroup,
   createMeetup,
   createUserN,
@@ -69,6 +70,82 @@ describe('Unmocked: server-selected recommendation persistence', () => {
     const { organizer, meetup } = await setup();
     await recommendationService.generate(meetup.id, organizer.id, CANDIDATES);
     await expect(recommendationService.generate(meetup.id, organizer.id, CANDIDATES)).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+// Every case is rejected before Google is called, so these run without an API key or a mock
+function rejectionTests(action: string): void {
+  const post = (meetupId: string, userId?: string): Test => {
+    const req = request(createApp()).post(`/api/meetups/${meetupId}/${action}`);
+    return userId ? req.set('Authorization', bearer(userId)) : req;
+  };
+
+  // Input: no session token; malformed meetup id; unknown meetup id
+  // Expected status code: 401; 400; 404
+  // Expected output: None
+  test('rejects missing authentication and invalid or unknown meetups', async () => {
+    const { organizer, meetup } = await setup();
+    expect((await post(meetup.id)).status).toBe(401);
+    expect((await post('not-an-id', organizer.id)).status).toBe(400);
+    expect((await post(MISSING_ID, organizer.id)).status).toBe(404);
+  });
+
+  // Input: group member who is not the organizer; user outside the group
+  // Expected status code: 403; 403
+  // Expected behavior: the meetup stays in SETUP
+  // Expected output: None
+  test('rejects non-organizers and outsiders', async () => {
+    const { member, meetup } = await setup();
+    const outsider = await createUserN(3);
+    await addParticipants(meetup.id, [member.id]);
+    expect((await post(meetup.id, member.id)).status).toBe(403);
+    expect((await post(meetup.id, outsider.id)).status).toBe(403);
+    expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
+  });
+
+  // Input: organizer of a meetup already in VOTING
+  // Expected status code: 409
+  // Expected output: None
+  test('rejects a meetup that is no longer in SETUP', async () => {
+    const { organizer, group } = await setup();
+    const meetup = await createVotingMeetup(group.id, organizer.id, [organizer.id]);
+    expect((await post(meetup.id, organizer.id)).status).toBe(409);
+  });
+
+  // Input: organizer when nobody has submitted details; organizer when only another member has
+  // Expected status code: 400; 400
+  // Expected behavior: the meetup stays in SETUP
+  // Expected output: None
+  test('requires submitted details, including the organizer\'s', async () => {
+    const { organizer, member, meetup } = await setup();
+    expect((await post(meetup.id, organizer.id)).status).toBe(400);
+    await addParticipants(meetup.id, [member.id]);
+    expect((await post(meetup.id, organizer.id)).status).toBe(400);
+    expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
+  });
+}
+
+// Interface POST /api/meetups/:meetupId/recommendations/from-places
+describe('Unmocked: POST /api/meetups/:meetupId/recommendations/from-places', () => {
+  rejectionTests('recommendations/from-places');
+});
+
+// Interface POST /api/meetups/:meetupId/places/search
+describe('Unmocked: POST /api/meetups/:meetupId/places/search', () => {
+  rejectionTests('places/search');
+});
+
+// Interface recommendationService.getByMeetupId
+describe('Unmocked: recommendationService.getByMeetupId', () => {
+  // Input: meetup in VOTING; meetup in SETUP (nothing generated)
+  // Expected behavior: returns the stored recommendation; rejected with status 404
+  // Expected output: recommendation with the stored candidates
+  test('returns the stored recommendation or rejects with 404', async () => {
+    const { organizer, group, meetup } = await setup();
+    const voting = await createVotingMeetup(group.id, organizer.id, [organizer.id]);
+    const found = await recommendationService.getByMeetupId(voting.id);
+    expect(found.candidates.map(c => c.placeId)).toEqual(CANDIDATES.map(c => c.placeId));
+    await expect(recommendationService.getByMeetupId(meetup.id)).rejects.toMatchObject({ status: 404 });
   });
 });
 

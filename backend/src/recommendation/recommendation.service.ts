@@ -4,14 +4,14 @@ import { SERVER_EVENTS, meetupRoom } from '../realtime/events';
 import { publisher } from '../realtime/publisher';
 import { meetupService } from '../users-groups/meetup.service';
 import { RecommendationModel } from './models';
-import type { CandidateInput } from './schemas';
+import type { CandidateInput, ScoredCandidate } from './schemas';
 
 function isDuplicateKey(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && err.code === tuning.mongoDuplicateKeyCode;
 }
 
-/** Saves server-selected candidates and atomically moves SETUP to VOTING. */
-async function generate(meetupId: string, userId: string, candidates: CandidateInput[]) {
+/** Saves server-ranked candidates (best first, with their score breakdown) and atomically moves SETUP to VOTING. */
+async function generate(meetupId: string, userId: string, candidates: (CandidateInput | ScoredCandidate)[]) {
   const meetup = await meetupService.getForMember(meetupId, userId);
   if (String(meetup.organizerId) !== userId) {
     throw new Forbidden('Only the meetup organizer can generate recommendations');
