@@ -51,10 +51,16 @@ class CreateGroupViewModel(private val groups: GroupRepository) : ViewModel() {
     private val _state = MutableStateFlow(FormState<Group>())
     val state: StateFlow<FormState<Group>> = _state.asStateFlow()
 
+    fun clearError() {
+        if (_state.value.error != null) {
+            _state.value = _state.value.copy(error = null)
+        }
+    }
+
     fun submit(name: String) {
         if (_state.value.submitting) return
+        _state.value = FormState(submitting = true)
         viewModelScope.launch {
-            _state.value = FormState(submitting = true)
             _state.value = groups.create(name.trim()).toFormState()
         }
     }
@@ -69,10 +75,16 @@ class JoinGroupViewModel(private val groups: GroupRepository) : ViewModel() {
     private val _state = MutableStateFlow(FormState<Group>())
     val state: StateFlow<FormState<Group>> = _state.asStateFlow()
 
+    fun clearError() {
+        if (_state.value.error != null) {
+            _state.value = _state.value.copy(error = null)
+        }
+    }
+
     fun submit(inviteCode: String) {
         if (_state.value.submitting) return
+        _state.value = FormState(submitting = true)
         viewModelScope.launch {
-            _state.value = FormState(submitting = true)
             _state.value = groups.join(inviteCode.trim()).toFormState()
         }
     }
@@ -103,6 +115,7 @@ fun <T> MockupFormCard(
     spec: FormSpec,
     state: FormState<T>,
     onSubmit: (String) -> Unit,
+    onClearError: () -> Unit = {},
 ) {
     var input by rememberSaveable { mutableStateOf("") }
 
@@ -128,7 +141,10 @@ fun <T> MockupFormCard(
             MockupInputField(
                 spec = spec,
                 value = input,
-                onValueChange = { input = it },
+                onValueChange = {
+                    input = it
+                    onClearError()
+                },
             )
 
             state.error?.let {
@@ -204,7 +220,7 @@ fun CreateGroupScreen(container: AppContainer, onBack: () -> Unit, onCreated: (g
     state.result?.let { onCreated(it.id) }
 
     ScreenColumn(title = "", onBack = onBack) {
-        MockupFormCard(CREATE_SPEC, state, vm::submit)
+        MockupFormCard(CREATE_SPEC, state, vm::submit, onClearError = vm::clearError)
     }
 }
 
@@ -215,7 +231,7 @@ fun JoinGroupScreen(container: AppContainer, onBack: () -> Unit, onJoined: (grou
     state.result?.let { onJoined(it.id) }
 
     ScreenColumn(title = "", onBack = onBack) {
-        MockupFormCard(JOIN_SPEC, state, vm::submit)
+        MockupFormCard(JOIN_SPEC, state, vm::submit, onClearError = vm::clearError)
     }
 }
 
