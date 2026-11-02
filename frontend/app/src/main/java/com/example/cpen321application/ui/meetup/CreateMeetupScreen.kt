@@ -1,10 +1,26 @@
 package com.example.cpen321application.ui.meetup
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -13,8 +29,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -26,7 +47,11 @@ import com.example.cpen321application.ui.common.FormState
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.toFormState
+import com.example.cpen321application.ui.groups.dashedBorder
 import com.example.cpen321application.ui.screenViewModel
+import com.example.cpen321application.ui.theme.RosePrimary
+import com.example.cpen321application.ui.theme.TealContainer
+import com.example.cpen321application.ui.theme.TealPrimary
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -107,27 +132,118 @@ fun CreateMeetupScreen(container: AppContainer, groupId: String, onBack: () -> U
         )
     }
 
-    ScreenColumn("New meetup", onBack) {
-        OutlinedTextField(
-            value = title,
-            onValueChange = { title = it },
-            label = { Text("Title") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().testTag(TestTags.MEETUP_TITLE_INPUT),
-        )
-        Text("Meeting date and time", style = MaterialTheme.typography.titleMedium)
-        OutlinedButton(
-            onClick = { choosingTime = true },
-            enabled = !state.submitting,
-            modifier = Modifier.fillMaxWidth().testTag(TestTags.MEETUP_TIME_INPUT),
-        ) { Text(TIME_DISPLAY_FORMAT.format(LocalDateTime.parse(time, TIME_INPUT_FORMAT))) }
-        state.error?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag(TestTags.ERROR_TEXT))
+    ScreenColumn(title = "", onBack = onBack) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .dashedBorder(strokeWidth = 1.5.dp, color = TealPrimary, cornerRadius = 24.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = TealContainer),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    text = "New meetup",
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                    ),
+                    color = TealPrimary,
+                )
+
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    placeholder = { Text("Title", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    singleLine = true,
+                    shape = CircleShape,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                        focusedBorderColor = TealPrimary,
+                        unfocusedBorderColor = TealPrimary.copy(alpha = 0.6f),
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(TestTags.MEETUP_TITLE_INPUT),
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Meeting date and time",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = TealPrimary,
+                    )
+
+                    OutlinedButton(
+                        onClick = { choosingTime = true },
+                        enabled = !state.submitting,
+                        shape = CircleShape,
+                        border = BorderStroke(1.5.dp, TealPrimary),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .testTag(TestTags.MEETUP_TIME_INPUT),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DateRange,
+                                contentDescription = null,
+                                tint = TealPrimary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Text(
+                                text = TIME_DISPLAY_FORMAT.format(LocalDateTime.parse(time, TIME_INPUT_FORMAT)),
+                                fontWeight = FontWeight.Bold,
+                                color = TealPrimary,
+                            )
+                        }
+                    }
+                }
+
+                state.error?.let {
+                    Text(
+                        text = it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.testTag(TestTags.ERROR_TEXT),
+                    )
+                }
+
+                Button(
+                    onClick = { vm.submit(title, time) },
+                    enabled = !state.submitting && title.isNotBlank(),
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = RosePrimary,
+                        contentColor = Color.White,
+                        disabledContainerColor = RosePrimary.copy(alpha = 0.5f),
+                        disabledContentColor = Color.White.copy(alpha = 0.7f),
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .testTag(TestTags.CREATE_MEETUP_SUBMIT),
+                ) {
+                    Text(
+                        text = "Create meetup →",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
         }
-        Button(
-            onClick = { vm.submit(title, time) },
-            enabled = !state.submitting && title.isNotBlank(),
-            modifier = Modifier.testTag(TestTags.CREATE_MEETUP_SUBMIT),
-        ) { Text("Create") }
     }
 }

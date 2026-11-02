@@ -1,16 +1,35 @@
 package com.example.cpen321application.ui.voting
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -20,14 +39,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.cpen321application.AppContainer
+import com.example.cpen321application.R
 import com.example.cpen321application.data.ApiResult
 import com.example.cpen321application.data.MeetupEvent
 import com.example.cpen321application.data.MeetupRepository
@@ -38,14 +66,20 @@ import com.example.cpen321application.model.MeetupStatus
 import com.example.cpen321application.model.MyVote
 import com.example.cpen321application.model.PlaceCandidate
 import com.example.cpen321application.model.VoteTally
-import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.LocalNotify
 import com.example.cpen321application.ui.common.MeetupStatusNotifications
+import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.UiState
 import com.example.cpen321application.ui.common.UiStateContent
 import com.example.cpen321application.ui.screenViewModel
+import com.example.cpen321application.ui.theme.CPEN321ApplicationTheme
 import com.example.cpen321application.ui.theme.Dimens
+import com.example.cpen321application.ui.theme.RosePrimary
+import com.example.cpen321application.ui.theme.TealContainer
+import com.example.cpen321application.ui.theme.StatusClosed
+import com.example.cpen321application.ui.theme.StatusGreen
+import com.example.cpen321application.ui.theme.TealPrimary
 import java.util.Locale
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -281,10 +315,27 @@ private fun VotingContent(state: VotingState, userId: String?, vm: VotingViewMod
 
     Column(
         modifier = Modifier.verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(Dimens.Spacing),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         VotingHeader(state, onRefresh = vm::refreshVotes)
 
+        // Map Graphic Card using R.drawable.meetfair_map_meetup
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = TealContainer),
+        ) {
+            Image(
+                painter = painterResource(R.drawable.meetfair_map_meetup),
+                contentDescription = "Voting map graphic",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp),
+            )
+        }
+
+        // Candidate Cards
         state.candidates.forEach { candidate ->
             CandidateCard(candidate, state, canVote = isParticipant, onVote = { vm.vote(candidate.placeId) })
         }
@@ -303,23 +354,52 @@ private fun VotingContent(state: VotingState, userId: String?, vm: VotingViewMod
 @Composable
 private fun VotingHeader(state: VotingState, onRefresh: () -> Unit) {
     val tally = state.tally
-    Text(
-        if (state.isOpen) "Voting is open" else "Voting is closed",
-        style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.testTag(TestTags.VOTING_STATUS_TEXT),
-    )
-    if (tally != null) {
-        Text(
-            "${tally.lockedCount} of ${tally.participantCount} participant(s) have locked their vote",
-            modifier = Modifier.testTag(TestTags.VOTER_COUNT_TEXT),
-        )
-    }
-    if (state.isOpen) {
-        if (state.live) {
-            Text("Live: votes update automatically", modifier = Modifier.testTag(TestTags.VOTING_LIVE_TEXT))
-        } else {
-            OutlinedButton(onClick = onRefresh, modifier = Modifier.testTag(TestTags.REFRESH_RESULTS_BUTTON)) {
-                Text("Refresh results")
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = if (state.isOpen) StatusGreen else StatusClosed,
+                modifier = Modifier.size(10.dp),
+            ) {}
+
+            Text(
+                text = if (state.isOpen) "Voting is open" else "Voting is closed",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = TealPrimary,
+                modifier = Modifier.testTag(TestTags.VOTING_STATUS_TEXT),
+            )
+        }
+
+        if (tally != null) {
+            Text(
+                text = "${tally.lockedCount} of ${tally.participantCount} participant(s) have locked their vote",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag(TestTags.VOTER_COUNT_TEXT),
+            )
+        }
+
+        if (state.isOpen) {
+            if (state.live) {
+                Text(
+                    text = "Live: votes update automatically",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TealPrimary,
+                    modifier = Modifier.testTag(TestTags.VOTING_LIVE_TEXT),
+                )
+            } else {
+                OutlinedButton(
+                    onClick = onRefresh,
+                    shape = CircleShape,
+                    modifier = Modifier.testTag(TestTags.REFRESH_RESULTS_BUTTON),
+                ) {
+                    Text("Refresh results")
+                }
             }
         }
     }
@@ -327,39 +407,117 @@ private fun VotingHeader(state: VotingState, onRefresh: () -> Unit) {
 
 @Composable
 private fun CandidateCard(candidate: PlaceCandidate, state: VotingState, canVote: Boolean, onVote: () -> Unit) {
-    val context = LocalContext.current
     val total = state.tally?.totalFor(candidate.placeId)
     val mine = state.myVote?.placeId == candidate.placeId
     val winner = state.meetup.winner?.placeId == candidate.placeId
+    val picks = total?.voteCount ?: 0
 
-    OutlinedCard(modifier = Modifier.fillMaxWidth().testTag(TestTags.candidateItem(candidate.placeId))) {
-        Column(Modifier.padding(Dimens.ScreenPadding), verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
-            TextButton(
-                onClick = { openPlaceInMaps(context, candidate) },
-                modifier = Modifier.testTag("candidate_map_${candidate.placeId}"),
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(TestTags.candidateItem(candidate.placeId)),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = TealContainer),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(candidate.name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = candidate.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TealPrimary,
+                    modifier = Modifier
+                        .testTag("candidate_map_${candidate.placeId}")
+                        .weight(1f),
+                )
+
+                Text(
+                    text = "Picks: $picks",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            if (candidate.address.isNotBlank()) Text(candidate.address)
+
+            if (candidate.address.isNotBlank()) {
+                Text(
+                    text = candidate.address,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             if (total != null) {
                 val weight = "${formatWeight(total.weight)} (${formatShare(total.share)})"
-                Text("Picks: ${total.voteCount} · Locked weight: $weight")
+                Text(
+                    text = "Locked weight: $weight",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
+
             if (winner) {
                 Text(
-                    "Winner",
-                    color = MaterialTheme.colorScheme.primary,
+                    text = "Winner",
+                    color = RosePrimary,
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.testTag(TestTags.WINNER_TEXT),
                 )
             }
-            if (state.isOpen && canVote && !state.locked) {
-                Button(
-                    onClick = onVote,
-                    enabled = !mine && state.pendingPlaceId == null,
-                    modifier = Modifier.testTag(TestTags.voteButton(candidate.placeId)),
-                ) { Text(voteLabel(state, candidate.placeId, mine)) }
-            } else if (mine) {
-                Text(if (state.locked) "Your locked vote" else "Your vote")
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (state.isOpen && canVote && !state.locked) {
+                    Button(
+                        onClick = onVote,
+                        enabled = !mine && state.pendingPlaceId == null,
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = TealPrimary,
+                            contentColor = Color.White,
+                        ),
+                        modifier = Modifier.testTag(TestTags.voteButton(candidate.placeId)),
+                    ) {
+                        Text(
+                            text = voteLabel(state, candidate.placeId, mine),
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                } else if (mine) {
+                    Surface(
+                        shape = CircleShape,
+                        color = TealPrimary.copy(alpha = 0.15f),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = TealPrimary,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Text(
+                                text = if (state.locked) "Your locked vote" else "Your vote",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = TealPrimary,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -378,14 +536,67 @@ private fun LockControls(state: VotingState, onLock: () -> Unit) {
     val weight = state.myVote?.weight
     if (state.locked) {
         val suffix = if (weight != null) " (weight ${formatWeight(weight)})" else ""
-        Text("Your vote is locked$suffix", modifier = Modifier.testTag(TestTags.VOTE_LOCKED_TEXT))
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = TealContainer,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = TealPrimary,
+                )
+                Text(
+                    text = "Your vote is locked$suffix",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TealPrimary,
+                    modifier = Modifier.testTag(TestTags.VOTE_LOCKED_TEXT),
+                )
+            }
+        }
     } else if (state.myVote != null) {
-        Button(
-            onClick = onLock,
-            enabled = !state.locking && state.pendingPlaceId == null,
-            modifier = Modifier.testTag(TestTags.LOCK_VOTE_BUTTON),
-        ) { Text(if (state.locking) "Locking…" else "Lock my vote") }
-        Text("Only locked votes count. You can still change your vote until you lock it.")
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = onLock,
+                enabled = !state.locking && state.pendingPlaceId == null,
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = RosePrimary,
+                    contentColor = Color.White,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+                    .testTag(TestTags.LOCK_VOTE_BUTTON),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        text = if (state.locking) "Locking…" else "Submit vote",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                    )
+                }
+            }
+            Text(
+                text = "Only locked votes count. You can still change your vote until you lock it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -394,11 +605,23 @@ private fun FinalizeControls(state: VotingState, vm: VotingViewModel) {
     var confirmEarly by rememberSaveable { mutableStateOf(false) }
 
     Button(
-        // Warn before finalizing while some participants have not locked their vote yet
         onClick = { if (state.tally?.everyoneLocked == false) confirmEarly = true else vm.finalize() },
         enabled = !state.finalizing,
-        modifier = Modifier.testTag(TestTags.FINALIZE_BUTTON),
-    ) { Text(if (state.finalizing) "Finalizing…" else "Finalize meetup") }
+        shape = CircleShape,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = TealPrimary,
+            contentColor = Color.White,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .testTag(TestTags.FINALIZE_BUTTON),
+    ) {
+        Text(
+            text = if (state.finalizing) "Finalizing…" else "Finalize meetup",
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+        )
+    }
 
     if (confirmEarly) {
         AlertDialog(
@@ -430,7 +653,10 @@ private fun ManualPick(state: VotingState, vm: VotingViewModel) {
         OutlinedButton(
             onClick = { vm.finalize(candidate.placeId) },
             enabled = !state.finalizing,
-            modifier = Modifier.fillMaxWidth().testTag(TestTags.pickWinnerButton(candidate.placeId)),
+            shape = CircleShape,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag(TestTags.pickWinnerButton(candidate.placeId)),
         ) { Text(candidate.name) }
     }
     TextButton(onClick = vm::dismissManualPick) { Text("Cancel") }
@@ -441,3 +667,69 @@ private fun formatWeight(weight: Double): String =
     if (weight % 1.0 == 0.0) weight.toLong().toString() else String.format(Locale.US, "%.2f", weight)
 
 private fun formatShare(share: Double): String = String.format(Locale.US, "%.0f%%", share * PERCENT)
+
+@Preview(showBackground = true)
+@Composable
+fun VotingScreenPreview() {
+    CPEN321ApplicationTheme {
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            VotingHeader(
+                state = VotingState(
+                    meetup = Meetup(
+                        id = "m1",
+                        groupId = "g1",
+                        title = "Weekend Meetup",
+                        scheduledAt = "2026-10-28T11:20:00Z",
+                        status = MeetupStatus.VOTING,
+                        organizerId = "u1",
+                        participants = emptyList(),
+                    ),
+                    candidates = emptyList(),
+                ),
+                onRefresh = {},
+            )
+
+            // Map Graphic Card using R.drawable.meetfair_map_meetup
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = TealContainer),
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.meetfair_map_meetup),
+                    contentDescription = "Voting map graphic",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp),
+                )
+            }
+
+            CandidateCard(
+                candidate = PlaceCandidate("p1", "Oasis Beach", "123 Ocean Ave", 0.0, 0.0),
+                state = VotingState(
+                    meetup = Meetup("m1", "g1", "u1", "Meetup", "", MeetupStatus.VOTING, emptyList()),
+                    candidates = emptyList(),
+                ),
+                canVote = true,
+                onVote = {},
+            )
+
+            CandidateCard(
+                candidate = PlaceCandidate("p2", "Nitobe Memorial Garden", "1871 Old Mall", 0.0, 0.0),
+                state = VotingState(
+                    meetup = Meetup("m1", "g1", "u1", "Meetup", "", MeetupStatus.VOTING, emptyList()),
+                    candidates = emptyList(),
+                    myVote = MyVote("p2", false, null),
+                ),
+                canVote = true,
+                onVote = {},
+            )
+        }
+    }
+}

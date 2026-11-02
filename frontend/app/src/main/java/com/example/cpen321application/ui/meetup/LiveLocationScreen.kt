@@ -1,18 +1,52 @@
 package com.example.cpen321application.ui.meetup
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.cpen321application.AppContainer
-import com.example.cpen321application.BuildConfig
 import com.example.cpen321application.data.ApiResult
 import com.example.cpen321application.data.MeetupEvent
 import com.example.cpen321application.data.MeetupTrip
@@ -20,9 +54,17 @@ import com.example.cpen321application.location.LiveLocationService
 import com.example.cpen321application.model.Meetup
 import com.example.cpen321application.ui.common.LocalNotify
 import com.example.cpen321application.ui.common.ScreenColumn
+import com.example.cpen321application.ui.theme.RosePrimary
+import com.example.cpen321application.ui.theme.TealContainer
+import com.example.cpen321application.ui.theme.StatusGreen
+import com.example.cpen321application.ui.theme.StatusGreenLight
+import com.example.cpen321application.ui.theme.TealPrimary
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.*
+import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.rememberCameraPositionState
+import com.google.maps.android.compose.rememberMarkerState
 import java.time.Instant
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -84,66 +126,319 @@ fun LiveLocationScreen(container: AppContainer, meetupId: String, onBack: () -> 
         }
     }
     ScreenColumn("Live location", onBack) {
-        // Keep the map outside scrolling containers so they cannot intercept its pan gestures.
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(meetup?.title ?: "Loading meetup...", style = MaterialTheme.typography.titleLarge)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(
+                text = meetup?.title ?: "Loading meetup...",
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.ExtraBold,
+                color = TealPrimary,
+            )
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             val destination = meetup?.winner
-            if (BuildConfig.MAPS_CONFIGURED && destination != null) {
-                val camera = rememberCameraPositionState {
-                    position = CameraPosition.fromLatLngZoom(LatLng(destination.lat, destination.lng), 12f)
-                }
-                GoogleMap(Modifier.fillMaxWidth().weight(1.2f), cameraPositionState = camera) {
-                    Marker(state = rememberMarkerState(position = LatLng(destination.lat, destination.lng)), title = destination.name)
-                    for (trip in trips) {
-                        val point = trip.location
-                        val recent = point != null && runCatching { now.epochSecond - Instant.parse(point.updatedAt).epochSecond < 90 }.getOrDefault(false)
-                        if (trip.sharing && trip.status == "ACTIVE" && point != null && recent) key(trip.userId) {
-                            AvatarMarker(trip.userId, trip.name, trip.photoUrl, LatLng(point.lat, point.lng))
+            if (destination != null) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1.2f),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = TealContainer),
+                    border = BorderStroke(1.dp, TealContainer),
+                ) {
+                    val camera = rememberCameraPositionState {
+                        position = CameraPosition.fromLatLngZoom(LatLng(destination.lat, destination.lng), 12f)
+                    }
+                    GoogleMap(Modifier.fillMaxWidth(), cameraPositionState = camera) {
+                        Marker(state = rememberMarkerState(position = LatLng(destination.lat, destination.lng)), title = destination.name)
+                        for (trip in trips) {
+                            val point = trip.location
+                            val recent = point != null && runCatching { now.epochSecond - Instant.parse(point.updatedAt).epochSecond < 90 }.getOrDefault(false)
+                            if (trip.sharing && trip.status == "ACTIVE" && point != null && recent) key(trip.userId) {
+                                AvatarMarker(trip.userId, trip.name, trip.photoUrl, LatLng(point.lat, point.lng))
+                            }
                         }
                     }
                 }
-            } else if (!BuildConfig.MAPS_CONFIGURED) Text("Configure the Android Maps key to display the live map.")
-            Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (destination != null) Text("Destination: ${destination.name}. Pan or zoom to find members. Locations older than 90 seconds are hidden.")
-            if (sharing.meetupId == meetupId) {
-                Text(sharing.message)
-                if (!androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) {
-                    Text("Notifications are disabled. Enable them to see reminders that your location is being shared in the background.")
-                    TextButton(onClick = {
-                        context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName))
-                    }) { Text("Enable sharing notifications") }
+            }
+
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                if (destination != null) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, TealContainer),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = TealContainer,
+                                modifier = Modifier.size(40.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.LocationOn,
+                                        contentDescription = null,
+                                        tint = RosePrimary,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = "Destination: ${destination.name}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TealPrimary,
+                                )
+                                Text(
+                                    text = "Pan or zoom to find members. Locations older than 90 seconds are hidden.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
                 }
-            }
-            else if (own?.status == "ACTIVE") Text("This device is not sharing. Your commute timer is still running. Resume sharing to update your location, or tap I arrived to finish your trip.")
-            if (own?.status == "ARRIVED") Text("You arrived. Actual commute: ${formatTripDuration(own.actualSeconds ?: 0)}.")
-            if (own?.status == "ACTIVE") {
-                val elapsed = runCatching { maxOf(0, now.epochSecond - Instant.parse(own.startedAt).epochSecond) }.getOrDefault(0)
-                Text("Time since departure: ${formatTripDuration(elapsed)}")
-                Text("Pausing location sharing does not pause your commute timer. Tap I arrived to stop timing.")
-                Button(onClick = { confirmArrival = true }, enabled = !busy) { Text("I arrived") }
-                TextButton(onClick = { confirmPause = true }, enabled = !busy && (own.sharing || sharing.meetupId == meetupId)) { Text("Pause sharing") }
-            }
-            val joined = meetup?.participants?.any { it.userId == userId } == true
-            val due = meetup?.let { it.status == com.example.cpen321application.model.MeetupStatus.FINALIZED &&
-                runCatching { !Instant.parse(it.scheduledAt).isAfter(now) }.getOrDefault(false) } == true
-            if (joined && due && own?.status != "ARRIVED" && sharing.meetupId != meetupId) {
-                StartTripButton(container, meetupId, if (own == null) "I am leaving" else "Resume sharing") {
-                    scope.launch { reload() }
+
+                if (sharing.meetupId == meetupId) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = TealContainer),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.LocationOn,
+                                    contentDescription = null,
+                                    tint = TealPrimary,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Text(
+                                    text = sharing.message,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TealPrimary,
+                                )
+                            }
+                            if (!androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+                                Text(
+                                    text = "Notifications are disabled. Enable them to see reminders that your location is being shared in the background.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                TextButton(onClick = {
+                                    context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                        .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName))
+                                }) { Text("Enable sharing notifications", fontWeight = FontWeight.Bold, color = TealPrimary) }
+                            }
+                        }
+                    }
                 }
-            }
-            for (trip in trips) Text("${trip.name}: " + when {
-                trip.status == "ARRIVED" -> "Arrived (${formatTripDuration(trip.actualSeconds ?: 0)})"
-                trip.sharing -> "On the way"
-                else -> "On the way · sharing paused"
-            })
-            if (trips.isEmpty()) Text("Nobody has started a trip yet.")
-            Text("Tap I arrived when you reach the destination. This stops location sharing and records your travel time.")
+
+                if (own?.status == "ACTIVE") {
+                    val elapsed = runCatching { maxOf(0, now.epochSecond - Instant.parse(own.startedAt).epochSecond) }.getOrDefault(0)
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = TealContainer),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = "Commute in progress",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = TealPrimary,
+                                )
+                                Text(
+                                    text = "Time elapsed: ${formatTripDuration(elapsed)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+
+                            Text(
+                                text = "Pausing location sharing does not pause your commute timer. Tap I arrived to stop timing.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Button(
+                                    onClick = { confirmArrival = true },
+                                    enabled = !busy,
+                                    shape = CircleShape,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = StatusGreen,
+                                        contentColor = Color.White,
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(48.dp),
+                                ) {
+                                    Text("I arrived", fontWeight = FontWeight.ExtraBold)
+                                }
+
+                                if (own.sharing || sharing.meetupId == meetupId) {
+                                    OutlinedButton(
+                                        onClick = { confirmPause = true },
+                                        enabled = !busy,
+                                        shape = CircleShape,
+                                        border = BorderStroke(1.dp, TealPrimary),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(48.dp),
+                                    ) {
+                                        Text("Pause sharing", fontWeight = FontWeight.Bold, color = TealPrimary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else if (own?.status == "ARRIVED") {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = StatusGreenLight),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = StatusGreen,
+                                modifier = Modifier.size(40.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = "You arrived!",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = StatusGreen,
+                                )
+                                Text(
+                                    text = "Actual commute: ${formatTripDuration(own.actualSeconds ?: 0)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                val joined = meetup?.participants?.any { it.userId == userId } == true
+                val due = meetup?.let { it.status == com.example.cpen321application.model.MeetupStatus.FINALIZED &&
+                    runCatching { !Instant.parse(it.scheduledAt).isAfter(now) }.getOrDefault(false) } == true
+                if (joined && due && own?.status != "ARRIVED" && sharing.meetupId != meetupId) {
+                    StartTripButton(container, meetupId, label = if (own == null) "I'm leaving" else "Resume sharing") {
+                        scope.launch { reload() }
+                    }
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, TealContainer),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            text = "MEMBER TRIPS",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            letterSpacing = 1.2.sp,
+                        )
+
+                        if (trips.isEmpty()) {
+                            Text(
+                                text = "Nobody has started a trip yet.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            for (trip in trips) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = trip.name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TealPrimary,
+                                    )
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = when {
+                                            trip.status == "ARRIVED" -> StatusGreenLight
+                                            trip.sharing -> TealContainer
+                                            else -> MaterialTheme.colorScheme.surfaceVariant
+                                        },
+                                    ) {
+                                        Text(
+                                            text = when {
+                                                trip.status == "ARRIVED" -> "Arrived (${formatTripDuration(trip.actualSeconds ?: 0)})"
+                                                trip.sharing -> "On the way"
+                                                else -> "On the way · sharing paused"
+                                            },
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = when {
+                                                trip.status == "ARRIVED" -> StatusGreen
+                                                trip.sharing -> TealPrimary
+                                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
-        if (confirmPause) AlertDialog(onDismissRequest = { confirmPause = false },
+        if (confirmPause) AlertDialog(
+            onDismissRequest = { confirmPause = false },
             title = { Text("Pause location sharing?") },
             text = { Text("Your location updates will stop, but your commute time will continue to be counted until you tap I arrived. Resuming sharing will not reset the timer.") },
             confirmButton = { TextButton(onClick = {
@@ -158,9 +453,12 @@ fun LiveLocationScreen(container: AppContainer, meetupId: String, onBack: () -> 
                     busy = false
                 }
             }) { Text("Pause sharing") } },
-            dismissButton = { TextButton(onClick = { confirmPause = false }) { Text("Cancel") } })
-        if (confirmArrival) AlertDialog(onDismissRequest = { confirmArrival = false },
-            title = { Text("Have you arrived?") }, text = { Text("This ends your trip and location sharing, and saves the actual travel time. You cannot restart this trip.") },
+            dismissButton = { TextButton(onClick = { confirmPause = false }) { Text("Cancel") } },
+        )
+        if (confirmArrival) AlertDialog(
+            onDismissRequest = { confirmArrival = false },
+            title = { Text("Have you arrived?") },
+            text = { Text("This ends your trip and location sharing, and saves the actual travel time. You cannot restart this trip.") },
             confirmButton = { TextButton(onClick = {
                 confirmArrival = false
                 if (sharing.meetupId == meetupId) LiveLocationService.stop(context)
@@ -173,6 +471,7 @@ fun LiveLocationScreen(container: AppContainer, meetupId: String, onBack: () -> 
                     busy = false
                 }
             }) { Text("I arrived") } },
-            dismissButton = { TextButton(onClick = { confirmArrival = false }) { Text("Cancel") } })
+            dismissButton = { TextButton(onClick = { confirmArrival = false }) { Text("Cancel") } },
+        )
     }
 }
