@@ -56,7 +56,6 @@ import com.example.cpen321application.ui.common.UiStateContent
 import com.example.cpen321application.ui.common.toUiState
 import com.example.cpen321application.ui.meetup.isoToDisplay
 import com.example.cpen321application.ui.screenViewModel
-import com.example.cpen321application.ui.theme.Dimens
 import com.example.cpen321application.ui.theme.TealContainer
 import com.example.cpen321application.ui.theme.TealPrimary
 import java.util.Locale

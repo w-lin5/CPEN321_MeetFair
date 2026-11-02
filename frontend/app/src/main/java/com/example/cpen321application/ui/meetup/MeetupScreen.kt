@@ -2,6 +2,7 @@ package com.example.cpen321application.ui.meetup
 
 import android.content.Intent
 import android.net.Uri
+import com.example.cpen321application.model.PlaceCandidate
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -59,7 +60,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -88,7 +88,6 @@ import com.example.cpen321application.ui.common.UiStateContent
 import com.example.cpen321application.ui.common.toFormState
 import com.example.cpen321application.ui.common.toUiState
 import com.example.cpen321application.ui.screenViewModel
-import com.example.cpen321application.ui.theme.CPEN321ApplicationTheme
 import com.example.cpen321application.ui.theme.Dimens
 import com.example.cpen321application.ui.theme.RosePrimary
 import com.example.cpen321application.ui.theme.TealContainer
@@ -500,7 +499,7 @@ fun MeetupScreen(
         refreshTrip()
         while (true) { now = java.time.Instant.now(); kotlinx.coroutines.delay(1000) }
     }
-    val actions = MeetupActions(onEnterDetails, onStartVoting, onOpenVoting)
+    val actions = MeetupActions(onEnterDetails, onStartVoting, onOpenVoting, onOpenLiveLocation)
     var showMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { vm.load() }
@@ -671,9 +670,7 @@ fun MeetupScreen(
                     votes = votes,
                     actions = actions,
                     ownTrip = ownTrip,
-                    now = now,
                     container = container,
-                    onOpenLiveLocation = onOpenLiveLocation,
                     calendarSection = {
                         val alreadyAdded = meetup.participants.any { it.userId == userId && it.calendarEventId != null }
                         AddToCalendarButton(
@@ -695,6 +692,7 @@ private data class MeetupActions(
     val onEnterDetails: () -> Unit,
     val onStartVoting: () -> Unit,
     val onOpenVoting: () -> Unit,
+    val onOpenLiveLocation: () -> Unit,
 )
 
 @Composable
@@ -704,559 +702,592 @@ private fun MeetupInfoCard(
     votes: VotesSnapshot?,
     actions: MeetupActions,
     ownTrip: com.example.cpen321application.data.MeetupTrip?,
-    now: java.time.Instant,
     container: AppContainer,
-    onOpenLiveLocation: () -> Unit,
     calendarSection: @Composable () -> Unit,
 ) {
     val submitted = meetup.participants.any { it.userId == userId }
     val setup = meetup.status == MeetupStatus.SETUP
-    val isOrganizer = meetup.organizerId == userId
     val decided = meetup.status == MeetupStatus.FINALIZED || meetup.status == MeetupStatus.SETTLED
-    val context = LocalContext.current
-    val dateParts = parseFormattedDateParts(meetup.scheduledAt)
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        // Date & Time Card matching mockup screens
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = BorderStroke(1.dp, TealContainer),
+        MeetupDateTimeCard(scheduledAt = meetup.scheduledAt)
+
+        if (decided || meetup.winner != null) {
+            MeetupMeetingSpotCard(
+                winner = meetup.winner,
+                showCalendar = submitted,
+                calendarSection = calendarSection,
+            )
+        }
+
+        if (setup) {
+            MeetupSetupStatusCard(
+                submitted = submitted,
+                participantCount = meetup.participants.size,
+            )
+            MeetupSetupActionButtons(
+                isOrganizer = meetup.organizerId == userId,
+                submitted = submitted,
+                onEnterDetails = actions.onEnterDetails,
+                onStartVoting = actions.onStartVoting,
+            )
+        }
+
+        if (meetup.status == MeetupStatus.VOTING) {
+            MeetupVotingStatusCard(votes = votes)
+            MeetupVotingActionButton(onOpenVoting = actions.onOpenVoting)
+        }
+
+        if (decided) {
+            if (submitted) {
+                MeetupTripStatusSection(
+                    meetupId = meetup.id,
+                    ownTrip = ownTrip,
+                    container = container,
+                    onOpenLiveLocation = actions.onOpenLiveLocation,
+                )
+            }
+            MeetupFinalizedActionButtons(
+                onOpenLiveLocation = actions.onOpenLiveLocation,
+                onOpenVoting = actions.onOpenVoting,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MeetupDateTimeCard(scheduledAt: String) {
+    val dateParts = parseFormattedDateParts(scheduledAt)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, TealContainer),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Row(
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = TealContainer,
+                modifier = Modifier.size(48.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = CalendarIcon,
+                        contentDescription = null,
+                        tint = TealPrimary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = dateParts.date,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TealPrimary,
+                )
+                Text(
+                    text = dateParts.time,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeetupDirectionsButton(winner: PlaceCandidate) {
+    val context = LocalContext.current
+    OutlinedButton(
+        onClick = {
+            val uri = if (winner.lat != 0.0 || winner.lng != 0.0) {
+                Uri.parse("geo:0,0?q=${winner.lat},${winner.lng}(${Uri.encode(winner.name)})")
+            } else {
+                Uri.parse("https://www.google.com/maps/dir/?api=1&destination=${Uri.encode("${winner.name}, ${winner.address}")}")
+            }
+            val intent = Intent(Intent.ACTION_VIEW, uri)
+            try {
+                context.startActivity(intent)
+            } catch (_: Exception) {
+                val fallback = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=${Uri.encode("${winner.name}, ${winner.address}")}"))
+                context.startActivity(fallback)
+            }
+        },
+        shape = CircleShape,
+        border = BorderStroke(1.dp, TealPrimary),
+        modifier = Modifier.testTag("open_directions_button"),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                imageVector = DirectionsArrowIcon,
+                contentDescription = null,
+                tint = TealPrimary,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                text = "Directions",
+                fontWeight = FontWeight.Bold,
+                color = TealPrimary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MeetupMeetingSpotCard(
+    winner: PlaceCandidate?,
+    showCalendar: Boolean,
+    calendarSection: @Composable () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, TealContainer),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Image(
+                painter = painterResource(R.drawable.meetfair_map_meetup),
+                contentDescription = "Meetup map graphic",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp),
+            )
+
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(18.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = TealContainer,
-                    modifier = Modifier.size(48.dp),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = CalendarIcon,
-                            contentDescription = null,
-                            tint = TealPrimary,
-                            modifier = Modifier.size(24.dp),
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = "MEETING SPOT",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            letterSpacing = 1.2.sp,
                         )
+                        Text(
+                            text = winner?.name ?: "Pending selection",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TealPrimary,
+                            modifier = Modifier.testTag(TestTags.MEETUP_WINNER_TEXT),
+                        )
+                    }
+
+                    if (winner != null) {
+                        MeetupDirectionsButton(winner = winner)
                     }
                 }
 
+                if (showCalendar) calendarSection()
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeetupSetupStatusCard(submitted: Boolean, participantCount: Int) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, TealContainer),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = TealContainer,
+                modifier = Modifier.size(48.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = LockIcon,
+                        contentDescription = null,
+                        tint = TealPrimary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = if (submitted) "Your details are in" else "You have not submitted your details",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TealPrimary,
+                    modifier = Modifier.testTag(TestTags.PARTICIPATION_STATUS_TEXT),
+                )
+                Text(
+                    text = "$participantCount member(s) have submitted their details.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeetupVotingStatusCard(votes: VotesSnapshot?) {
+    val myVote = votes?.myVote
+    val isLocked = myVote?.locked == true
+    val hasSelection = myVote != null
+    val votedCount = votes?.tally?.lockedCount ?: 0
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, TealContainer),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = TealContainer,
+                modifier = Modifier.size(48.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = BarChartIcon,
+                        contentDescription = null,
+                        tint = TealPrimary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = when {
+                        isLocked -> "Your vote is in"
+                        hasSelection -> "Vote selected (not locked yet)"
+                        else -> "You have not voted yet"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TealPrimary,
+                    modifier = Modifier.testTag("voting_status_text"),
+                )
+                Text(
+                    text = "$votedCount member(s) have locked their vote.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeetupSetupActionButtons(
+    isOrganizer: Boolean,
+    submitted: Boolean,
+    onEnterDetails: () -> Unit,
+    onStartVoting: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Button(
+            onClick = onEnterDetails,
+            shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = TealPrimary,
+                contentColor = Color.White,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .testTag(TestTags.PARTICIPATION_BUTTON),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = if (submitted) Icons.Default.Edit else Icons.Default.LocationOn,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = if (submitted) "Edit my details" else "Enter my details",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                    color = Color.White,
+                )
+            }
+        }
+
+        if (isOrganizer) {
+            Button(
+                onClick = onStartVoting,
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = RosePrimary,
+                    contentColor = Color.White,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+                    .testTag(TestTags.START_VOTING_BUTTON),
+            ) {
+                Text(
+                    text = "Start voting",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeetupVotingActionButton(onOpenVoting: () -> Unit) {
+    Button(
+        onClick = onOpenVoting,
+        shape = CircleShape,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = TealPrimary,
+            contentColor = Color.White,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(54.dp)
+            .testTag(TestTags.OPEN_VOTING_BUTTON),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = BarChartIcon,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = "Vote on a spot",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                color = Color.White,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MeetupTripArrivedCard(trip: com.example.cpen321application.data.MeetupTrip) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = StatusGreenLight),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.weight(1f, fill = false),
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = StatusGreen,
+                    modifier = Modifier.size(44.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = FlagIcon,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = dateParts.date,
+                        text = "You arrived",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.ExtraBold,
-                        color = TealPrimary,
+                        color = StatusGreen,
                     )
                     Text(
-                        text = dateParts.time,
+                        text = "Actual commute",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
+            Text(
+                text = formatTripDuration(trip.actualSeconds ?: 0),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = StatusGreen,
+            )
         }
+    }
+}
 
-        // Map & Meeting Spot Card shown when finalized/settled or winner exists
-        if (decided || meetup.winner != null) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = BorderStroke(1.dp, TealContainer),
-            ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    // Top Map Graphic Image
-                    Image(
-                        painter = painterResource(R.drawable.meetfair_map_meetup),
-                        contentDescription = "Meetup map graphic",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp),
-                    )
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        // Meeting Spot Details
-                        val winnerName = meetup.winner?.name ?: "Pending selection"
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                Text(
-                                    text = "MEETING SPOT",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    letterSpacing = 1.2.sp,
-                                )
-                                Text(
-                                    text = winnerName,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = TealPrimary,
-                                    modifier = Modifier.testTag(TestTags.MEETUP_WINNER_TEXT),
-                                )
-                            }
-
-                            if (meetup.winner != null) {
-                                OutlinedButton(
-                                    onClick = {
-                                        val winner = meetup.winner
-                                        val uri = if (winner.lat != 0.0 || winner.lng != 0.0) {
-                                            Uri.parse("geo:0,0?q=${winner.lat},${winner.lng}(${Uri.encode(winner.name)})")
-                                        } else {
-                                            Uri.parse("https://www.google.com/maps/dir/?api=1&destination=${Uri.encode("${winner.name}, ${winner.address}")}")
-                                        }
-                                        val intent = Intent(Intent.ACTION_VIEW, uri)
-                                        try {
-                                            context.startActivity(intent)
-                                        } catch (_: Exception) {
-                                            val fallback = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=${Uri.encode("${winner.name}, ${winner.address}")}"))
-                                            context.startActivity(fallback)
-                                        }
-                                    },
-                                    shape = CircleShape,
-                                    border = BorderStroke(1.dp, TealPrimary),
-                                    modifier = Modifier.testTag("open_directions_button"),
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    ) {
-                                        Icon(
-                                            imageVector = DirectionsArrowIcon,
-                                            contentDescription = null,
-                                            tint = TealPrimary,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                        Text(
-                                            text = "Directions",
-                                            fontWeight = FontWeight.Bold,
-                                            color = TealPrimary,
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Google Calendar Section
-                        if (submitted) calendarSection()
-                    }
-                }
-            }
-        }
-
-        // Details / Lock Status Card ONLY shown in setup phase
-        if (setup) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = BorderStroke(1.dp, TealContainer),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = TealContainer,
-                        modifier = Modifier.size(48.dp),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = LockIcon,
-                                contentDescription = null,
-                                tint = TealPrimary,
-                                modifier = Modifier.size(24.dp),
-                            )
-                        }
-                    }
-
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = if (submitted) "Your details are in" else "You have not submitted your details",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TealPrimary,
-                            modifier = Modifier.testTag(TestTags.PARTICIPATION_STATUS_TEXT),
-                        )
-                        Text(
-                            text = "${meetup.participants.size} member(s) have submitted their details.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-        }
-
-        // Voting Status Card shown in voting phase
-        if (meetup.status == MeetupStatus.VOTING) {
-            val myVote = votes?.myVote
-            val isLocked = myVote?.locked == true
-            val hasSelection = myVote != null
-            val votedCount = votes?.tally?.lockedCount ?: 0
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = BorderStroke(1.dp, TealContainer),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = TealContainer,
-                        modifier = Modifier.size(48.dp),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = BarChartIcon,
-                                contentDescription = null,
-                                tint = TealPrimary,
-                                modifier = Modifier.size(24.dp),
-                            )
-                        }
-                    }
-
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = when {
-                                isLocked -> "Your vote is in"
-                                hasSelection -> "Vote selected (not locked yet)"
-                                else -> "You have not voted yet"
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TealPrimary,
-                            modifier = Modifier.testTag("voting_status_text"),
-                        )
-                        Text(
-                            text = "$votedCount member(s) have locked their vote.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-        }
-
-        // Action Buttons for Setup Phase
-        if (setup) {
-            Button(
-                onClick = actions.onEnterDetails,
+@Composable
+private fun MeetupTripOnWayCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = TealContainer),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Surface(
                 shape = CircleShape,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = TealPrimary,
-                    contentColor = Color.White,
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp)
-                    .testTag(TestTags.PARTICIPATION_BUTTON),
+                color = TealPrimary,
+                modifier = Modifier.size(44.dp),
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+                Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = if (submitted) Icons.Default.Edit else Icons.Default.LocationOn,
+                        imageVector = TimerIcon,
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Text(
-                        text = if (submitted) "Edit my details" else "Enter my details",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                        color = Color.White,
+                        modifier = Modifier.size(22.dp),
                     )
                 }
             }
-
-            if (isOrganizer) {
-                Button(
-                    onClick = actions.onStartVoting,
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = RosePrimary,
-                        contentColor = Color.White,
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp)
-                        .testTag(TestTags.START_VOTING_BUTTON),
-                ) {
-                    Text(
-                        text = "Start voting",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                    )
-                }
-            }
-        }
-
-        // Action Button for Voting Phase
-        if (meetup.status == MeetupStatus.VOTING) {
-            Button(
-                onClick = actions.onOpenVoting,
-                shape = CircleShape,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = TealPrimary,
-                    contentColor = Color.White,
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp)
-                    .testTag(TestTags.OPEN_VOTING_BUTTON),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Icon(
-                        imageVector = BarChartIcon,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Text(
-                        text = "Vote on a spot",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                        color = Color.White,
-                    )
-                }
-            }
-        }
-
-        // Actions & Trip Status Cards for Finalized / Settled Phase
-        if (decided || meetup.status == MeetupStatus.FINALIZED || meetup.status == MeetupStatus.SETTLED) {
-            val isParticipant = meetup.participants.any { it.userId == userId }
-
-            if (isParticipant) {
-                when {
-                    // Case 3: Arrived (Meetup arrived@1x.png)
-                    ownTrip?.status == "ARRIVED" -> {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(24.dp),
-                            colors = CardDefaults.cardColors(containerColor = StatusGreenLight),
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(18.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                    modifier = Modifier.weight(1f, fill = false),
-                                ) {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = StatusGreen,
-                                        modifier = Modifier.size(44.dp),
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                imageVector = FlagIcon,
-                                                contentDescription = null,
-                                                tint = Color.White,
-                                                modifier = Modifier.size(22.dp),
-                                            )
-                                        }
-                                    }
-                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        Text(
-                                            text = "You arrived",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = StatusGreen,
-                                        )
-                                        Text(
-                                            text = "Actual commute",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                }
-                                Text(
-                                    text = formatTripDuration(ownTrip.actualSeconds ?: 0),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = StatusGreen,
-                                )
-                            }
-                        }
-                    }
-                    // Case 2: On the way (Meetup on the way@1x.png)
-                    ownTrip != null -> {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(24.dp),
-                            colors = CardDefaults.cardColors(containerColor = TealContainer),
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(18.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                            ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = TealPrimary,
-                                    modifier = Modifier.size(44.dp),
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = TimerIcon,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(22.dp),
-                                        )
-                                    }
-                                }
-                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text(
-                                        text = "On your way",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = TealPrimary,
-                                    )
-                                    Text(
-                                        text = "We're timing your commute.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    // Case 1: Before leaving (Meetup before leaving@1x.png)
-                    else -> {
-                        StartTripButton(
-                            container = container,
-                            meetupId = meetup.id,
-                            label = "I'm leaving",
-                            onStarted = onOpenLiveLocation,
-                        )
-                    }
-                }
-            }
-
-            // Light cyan/teal filled pill button: View live locations
-            Button(
-                onClick = onOpenLiveLocation,
-                shape = CircleShape,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = TealContainer,
-                    contentColor = TealPrimary,
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.LocationOn,
-                        contentDescription = null,
-                        tint = TealPrimary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Text(
-                        text = "View live locations",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                        color = TealPrimary,
-                    )
-                }
-            }
-
-            // Outlined pill button: See voting results
-            OutlinedButton(
-                onClick = actions.onOpenVoting,
-                shape = CircleShape,
-                border = BorderStroke(1.dp, TealPrimary),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp)
-                    .testTag(TestTags.OPEN_VOTING_BUTTON),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Icon(
-                        imageVector = BarChartIcon,
-                        contentDescription = null,
-                        tint = TealPrimary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Text(
-                        text = "See voting results",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                        color = TealPrimary,
-                    )
-                }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "On your way",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TealPrimary,
+                )
+                Text(
+                    text = "We're timing your commute.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
 }
 
-@Preview(showBackground = true)
 @Composable
-fun MeetupScreenPreview() {
-    CPEN321ApplicationTheme {
-        MeetupInfoCard(
-            meetup = Meetup(
-                id = "m1",
-                groupId = "g1",
-                title = "test meetup",
-                scheduledAt = "2026-10-28T11:20:00Z",
-                status = MeetupStatus.VOTING,
-                organizerId = "u1",
-                participants = emptyList(),
-            ),
-            userId = "u1",
-            votes = VotesSnapshot(
-                tally = VoteTally("m1", emptyList(), 0.0, 2, 3),
-                myVote = MyVote("p1", true, 1.0),
-            ),
-            actions = MeetupActions({}, {}, {}),
-            ownTrip = null,
-            now = java.time.Instant.now(),
-            container = TODO("preview only"),
-            onOpenLiveLocation = {},
-            calendarSection = {},
+private fun MeetupTripStatusSection(
+    meetupId: String,
+    ownTrip: com.example.cpen321application.data.MeetupTrip?,
+    container: AppContainer,
+    onOpenLiveLocation: () -> Unit,
+) {
+    when {
+        ownTrip?.status == "ARRIVED" -> MeetupTripArrivedCard(trip = ownTrip)
+        ownTrip != null -> MeetupTripOnWayCard()
+        else -> StartTripButton(
+            container = container,
+            meetupId = meetupId,
+            label = "I'm leaving",
+            onStarted = onOpenLiveLocation,
         )
     }
 }
+
+@Composable
+private fun MeetupFinalizedActionButtons(
+    onOpenLiveLocation: () -> Unit,
+    onOpenVoting: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Button(
+            onClick = onOpenLiveLocation,
+            shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = TealContainer,
+                contentColor = TealPrimary,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = null,
+                    tint = TealPrimary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = "View live locations",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                    color = TealPrimary,
+                )
+            }
+        }
+
+        OutlinedButton(
+            onClick = onOpenVoting,
+            shape = CircleShape,
+            border = BorderStroke(1.dp, TealPrimary),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .testTag(TestTags.OPEN_VOTING_BUTTON),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = BarChartIcon,
+                    contentDescription = null,
+                    tint = TealPrimary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = "See voting results",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                    color = TealPrimary,
+                )
+            }
+        }
+    }
+}
+

@@ -35,12 +35,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.cpen321application.BuildConfig
 import com.example.cpen321application.ui.common.TestTags
-import com.example.cpen321application.ui.theme.CPEN321ApplicationTheme
 import com.example.cpen321application.ui.theme.Dimens
 import com.example.cpen321application.ui.theme.RosePrimary
 import com.example.cpen321application.ui.theme.TealContainer
@@ -242,15 +240,3 @@ internal fun StartLocationPicker(
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-private fun StartLocationPickerPreview() {
-    CPEN321ApplicationTheme {
-        StartLocationPicker(
-            initialLat = 49.2606,
-            initialLng = -123.246,
-            onDismiss = {},
-            onConfirm = { _, _, _ -> },
-        )
-    }
-}

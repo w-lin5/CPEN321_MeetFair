@@ -1,5 +1,6 @@
 package com.example.cpen321application.ui.groups
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,15 +23,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -46,7 +41,6 @@ import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.toFormState
 import com.example.cpen321application.ui.screenViewModel
-import com.example.cpen321application.ui.theme.CPEN321ApplicationTheme
 import com.example.cpen321application.ui.theme.RosePrimary
 import com.example.cpen321application.ui.theme.TealContainer
 import com.example.cpen321application.ui.theme.TealPrimary
@@ -107,23 +101,6 @@ private val JOIN_SPEC = FormSpec(
     submitTag = TestTags.JOIN_GROUP_SUBMIT,
 )
 
-fun Modifier.dashedBorder(
-    strokeWidth: Dp = 1.5.dp,
-    color: Color = TealPrimary,
-    cornerRadius: Dp = 24.dp,
-) = this.drawWithContent {
-    drawContent()
-    val stroke = Stroke(
-        width = strokeWidth.toPx(),
-        pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
-    )
-    drawRoundRect(
-        color = color,
-        style = stroke,
-        cornerRadius = CornerRadius(cornerRadius.toPx())
-    )
-}
-
 @Composable
 fun <T> MockupFormCard(
     spec: FormSpec,
@@ -133,11 +110,10 @@ fun <T> MockupFormCard(
     var input by rememberSaveable { mutableStateOf("") }
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .dashedBorder(strokeWidth = 1.5.dp, color = TealPrimary, cornerRadius = 24.dp),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = TealContainer),
+        border = BorderStroke(1.5.dp, TealPrimary),
     ) {
         Column(
             modifier = Modifier
@@ -153,23 +129,10 @@ fun <T> MockupFormCard(
                 color = TealPrimary,
             )
 
-            OutlinedTextField(
+            MockupInputField(
+                spec = spec,
                 value = input,
                 onValueChange = { input = it },
-                placeholder = { Text(spec.label, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                singleLine = true,
-                shape = CircleShape,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                    focusedBorderColor = TealPrimary,
-                    unfocusedBorderColor = TealPrimary.copy(alpha = 0.6f),
-                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag(spec.inputTag),
             )
 
             state.error?.let {
@@ -181,28 +144,67 @@ fun <T> MockupFormCard(
                 )
             }
 
-            Button(
-                onClick = { onSubmit(input) },
+            MockupSubmitButton(
+                spec = spec,
                 enabled = !state.submitting && input.isNotBlank(),
-                shape = CircleShape,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = RosePrimary,
-                    contentColor = Color.White,
-                    disabledContainerColor = RosePrimary.copy(alpha = 0.5f),
-                    disabledContentColor = Color.White.copy(alpha = 0.7f),
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-                    .testTag(spec.submitTag),
-            ) {
-                Text(
-                    text = spec.submitLabel,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
+                onSubmit = { onSubmit(input) },
+            )
         }
+    }
+}
+
+@Composable
+private fun MockupInputField(
+    spec: FormSpec,
+    value: String,
+    onValueChange: (String) -> Unit,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        placeholder = { Text(spec.label, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+        singleLine = true,
+        shape = CircleShape,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surface,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+            focusedBorderColor = TealPrimary,
+            unfocusedBorderColor = TealPrimary.copy(alpha = 0.6f),
+            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(spec.inputTag),
+    )
+}
+
+@Composable
+private fun MockupSubmitButton(
+    spec: FormSpec,
+    enabled: Boolean,
+    onSubmit: () -> Unit,
+) {
+    Button(
+        onClick = onSubmit,
+        enabled = enabled,
+        shape = CircleShape,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = RosePrimary,
+            contentColor = Color.White,
+            disabledContainerColor = RosePrimary.copy(alpha = 0.5f),
+            disabledContentColor = Color.White.copy(alpha = 0.7f),
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .testTag(spec.submitTag),
+    ) {
+        Text(
+            text = spec.submitLabel,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
@@ -228,25 +230,3 @@ fun JoinGroupScreen(container: AppContainer, onBack: () -> Unit, onJoined: (grou
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun MockupGroupScreensPreview() {
-    CPEN321ApplicationTheme {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
-            MockupFormCard(
-                spec = CREATE_SPEC,
-                state = FormState<Group>(),
-                onSubmit = {},
-            )
-
-            MockupFormCard(
-                spec = JOIN_SPEC,
-                state = FormState<Group>(),
-                onSubmit = {},
-            )
-        }
-    }
-}

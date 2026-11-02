@@ -39,7 +39,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -57,7 +56,6 @@ import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.toFormState
 import com.example.cpen321application.ui.screenViewModel
-import com.example.cpen321application.ui.theme.CPEN321ApplicationTheme
 import com.example.cpen321application.ui.theme.RosePrimary
 import com.example.cpen321application.ui.theme.TealContainer
 import com.example.cpen321application.ui.theme.TealPrimary
@@ -105,6 +103,26 @@ fun ParticipationScreen(container: AppContainer, meetupId: String, onBack: () ->
     )
 }
 
+private data class ParticipationDraft(
+    val lat: String,
+    val lng: String,
+    val label: String,
+    val selectedLocationName: String,
+    val resolvingAddress: Boolean,
+    val needsAddress: Boolean,
+    val mode: TravelMode,
+    val preferences: Set<Preference>,
+)
+
+private data class ParticipationActions(
+    val onLabelChange: (String) -> Unit,
+    val onModeChange: (TravelMode) -> Unit,
+    val onPreferencesChange: (Set<Preference>) -> Unit,
+    val onPickLocation: () -> Unit,
+    val onSubmit: () -> Unit,
+    val onBack: () -> Unit,
+)
+
 @Composable
 fun ParticipationContent(
     state: FormState<Meetup>,
@@ -151,144 +169,192 @@ fun ParticipationContent(
             },
         )
     } else {
-        ScreenColumn("Your details", onBack) {
+        val draft = ParticipationDraft(lat, lng, label, selectedLocationName, resolvingAddress, needsAddress, mode, preferences)
+        val actions = ParticipationActions(
+            onLabelChange = { label = it },
+            onModeChange = { mode = it },
+            onPreferencesChange = { preferences = it },
+            onPickLocation = { choosingLocation = true },
+            onSubmit = { onSubmit(lat, lng, label, mode, preferences) },
+            onBack = onBack,
+        )
+        ParticipationFormView(draft, state, actions)
+    }
+}
+
+@Composable
+private fun ParticipationFormView(
+    draft: ParticipationDraft,
+    state: FormState<Meetup>,
+    actions: ParticipationActions,
+) {
+    val hasCoords = draft.lat.isNotBlank() && draft.lng.isNotBlank()
+    val displayText = when {
+        draft.resolvingAddress || draft.needsAddress -> "Finding location name..."
+        draft.selectedLocationName.isNotBlank() -> draft.selectedLocationName
+        hasCoords -> "Location selected on map"
+        else -> "No starting location selected yet."
+    }
+    val canSubmit = !state.submitting && !draft.resolvingAddress && !draft.needsAddress && hasCoords
+
+    ScreenColumn("Your details", actions.onBack) {
         Column(
             modifier = Modifier.verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            // Starting location Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = TealContainer),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.LocationOn,
-                            contentDescription = null,
-                            tint = RosePrimary,
-                            modifier = Modifier.size(20.dp),
-                        )
-                        Text(
-                            text = "STARTING LOCATION",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = TealPrimary.copy(alpha = 0.8f),
-                            letterSpacing = 1.2.sp,
-                        )
-                    }
-
-                    if (lat.isNotBlank() && lng.isNotBlank()) {
-                        Text(
-                            text = when {
-                                resolvingAddress || needsAddress -> "Finding location name..."
-                                selectedLocationName.isNotBlank() -> selectedLocationName
-                                else -> "Location selected on map"
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = TealPrimary,
-                        )
-                    } else {
-                        Text(
-                            text = "No starting location selected yet.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-
-                    Button(
-                        onClick = { choosingLocation = true },
-                        enabled = !state.submitting,
-                        shape = CircleShape,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = TealPrimary,
-                            contentColor = Color.White,
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .testTag(TestTags.LOCATION_PICKER_BUTTON),
-                    ) {
-                        Text(
-                            text = if (lat.isBlank()) "Pick Location From Map" +
-                                    "" else "Change location",
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                }
-            }
-
-            // Optional Place Name Text Field
-            OutlinedTextField(
-                value = label,
-                onValueChange = { label = it },
-                enabled = !state.submitting,
-                label = { Text("Place name (optional)") },
-                placeholder = { Text("Place name (optional)", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                singleLine = true,
-                shape = CircleShape,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                    focusedBorderColor = TealPrimary,
-                    unfocusedBorderColor = TealPrimary.copy(alpha = 0.3f),
-                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag(TestTags.LABEL_INPUT),
+            StartingLocationCard(
+                hasCoordinates = hasCoords,
+                displayText = displayText,
+                submitting = state.submitting,
+                onPickLocation = actions.onPickLocation,
             )
-
-            ModeChips(mode) { mode = it }
-
-            PreferenceChips(preferences) { preferences = it }
-
-            state.error?.let {
-                Text(
-                    text = it,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.testTag(TestTags.ERROR_TEXT),
-                )
-            }
-
-            Button(
-                onClick = { onSubmit(lat, lng, label, mode, preferences) },
-                enabled = !state.submitting && !resolvingAddress && !needsAddress && lat.isNotBlank() && lng.isNotBlank(),
-                shape = CircleShape,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = RosePrimary,
-                    contentColor = Color.White,
-                    disabledContainerColor = RosePrimary.copy(alpha = 0.5f),
-                    disabledContentColor = Color.White.copy(alpha = 0.7f),
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-                    .testTag(TestTags.PARTICIPATION_SUBMIT),
-            ) {
-                Text(
-                    text = "Save details →",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-
+            PlaceNameField(
+                value = draft.label,
+                onValueChange = actions.onLabelChange,
+                enabled = !state.submitting,
+            )
+            ModeChips(draft.mode, actions.onModeChange)
+            PreferenceChips(draft.preferences, actions.onPreferencesChange)
+            ParticipationSubmitSection(
+                error = state.error,
+                canSubmit = canSubmit,
+                onSubmit = actions.onSubmit,
+            )
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
+
+@Composable
+private fun StartingLocationCard(
+    hasCoordinates: Boolean,
+    displayText: String,
+    submitting: Boolean,
+    onPickLocation: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = TealContainer),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = null,
+                    tint = RosePrimary,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    text = "STARTING LOCATION",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TealPrimary.copy(alpha = 0.8f),
+                    letterSpacing = 1.2.sp,
+                )
+            }
+
+            Text(
+                text = displayText,
+                style = if (hasCoordinates) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodySmall,
+                fontWeight = if (hasCoordinates) FontWeight.Bold else FontWeight.Normal,
+                color = if (hasCoordinates) TealPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Button(
+                onClick = onPickLocation,
+                enabled = !submitting,
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = TealPrimary,
+                    contentColor = Color.White,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag(TestTags.LOCATION_PICKER_BUTTON),
+            ) {
+                Text(
+                    text = if (hasCoordinates) "Change location" else "Pick Location From Map",
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaceNameField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    enabled: Boolean,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        enabled = enabled,
+        label = { Text("Place name (optional)") },
+        placeholder = { Text("Place name (optional)", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+        singleLine = true,
+        shape = CircleShape,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surface,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+            focusedBorderColor = TealPrimary,
+            unfocusedBorderColor = TealPrimary.copy(alpha = 0.3f),
+            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(TestTags.LABEL_INPUT),
+    )
+}
+
+@Composable
+private fun ParticipationSubmitSection(
+    error: String?,
+    canSubmit: Boolean,
+    onSubmit: () -> Unit,
+) {
+    error?.let {
+        Text(
+            text = it,
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.testTag(TestTags.ERROR_TEXT),
+        )
+    }
+
+    Button(
+        onClick = onSubmit,
+        enabled = canSubmit,
+        shape = CircleShape,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = RosePrimary,
+            contentColor = Color.White,
+            disabledContainerColor = RosePrimary.copy(alpha = 0.5f),
+            disabledContentColor = Color.White.copy(alpha = 0.7f),
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .testTag(TestTags.PARTICIPATION_SUBMIT),
+    ) {
+        Text(
+            text = "Save details →",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
 }
 
 @Composable
@@ -367,14 +433,3 @@ private fun PreferenceChips(selected: Set<Preference>, onChange: (Set<Preference
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun ParticipationScreenPreview() {
-    CPEN321ApplicationTheme {
-        ParticipationContent(
-            state = FormState(),
-            onSubmit = { _, _, _, _, _ -> },
-            onBack = {},
-        )
-    }
-}

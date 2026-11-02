@@ -1,13 +1,9 @@
 package com.example.cpen321application.ui.voting
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -19,7 +15,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -43,13 +38,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -73,8 +65,6 @@ import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.UiState
 import com.example.cpen321application.ui.common.UiStateContent
 import com.example.cpen321application.ui.screenViewModel
-import com.example.cpen321application.ui.theme.CPEN321ApplicationTheme
-import com.example.cpen321application.ui.theme.Dimens
 import com.example.cpen321application.ui.theme.RosePrimary
 import com.example.cpen321application.ui.theme.TealContainer
 import com.example.cpen321application.ui.theme.StatusClosed
@@ -668,68 +658,3 @@ private fun formatWeight(weight: Double): String =
 
 private fun formatShare(share: Double): String = String.format(Locale.US, "%.0f%%", share * PERCENT)
 
-@Preview(showBackground = true)
-@Composable
-fun VotingScreenPreview() {
-    CPEN321ApplicationTheme {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            VotingHeader(
-                state = VotingState(
-                    meetup = Meetup(
-                        id = "m1",
-                        groupId = "g1",
-                        title = "Weekend Meetup",
-                        scheduledAt = "2026-10-28T11:20:00Z",
-                        status = MeetupStatus.VOTING,
-                        organizerId = "u1",
-                        participants = emptyList(),
-                    ),
-                    candidates = emptyList(),
-                ),
-                onRefresh = {},
-            )
-
-            // Map Graphic Card using R.drawable.meetfair_map_meetup
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = TealContainer),
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.meetfair_map_meetup),
-                    contentDescription = "Voting map graphic",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp),
-                )
-            }
-
-            CandidateCard(
-                candidate = PlaceCandidate("p1", "Oasis Beach", "123 Ocean Ave", 0.0, 0.0),
-                state = VotingState(
-                    meetup = Meetup("m1", "g1", "u1", "Meetup", "", MeetupStatus.VOTING, emptyList()),
-                    candidates = emptyList(),
-                ),
-                canVote = true,
-                onVote = {},
-            )
-
-            CandidateCard(
-                candidate = PlaceCandidate("p2", "Nitobe Memorial Garden", "1871 Old Mall", 0.0, 0.0),
-                state = VotingState(
-                    meetup = Meetup("m1", "g1", "u1", "Meetup", "", MeetupStatus.VOTING, emptyList()),
-                    candidates = emptyList(),
-                    myVote = MyVote("p2", false, null),
-                ),
-                canVote = true,
-                onVote = {},
-            )
-        }
-    }
-}

@@ -26,7 +26,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -41,7 +40,6 @@ import com.example.cpen321application.model.User
 import com.example.cpen321application.ui.common.FormState
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.screenViewModel
-import com.example.cpen321application.ui.theme.CPEN321ApplicationTheme
 import com.example.cpen321application.ui.theme.Dimens
 import com.example.cpen321application.ui.theme.TealPrimary
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -162,13 +160,3 @@ fun SignInContent(
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun SignInScreenPreview() {
-    CPEN321ApplicationTheme {
-        SignInContent(
-            state = FormState(),
-            onSignInClick = {},
-        )
-    }
-}

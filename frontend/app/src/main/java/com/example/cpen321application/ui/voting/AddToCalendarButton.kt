@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -19,7 +18,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -29,16 +27,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.cpen321application.data.CalendarAuthResult
 import com.example.cpen321application.data.CalendarAuthorizer
 import com.example.cpen321application.model.CalendarEventResult
 import com.example.cpen321application.ui.common.FormState
 import com.example.cpen321application.ui.common.TestTags
-import com.example.cpen321application.ui.theme.CPEN321ApplicationTheme
 import com.example.cpen321application.ui.theme.Dimens
-import com.example.cpen321application.ui.theme.TealContainer
 import com.example.cpen321application.ui.theme.TealPrimary
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.ApiException
@@ -149,16 +144,3 @@ fun AddToCalendarButton(
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun AddToCalendarButtonPreview() {
-    CPEN321ApplicationTheme {
-        AddToCalendarButton(
-            authorizer = CalendarAuthorizer(),
-            state = FormState(),
-            alreadyAdded = false,
-            onToken = {},
-            onError = {}
-        )
-    }
-}

@@ -1,5 +1,6 @@
 package com.example.cpen321application.ui.groups
 
+import android.content.ClipData
 import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
@@ -47,6 +48,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,12 +57,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -86,7 +87,6 @@ import com.example.cpen321application.ui.common.UiStateContent
 import com.example.cpen321application.ui.common.toFormState
 import com.example.cpen321application.ui.meetup.isoToDisplay
 import com.example.cpen321application.ui.screenViewModel
-import com.example.cpen321application.ui.theme.CPEN321ApplicationTheme
 import com.example.cpen321application.ui.theme.Dimens
 import com.example.cpen321application.ui.theme.RosePrimary
 import com.example.cpen321application.ui.theme.StatusAmber
@@ -463,8 +463,9 @@ private fun GroupInfo(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
     val notify = LocalNotify.current
+    val scope = rememberCoroutineScope()
     var showMenu by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -601,8 +602,10 @@ private fun GroupInfo(
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Surface(
                                 onClick = {
-                                    clipboardManager.setText(AnnotatedString(data.group.inviteCode))
-                                    notify("Invite code copied")
+                                    scope.launch {
+                                        clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("invite code", data.group.inviteCode)))
+                                        notify("Invite code copied")
+                                    }
                                 },
                                 shape = CircleShape,
                                 color = Color.White,
@@ -750,7 +753,6 @@ private fun MemberRow(
     onRemove: (GroupMember) -> Unit,
 ) {
     val isOrganizer = member.role == GroupRole.ORGANIZER
-    val initial = (member.name ?: "U").take(1).uppercase()
 
     Row(
         modifier = Modifier
@@ -759,65 +761,98 @@ private fun MemberRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        MemberIdentity(
+            name = member.name,
+            isOrganizer = isOrganizer,
             modifier = Modifier.weight(1f),
+        )
+
+        MemberTrailingAction(
+            isOrganizer = isOrganizer,
+            canRemove = canRemove,
+            removalPending = removalPending,
+            deletionSubmitting = deletionSubmitting,
+            userId = member.userId,
+            onRemove = { onRemove(member) },
+        )
+    }
+}
+
+@Composable
+private fun MemberIdentity(
+    name: String?,
+    isOrganizer: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val initial = (name ?: "U").take(1).uppercase()
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier,
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = TealPrimary,
+            modifier = Modifier.size(40.dp),
         ) {
-            Surface(
-                shape = CircleShape,
-                color = TealPrimary,
-                modifier = Modifier.size(40.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = initial,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                    )
-                }
-            }
-
-            Text(
-                text = member.name ?: "Unknown",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-
-            if (isOrganizer) {
-                // Invisible text for test assertion compatibility
+            Box(contentAlignment = Alignment.Center) {
                 Text(
-                    text = "(organizer)",
-                    fontSize = 0.sp,
-                    color = Color.Transparent,
+                    text = initial,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
                 )
             }
         }
 
+        Text(
+            text = name ?: "Unknown",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+
         if (isOrganizer) {
-            Surface(
-                shape = CircleShape,
-                color = RosePrimary.copy(alpha = 0.15f),
-                modifier = Modifier.padding(start = 8.dp),
-            ) {
-                Text(
-                    text = "Organizer",
-                    color = RosePrimary,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                )
-            }
-        } else if (canRemove) {
-            TextButton(
-                onClick = { onRemove(member) },
-                enabled = !removalPending && !deletionSubmitting,
-                modifier = Modifier.testTag("remove_member_${member.userId}"),
-            ) {
-                Text("Remove", color = MaterialTheme.colorScheme.error)
-            }
+            // Invisible text for test assertion compatibility
+            Text(
+                text = "(organizer)",
+                fontSize = 0.sp,
+                color = Color.Transparent,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MemberTrailingAction(
+    isOrganizer: Boolean,
+    canRemove: Boolean,
+    removalPending: Boolean,
+    deletionSubmitting: Boolean,
+    userId: String,
+    onRemove: () -> Unit,
+) {
+    if (isOrganizer) {
+        Surface(
+            shape = CircleShape,
+            color = RosePrimary.copy(alpha = 0.15f),
+            modifier = Modifier.padding(start = 8.dp),
+        ) {
+            Text(
+                text = "Organizer",
+                color = RosePrimary,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+        }
+    } else if (canRemove) {
+        TextButton(
+            onClick = onRemove,
+            enabled = !removalPending && !deletionSubmitting,
+            modifier = Modifier.testTag("remove_member_$userId"),
+        ) {
+            Text("Remove", color = MaterialTheme.colorScheme.error)
         }
     }
 }
@@ -935,53 +970,3 @@ private fun MeetupRow(meetup: Meetup, onOpen: (String) -> Unit) {
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun GroupDetailScreenPreview() {
-    CPEN321ApplicationTheme {
-        GroupInfo(
-            data = GroupDetailData(
-                group = Group(
-                    id = "g1",
-                    name = "group",
-                    inviteCode = "Z5WCEZ",
-                    organizerId = "u1",
-                    members = listOf(
-                        GroupMember("u1", "Kelly He", GroupRole.ORGANIZER),
-                        GroupMember("u2", "John Doe", GroupRole.MEMBER),
-                    ),
-                ),
-                meetups = listOf(
-                    Meetup(
-                        id = "m1",
-                        groupId = "g1",
-                        title = "test meetup",
-                        scheduledAt = "2026-10-28T11:20:00Z",
-                        status = MeetupStatus.FINALIZED,
-                        organizerId = "u1",
-                        participants = emptyList(),
-                    ),
-                    Meetup(
-                        id = "m2",
-                        groupId = "g1",
-                        title = "meetup",
-                        scheduledAt = "2026-10-28T10:10:00Z",
-                        status = MeetupStatus.VOTING,
-                        organizerId = "u1",
-                        participants = emptyList(),
-                    ),
-                ),
-            ),
-            onNewMeetup = {},
-            onOpenMeetup = {},
-            canRemove = true,
-            removal = MemberRemovalState(),
-            onRemove = {},
-            deletion = FormState(),
-            onDelete = {},
-            leaving = FormState(),
-            onLeave = {},
-            onBack = {},
-        )
-    }
-}

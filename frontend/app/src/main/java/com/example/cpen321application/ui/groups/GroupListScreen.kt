@@ -39,7 +39,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -61,7 +60,6 @@ import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.UiState
 import com.example.cpen321application.ui.common.UiStateContent
 import com.example.cpen321application.ui.screenViewModel
-import com.example.cpen321application.ui.theme.CPEN321ApplicationTheme
 import com.example.cpen321application.ui.theme.Dimens
 import com.example.cpen321application.ui.theme.RosePrimary
 import com.example.cpen321application.ui.theme.TealContainer
@@ -234,7 +232,6 @@ fun GroupListScreen(
         onJoin = onJoin,
         onOpen = onOpen,
         onProfile = onProfile,
-        onSignOut = { scope.launch { container.authRepository.signOut() } },
         onRetry = vm::load,
     )
 }
@@ -246,7 +243,6 @@ fun GroupListContent(
     onJoin: () -> Unit,
     onOpen: (String) -> Unit,
     onProfile: () -> Unit,
-    onSignOut: () -> Unit,
     onRetry: () -> Unit,
 ) {
     Column(
@@ -265,63 +261,70 @@ fun GroupListContent(
             fontWeight = FontWeight.ExtraBold,
         )
 
-        // Action Buttons Row: Create group + and Join group
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Button(
-                onClick = onCreate,
-                shape = CircleShape,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = TealPrimary,
-                    contentColor = Color.White,
-                ),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-                    .testTag(TestTags.CREATE_GROUP_BUTTON),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Icon(
-                        imageVector = PlusIcon,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Text("Create group", fontWeight = FontWeight.Bold)
-                }
-            }
-
-            OutlinedButton(
-                onClick = onJoin,
-                shape = CircleShape,
-                border = BorderStroke(1.dp, TealPrimary),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-                    .testTag(TestTags.JOIN_GROUP_BUTTON),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Icon(
-                        imageVector = LinkIcon,
-                        contentDescription = null,
-                        tint = TealPrimary,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Text("Join group", color = TealPrimary, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
+        GroupActionButtons(onCreate = onCreate, onJoin = onJoin)
 
         UiStateContent(state, onRetry = onRetry, emptyMessage = "No groups yet. Create one or join with a code.") { groups ->
             GroupSections(groups, onOpen)
+        }
+    }
+}
+
+@Composable
+private fun GroupActionButtons(
+    onCreate: () -> Unit,
+    onJoin: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Button(
+            onClick = onCreate,
+            shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = TealPrimary,
+                contentColor = Color.White,
+            ),
+            modifier = Modifier
+                .weight(1f)
+                .height(48.dp)
+                .testTag(TestTags.CREATE_GROUP_BUTTON),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = PlusIcon,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text("Create group", fontWeight = FontWeight.Bold)
+            }
+        }
+
+        OutlinedButton(
+            onClick = onJoin,
+            shape = CircleShape,
+            border = BorderStroke(1.dp, TealPrimary),
+            modifier = Modifier
+                .weight(1f)
+                .height(48.dp)
+                .testTag(TestTags.JOIN_GROUP_BUTTON),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = LinkIcon,
+                    contentDescription = null,
+                    tint = TealPrimary,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text("Join group", color = TealPrimary, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
@@ -389,8 +392,6 @@ private fun GroupSections(groups: List<GroupWithAction>, onOpen: (String) -> Uni
 @Composable
 private fun GroupCard(item: GroupWithAction, onOpen: (String) -> Unit) {
     val group = item.group
-    val action = item.actionNeeded
-    val initial = group.name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "G"
     val memberCountText = if (group.members.size == 1) "1 member" else "${group.members.size} members"
 
     Card(
@@ -409,66 +410,14 @@ private fun GroupCard(item: GroupWithAction, onOpen: (String) -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            GroupIdentityRow(
+                groupName = group.name,
+                memberCountText = memberCountText,
                 modifier = Modifier.weight(1f, fill = false),
-            ) {
-                // Circle avatar
-                Surface(
-                    shape = CircleShape,
-                    color = TealContainer,
-                    modifier = Modifier.size(44.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = initial,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TealPrimary,
-                        )
-                    }
-                }
+            )
 
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = group.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = TealPrimary,
-                    )
-                    Text(
-                        text = memberCountText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            if (action != null) {
-                Surface(
-                    shape = CircleShape,
-                    color = RosePrimary.copy(alpha = 0.15f),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    ) {
-                        Text(
-                            text = action,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = RosePrimary,
-                        )
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = RosePrimary,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                }
+            if (item.actionNeeded != null) {
+                GroupActionBadge(action = item.actionNeeded)
             } else {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
@@ -481,37 +430,73 @@ private fun GroupCard(item: GroupWithAction, onOpen: (String) -> Unit) {
     }
 }
 
-@Preview(showBackground = true)
 @Composable
-fun GroupListScreenPreview() {
-    CPEN321ApplicationTheme {
-        GroupListContent(
-            state = UiState.Success(
-                listOf(
-                    GroupWithAction(
-                        group = Group("1", "group name", "CODE123", "org1", listOf(GroupMember("1", "Alice", GroupRole.ORGANIZER))),
-                        actionNeeded = "Vote required",
-                    ),
-                    GroupWithAction(
-                        group = Group("2", "2323", "CODE456", "org2", listOf(GroupMember("1", "Alice", GroupRole.MEMBER))),
-                        actionNeeded = "Enter details",
-                    ),
-                    GroupWithAction(
-                        group = Group("3", "klklkklkl", "CODE789", "org3", listOf(GroupMember("1", "Alice", GroupRole.MEMBER))),
-                        actionNeeded = null,
-                    ),
-                    GroupWithAction(
-                        group = Group("4", "group", "CODE000", "org4", listOf(GroupMember("1", "Alice", GroupRole.MEMBER))),
-                        actionNeeded = null,
-                    ),
-                ),
-            ),
-            onCreate = {},
-            onJoin = {},
-            onOpen = {},
-            onProfile = {},
-            onSignOut = {},
-            onRetry = {},
-        )
+private fun GroupIdentityRow(
+    groupName: String,
+    memberCountText: String,
+    modifier: Modifier = Modifier,
+) {
+    val initial = groupName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "G"
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = modifier,
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = TealContainer,
+            modifier = Modifier.size(44.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = initial,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TealPrimary,
+                )
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = groupName,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = TealPrimary,
+            )
+            Text(
+                text = memberCountText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
+
+@Composable
+private fun GroupActionBadge(action: String) {
+    Surface(
+        shape = CircleShape,
+        color = RosePrimary.copy(alpha = 0.15f),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        ) {
+            Text(
+                text = action,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = RosePrimary,
+            )
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = RosePrimary,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+    }
+}
+

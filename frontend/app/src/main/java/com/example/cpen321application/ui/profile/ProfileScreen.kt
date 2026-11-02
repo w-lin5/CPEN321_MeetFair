@@ -34,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -54,7 +53,6 @@ import com.example.cpen321application.ui.common.toFormState
 import com.example.cpen321application.ui.common.toUiState
 import com.example.cpen321application.ui.fairness.formatCredit
 import com.example.cpen321application.ui.screenViewModel
-import com.example.cpen321application.ui.theme.CPEN321ApplicationTheme
 import com.example.cpen321application.ui.theme.Dimens
 import com.example.cpen321application.ui.theme.RosePrimary
 import com.example.cpen321application.ui.theme.TealContainer
@@ -151,6 +149,30 @@ private fun AccountSection(
     onSave: (String?) -> Unit,
     onSignOut: () -> Unit,
 ) {
+    Column(verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
+        DisplayNameForm(
+            profile = profile,
+            save = save,
+            onSave = onSave,
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        ProfileDetailsRow(
+            profile = profile,
+            isSubmitting = save.submitting,
+            onSave = onSave,
+            onSignOut = onSignOut,
+        )
+    }
+}
+
+@Composable
+private fun DisplayNameForm(
+    profile: UserProfile,
+    save: FormState<UserProfile>,
+    onSave: (String?) -> Unit,
+) {
     // Re-keyed on the saved name so the field shows the server's value after each save
     var input by rememberSaveable(profile.displayName) { mutableStateOf(profile.displayName) }
 
@@ -210,55 +232,58 @@ private fun AccountSection(
                 color = Color.White,
             )
         }
+    }
+}
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Profile details & secondary actions
-
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+@Composable
+private fun ProfileDetailsRow(
+    profile: UserProfile,
+    isSubmitting: Boolean,
+    onSave: (String?) -> Unit,
+    onSignOut: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = profile.displayName,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.testTag(TestTags.PROFILE_NAME_TEXT),
+            )
+            Text(
+                text = profile.email,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (profile.hasCustomDisplayName) {
                 Text(
-                    text = profile.displayName,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.testTag(TestTags.PROFILE_NAME_TEXT),
-                )
-                Text(
-                    text = profile.email,
+                    text = "Google name: ${profile.googleName}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (profile.hasCustomDisplayName) {
-                    Text(
-                        text = "Google name: ${profile.googleName}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
             }
-            if (profile.hasCustomDisplayName) {
-                TextButton(
-                    onClick = { onSave(null) },
-                    enabled = !save.submitting,
-                    modifier = Modifier.testTag(TestTags.RESET_DISPLAY_NAME_BUTTON),
-                ) {
-                    Text("Use Google name", color = TealPrimary)
-                }
-            } else {
-                Spacer(modifier = Modifier.weight(1f))
-            }
-
-            OutlinedButton(
-                onClick = onSignOut,
-                shape = CircleShape,
-                modifier = Modifier.testTag(TestTags.SIGN_OUT_BUTTON),
+        }
+        if (profile.hasCustomDisplayName) {
+            TextButton(
+                onClick = { onSave(null) },
+                enabled = !isSubmitting,
+                modifier = Modifier.testTag(TestTags.RESET_DISPLAY_NAME_BUTTON),
             ) {
-                Text("Sign out", color = TealPrimary)
+                Text("Use Google name", color = TealPrimary)
             }
+        } else {
+            Spacer(modifier = Modifier.weight(1f))
+        }
+
+        OutlinedButton(
+            onClick = onSignOut,
+            shape = CircleShape,
+            modifier = Modifier.testTag(TestTags.SIGN_OUT_BUTTON),
+        ) {
+            Text("Sign out", color = TealPrimary)
         }
     }
 }
@@ -290,27 +315,3 @@ private fun ProfileGroupRow(group: ProfileGroup, onOpen: (String) -> Unit) {
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun ProfileScreenPreview() {
-    CPEN321ApplicationTheme {
-        ProfileContent(
-            profile = UserProfile(
-                id = "1",
-                email = "user@example.com",
-                googleName = "User Name",
-                displayName = "User Name",
-                hasCustomDisplayName = false,
-                photoUrl = null,
-                groups = listOf(
-                    ProfileGroup("g1", "Study Group", GroupRole.ORGANIZER, 120),
-                    ProfileGroup("g2", "Weekend Hangout", GroupRole.MEMBER, -45),
-                ),
-            ),
-            save = FormState(),
-            onSave = {},
-            onOpenGroupFairness = {},
-            onSignOut = {},
-        )
-    }
-}

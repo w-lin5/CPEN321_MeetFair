@@ -47,7 +47,6 @@ import com.example.cpen321application.ui.common.FormState
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.toFormState
-import com.example.cpen321application.ui.groups.dashedBorder
 import com.example.cpen321application.ui.screenViewModel
 import com.example.cpen321application.ui.theme.RosePrimary
 import com.example.cpen321application.ui.theme.TealContainer
@@ -134,11 +133,10 @@ fun CreateMeetupScreen(container: AppContainer, groupId: String, onBack: () -> U
 
     ScreenColumn(title = "", onBack = onBack) {
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .dashedBorder(strokeWidth = 1.5.dp, color = TealPrimary, cornerRadius = 24.dp),
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = TealContainer),
+            border = BorderStroke(1.5.dp, TealPrimary),
         ) {
             Column(
                 modifier = Modifier

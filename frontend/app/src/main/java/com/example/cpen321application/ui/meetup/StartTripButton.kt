@@ -1,6 +1,7 @@
 package com.example.cpen321application.ui.meetup
 
 import android.Manifest
+import android.content.Context
 import android.location.LocationManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -77,30 +78,12 @@ internal fun StartTripButton(
     var confirm by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+
     val start = {
         if (!busy) scope.launch {
             busy = true
             error = null
-            if (LiveLocationService.status.value.meetupId?.let { it != meetupId } == true) {
-                error = "Stop sharing your current trip before starting another one."
-            } else if (!androidx.core.location.LocationManagerCompat.isLocationEnabled(context.getSystemService(LocationManager::class.java))) {
-                error = "Turn on Location in Android settings, then try again."
-            } else when (val result = container.tripRepository.start(meetupId)) {
-                is ApiResult.Failure -> error = result.error.message
-                is ApiResult.Success -> {
-                    try {
-                        check(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
-                        LiveLocationService.start(context, meetupId)
-                        onStarted()
-                    } catch (_: IllegalStateException) {
-                        container.tripRepository.stop(meetupId)
-                        error = "Keep the app open and try resuming location sharing."
-                    } catch (_: SecurityException) {
-                        container.tripRepository.stop(meetupId)
-                        error = "Allow location access while using the app, then try again."
-                    }
-                }
-            }
+            error = executeTripStart(context, lifecycle, container, meetupId, onStarted)
             busy = false
         }
         Unit
@@ -116,9 +99,75 @@ internal fun StartTripButton(
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { _ ->
         requestLocation()
     }
+
+    StartTripActionView(
+        busy = busy,
+        label = label,
+        error = error,
+        modifier = modifier,
+        onClick = { confirm = true },
+    )
+
+    if (confirm) {
+        StartTripConfirmationDialog(
+            onConfirm = {
+                confirm = false
+                if (android.os.Build.VERSION.SDK_INT >= 33 && androidx.core.content.ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else requestLocation()
+            },
+            onDismiss = { confirm = false },
+        )
+    }
+}
+
+private suspend fun executeTripStart(
+    context: Context,
+    lifecycle: Lifecycle,
+    container: AppContainer,
+    meetupId: String,
+    onStarted: () -> Unit,
+): String? {
+    if (LiveLocationService.status.value.meetupId?.let { it != meetupId } == true) {
+        return "Stop sharing your current trip before starting another one."
+    }
+    if (!androidx.core.location.LocationManagerCompat.isLocationEnabled(
+            context.getSystemService(LocationManager::class.java)
+        )
+    ) {
+        return "Turn on Location in Android settings, then try again."
+    }
+    return when (val result = container.tripRepository.start(meetupId)) {
+        is ApiResult.Failure -> result.error.message
+        is ApiResult.Success -> {
+            try {
+                check(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+                LiveLocationService.start(context, meetupId)
+                onStarted()
+                null
+            } catch (_: IllegalStateException) {
+                container.tripRepository.stop(meetupId)
+                "Keep the app open and try resuming location sharing."
+            } catch (_: SecurityException) {
+                container.tripRepository.stop(meetupId)
+                "Allow location access while using the app, then try again."
+            }
+        }
+    }
+}
+
+@Composable
+private fun StartTripActionView(
+    busy: Boolean,
+    label: String,
+    error: String?,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
     Column(modifier = modifier) {
         Button(
-            onClick = { confirm = true },
+            onClick = onClick,
             enabled = !busy,
             shape = CircleShape,
             colors = ButtonDefaults.buttonColors(
@@ -151,16 +200,33 @@ internal fun StartTripButton(
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
-    if (confirm) AlertDialog(
-        onDismissRequest = { confirm = false }, title = { Text("Share your live location?") },
-        text = { Text("Members of this group can see your latest location and profile picture during this trip. Sharing continues with a system notification when the app is in the background. Tap I arrived to stop sharing and save your commute duration. Pause sharing stops location updates but keeps your commute timer running until you tap I arrived.") },
-        confirmButton = { TextButton(onClick = {
-            confirm = false
-            if (android.os.Build.VERSION.SDK_INT >= 33 && androidx.core.content.ContextCompat.checkSelfPermission(
-                    context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-            } else requestLocation()
-        }) { Text("Share and start trip") } },
-        dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
+}
+
+@Composable
+private fun StartTripConfirmationDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Share your live location?") },
+        text = {
+            Text(
+                "Members of this group can see your latest location and profile picture during this trip. " +
+                "Sharing continues with a system notification when the app is in the background. " +
+                "Tap I arrived to stop sharing and save your commute duration. Pause sharing stops location " +
+                "updates but keeps your commute timer running until you tap I arrived."
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Share and start trip")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
     )
 }
