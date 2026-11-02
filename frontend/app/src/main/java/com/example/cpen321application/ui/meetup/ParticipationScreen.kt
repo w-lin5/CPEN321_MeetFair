@@ -17,14 +17,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -52,8 +49,10 @@ import com.example.cpen321application.model.Preference
 import com.example.cpen321application.model.StartLocation
 import com.example.cpen321application.model.TravelMode
 import com.example.cpen321application.ui.common.FormState
+import com.example.cpen321application.ui.common.MeetFairCard
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
+import com.example.cpen321application.ui.common.meetFairTextFieldColors
 import com.example.cpen321application.ui.common.toFormState
 import com.example.cpen321application.ui.screenViewModel
 import com.example.cpen321application.ui.theme.RosePrimary
@@ -232,10 +231,9 @@ private fun StartingLocationCard(
     submitting: Boolean,
     onPickLocation: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = TealContainer),
+    MeetFairCard(
+        containerColor = TealContainer,
+        borderWidth = 0.dp,
     ) {
         Column(
             modifier = Modifier
@@ -305,14 +303,7 @@ private fun PlaceNameField(
         placeholder = { Text("Place name (optional)", color = MaterialTheme.colorScheme.onSurfaceVariant) },
         singleLine = true,
         shape = CircleShape,
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surface,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-            focusedBorderColor = TealPrimary,
-            unfocusedBorderColor = TealPrimary.copy(alpha = 0.3f),
-            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-        ),
+        colors = meetFairTextFieldColors(),
         modifier = Modifier
             .fillMaxWidth()
             .testTag(TestTags.LABEL_INPUT),
@@ -358,10 +349,17 @@ private fun ParticipationSubmitSection(
 }
 
 @Composable
-private fun ModeChips(selected: TravelMode, onSelect: (TravelMode) -> Unit) {
+private fun <T> ChipSelectionRow(
+    title: String,
+    items: Iterable<T>,
+    isSelected: (T) -> Boolean,
+    onToggle: (T) -> Unit,
+    tag: (T) -> String,
+    label: (T) -> String = { it.toString() },
+) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            text = "Travel mode",
+            text = title,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = TealPrimary,
@@ -371,16 +369,11 @@ private fun ModeChips(selected: TravelMode, onSelect: (TravelMode) -> Unit) {
             modifier = Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            TravelMode.entries.forEach { mode ->
+            items.forEach { item ->
                 FilterChip(
-                    selected = mode == selected,
-                    onClick = { onSelect(mode) },
-                    label = {
-                        Text(
-                            text = mode.name,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    },
+                    selected = isSelected(item),
+                    onClick = { onToggle(item) },
+                    label = { Text(text = label(item), fontWeight = FontWeight.Bold) },
                     shape = CircleShape,
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = TealPrimary,
@@ -388,7 +381,7 @@ private fun ModeChips(selected: TravelMode, onSelect: (TravelMode) -> Unit) {
                         containerColor = TealContainer,
                         labelColor = TealPrimary,
                     ),
-                    modifier = Modifier.testTag(TestTags.modeChip(mode.name)),
+                    modifier = Modifier.testTag(tag(item)),
                 )
             }
         }
@@ -396,40 +389,26 @@ private fun ModeChips(selected: TravelMode, onSelect: (TravelMode) -> Unit) {
 }
 
 @Composable
-private fun PreferenceChips(selected: Set<Preference>, onChange: (Set<Preference>) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = "Preferences",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = TealPrimary,
-        )
+private fun ModeChips(selected: TravelMode, onSelect: (TravelMode) -> Unit) {
+    ChipSelectionRow(
+        title = "Travel mode",
+        items = TravelMode.entries,
+        isSelected = { it == selected },
+        onToggle = onSelect,
+        tag = { TestTags.modeChip(it.name) },
+        label = { it.name },
+    )
+}
 
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Preference.entries.forEach { preference ->
-                FilterChip(
-                    selected = preference in selected,
-                    onClick = { onChange(if (preference in selected) selected - preference else selected + preference) },
-                    label = {
-                        Text(
-                            text = preference.name,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    },
-                    shape = CircleShape,
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = TealPrimary,
-                        selectedLabelColor = Color.White,
-                        containerColor = TealContainer,
-                        labelColor = TealPrimary,
-                    ),
-                    modifier = Modifier.testTag(TestTags.preferenceChip(preference.name)),
-                )
-            }
-        }
-    }
+@Composable
+private fun PreferenceChips(selected: Set<Preference>, onChange: (Set<Preference>) -> Unit) {
+    ChipSelectionRow(
+        title = "Preferences",
+        items = Preference.entries,
+        isSelected = { it in selected },
+        onToggle = { onChange(if (it in selected) selected - it else selected + it) },
+        tag = { TestTags.preferenceChip(it.name) },
+        label = { it.name },
+    )
 }
 

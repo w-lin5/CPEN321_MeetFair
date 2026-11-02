@@ -7,10 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -33,6 +30,7 @@ import com.example.cpen321application.model.Recommendation
 import com.example.cpen321application.ui.common.ErrorView
 import com.example.cpen321application.ui.common.FormState
 import com.example.cpen321application.ui.common.LocalNotify
+import com.example.cpen321application.ui.common.MeetFairCard
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.toFormState
@@ -84,10 +82,9 @@ fun StartVotingScreen(container: AppContainer, meetupId: String, onBack: () -> U
             verticalArrangement = Arrangement.spacedBy(Dimens.Spacing),
         ) {
             if (state.submitting) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = TealContainer),
+                MeetFairCard(
+                    containerColor = TealContainer,
+                    borderWidth = 0.dp,
                 ) {
                     Row(
                         modifier = Modifier

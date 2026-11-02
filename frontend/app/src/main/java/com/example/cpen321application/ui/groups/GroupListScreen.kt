@@ -19,8 +19,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -55,6 +53,7 @@ import com.example.cpen321application.model.GroupMember
 import com.example.cpen321application.model.GroupRole
 import com.example.cpen321application.model.MeetupStatus
 import com.example.cpen321application.ui.common.LocalNotify
+import com.example.cpen321application.ui.common.MeetFairCard
 import com.example.cpen321application.ui.common.MeetFairHeader
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.UiState
@@ -394,14 +393,11 @@ private fun GroupCard(item: GroupWithAction, onOpen: (String) -> Unit) {
     val group = item.group
     val memberCountText = if (group.members.size == 1) "1 member" else "${group.members.size} members"
 
-    Card(
+    MeetFairCard(
         modifier = Modifier
-            .fillMaxWidth()
             .clickable { onOpen(group.id) }
             .testTag(TestTags.GROUP_ITEM),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, TealContainer),
     ) {
         Row(
             modifier = Modifier

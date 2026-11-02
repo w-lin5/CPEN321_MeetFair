@@ -9,18 +9,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,8 +40,10 @@ import com.example.cpen321application.AppContainer
 import com.example.cpen321application.data.MeetupRepository
 import com.example.cpen321application.model.Meetup
 import com.example.cpen321application.ui.common.FormState
+import com.example.cpen321application.ui.common.MeetFairCard
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
+import com.example.cpen321application.ui.common.meetFairTextFieldColors
 import com.example.cpen321application.ui.common.toFormState
 import com.example.cpen321application.ui.screenViewModel
 import com.example.cpen321application.ui.theme.RosePrimary
@@ -132,11 +130,10 @@ fun CreateMeetupScreen(container: AppContainer, groupId: String, onBack: () -> U
     }
 
     ScreenColumn(title = "", onBack = onBack) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = TealContainer),
-            border = BorderStroke(1.5.dp, TealPrimary),
+        MeetFairCard(
+            containerColor = TealContainer,
+            borderColor = TealPrimary,
+            borderWidth = 1.5.dp,
         ) {
             Column(
                 modifier = Modifier
@@ -158,14 +155,7 @@ fun CreateMeetupScreen(container: AppContainer, groupId: String, onBack: () -> U
                     placeholder = { Text("Title", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                     singleLine = true,
                     shape = CircleShape,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                        focusedBorderColor = TealPrimary,
-                        unfocusedBorderColor = TealPrimary.copy(alpha = 0.6f),
-                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                    ),
+                    colors = meetFairTextFieldColors(unfocusedAlpha = 0.6f),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag(TestTags.MEETUP_TITLE_INPUT),

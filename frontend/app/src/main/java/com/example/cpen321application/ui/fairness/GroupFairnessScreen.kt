@@ -1,7 +1,6 @@
 package com.example.cpen321application.ui.fairness
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,8 +18,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -49,6 +46,7 @@ import com.example.cpen321application.model.CommuteSource
 import com.example.cpen321application.model.FairnessEntry
 import com.example.cpen321application.model.GroupFairness
 import com.example.cpen321application.model.MemberCredit
+import com.example.cpen321application.ui.common.MeetFairCard
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.UiState
@@ -104,10 +102,9 @@ private fun FairnessContent(data: GroupFairness, userId: String?) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 // Hero Balance Card
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = TealContainer),
+                MeetFairCard(
+                    containerColor = TealContainer,
+                    borderWidth = 0.dp,
                 ) {
                     Column(
                         modifier = Modifier
@@ -179,13 +176,9 @@ private fun FairnessContent(data: GroupFairness, userId: String?) {
 private fun MemberRow(member: MemberCredit) {
     val initial = (member.name ?: "U").take(1).uppercase()
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(TestTags.FAIRNESS_MEMBER_ITEM),
+    MeetFairCard(
+        modifier = Modifier.testTag(TestTags.FAIRNESS_MEMBER_ITEM),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, TealContainer),
     ) {
         Row(
             modifier = Modifier
@@ -243,14 +236,11 @@ private fun FairnessRow(entry: FairnessEntry) {
     val source = if (entry.source == CommuteSource.TRACKED) "tracked" else "Maps estimate"
     var expanded by rememberSaveable(entry.meetupId) { mutableStateOf(false) }
 
-    Card(
+    MeetFairCard(
         modifier = Modifier
-            .fillMaxWidth()
             .clickable { expanded = !expanded }
             .testTag(TestTags.FAIRNESS_ENTRY_ITEM),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, TealContainer),
     ) {
         Column(
             modifier = Modifier

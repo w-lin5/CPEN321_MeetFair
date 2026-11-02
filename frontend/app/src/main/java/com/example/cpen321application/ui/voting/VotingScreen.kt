@@ -19,8 +19,6 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -59,6 +57,7 @@ import com.example.cpen321application.model.MyVote
 import com.example.cpen321application.model.PlaceCandidate
 import com.example.cpen321application.model.VoteTally
 import com.example.cpen321application.ui.common.LocalNotify
+import com.example.cpen321application.ui.common.MeetFairCard
 import com.example.cpen321application.ui.common.MeetupStatusNotifications
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
@@ -310,10 +309,9 @@ private fun VotingContent(state: VotingState, userId: String?, vm: VotingViewMod
         VotingHeader(state, onRefresh = vm::refreshVotes)
 
         // Map Graphic Card using R.drawable.meetfair_map_meetup
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = TealContainer),
+        MeetFairCard(
+            containerColor = TealContainer,
+            borderWidth = 0.dp,
         ) {
             Image(
                 painter = painterResource(R.drawable.meetfair_map_meetup),
@@ -402,12 +400,10 @@ private fun CandidateCard(candidate: PlaceCandidate, state: VotingState, canVote
     val winner = state.meetup.winner?.placeId == candidate.placeId
     val picks = total?.voteCount ?: 0
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(TestTags.candidateItem(candidate.placeId)),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = TealContainer),
+    MeetFairCard(
+        modifier = Modifier.testTag(TestTags.candidateItem(candidate.placeId)),
+        containerColor = TealContainer,
+        borderWidth = 0.dp,
     ) {
         Column(
             modifier = Modifier.padding(18.dp),

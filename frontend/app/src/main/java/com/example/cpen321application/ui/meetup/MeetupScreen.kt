@@ -30,8 +30,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -81,6 +79,7 @@ import com.example.cpen321application.model.VotesSnapshot
 import com.example.cpen321application.ui.common.DeleteConfirmation
 import com.example.cpen321application.ui.common.FormState
 import com.example.cpen321application.ui.common.LocalNotify
+import com.example.cpen321application.ui.common.MeetFairCard
 import com.example.cpen321application.ui.common.MeetupStatusNotifications
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.UiState
@@ -91,8 +90,6 @@ import com.example.cpen321application.ui.screenViewModel
 import com.example.cpen321application.ui.theme.Dimens
 import com.example.cpen321application.ui.theme.RosePrimary
 import com.example.cpen321application.ui.theme.TealContainer
-import com.example.cpen321application.ui.theme.StatusAmber
-import com.example.cpen321application.ui.theme.StatusAmberLight
 import com.example.cpen321application.ui.theme.StatusGreen
 import com.example.cpen321application.ui.theme.StatusGreenLight
 import com.example.cpen321application.ui.theme.TealPrimary
@@ -106,58 +103,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-
-private val VotingIcon: ImageVector
-    get() = ImageVector.Builder(
-        name = "Voting",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f,
-    ).path(fill = SolidColor(Color.Black)) {
-        moveTo(19f, 3f)
-        horizontalLineTo(5f)
-        curveTo(3.9f, 3f, 3f, 3.9f, 3f, 5f)
-        verticalLineTo(19f)
-        curveTo(3f, 20.1f, 3.9f, 21f, 5f, 21f)
-        horizontalLineTo(19f)
-        curveTo(20.1f, 21f, 21f, 20.1f, 21f, 19f)
-        verticalLineTo(5f)
-        curveTo(21f, 3.9f, 20.1f, 3f, 19f, 3f)
-        close()
-        moveTo(9f, 17f)
-        lineTo(4f, 12f)
-        lineTo(5.41f, 10.59f)
-        lineTo(9f, 14.17f)
-        lineTo(18.59f, 4.58f)
-        lineTo(20f, 6f)
-        lineTo(9f, 17f)
-        close()
-    }.build()
-
-private val SettledIcon: ImageVector
-    get() = ImageVector.Builder(
-        name = "Settled",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f,
-    ).path(fill = SolidColor(Color.Black)) {
-        moveTo(12f, 2f)
-        curveTo(6.48f, 2f, 2f, 6.48f, 2f, 12f)
-        curveTo(2f, 17.52f, 6.48f, 22f, 12f, 22f)
-        curveTo(17.52f, 22f, 22f, 17.52f, 22f, 12f)
-        curveTo(22f, 6.48f, 17.52f, 2f, 12f, 2f)
-        close()
-        moveTo(10f, 17f)
-        lineTo(5f, 12f)
-        lineTo(6.41f, 10.59f)
-        lineTo(10f, 14.17f)
-        lineTo(17.59f, 6.58f)
-        lineTo(19f, 8f)
-        lineTo(10f, 17f)
-        close()
-    }.build()
 
 private val LockIcon: ImageVector
     get() = ImageVector.Builder(
@@ -330,40 +275,6 @@ private val FlagIcon: ImageVector
         horizontalLineTo(14.4f)
         close()
     }.build()
-
-private data class MeetupStatusSpec(
-    val label: String,
-    val icon: ImageVector,
-    val color: Color,
-    val backgroundColor: Color,
-)
-
-private fun getStatusSpec(status: MeetupStatus): MeetupStatusSpec = when (status) {
-    MeetupStatus.SETUP -> MeetupStatusSpec(
-        label = "Setup",
-        icon = Icons.Default.Edit,
-        color = StatusAmber,
-        backgroundColor = StatusAmberLight,
-    )
-    MeetupStatus.VOTING -> MeetupStatusSpec(
-        label = "Voting",
-        icon = VotingIcon,
-        color = RosePrimary,
-        backgroundColor = RosePrimary.copy(alpha = 0.15f),
-    )
-    MeetupStatus.FINALIZED -> MeetupStatusSpec(
-        label = "Finalized",
-        icon = Icons.Default.CheckCircle,
-        color = StatusGreen,
-        backgroundColor = StatusGreenLight,
-    )
-    MeetupStatus.SETTLED -> MeetupStatusSpec(
-        label = "Settled",
-        icon = SettledIcon,
-        color = TealPrimary,
-        backgroundColor = TealContainer,
-    )
-}
 
 private data class FormattedDateParts(val date: String, val time: String)
 
@@ -758,12 +669,7 @@ private fun MeetupInfoCard(
 @Composable
 private fun MeetupDateTimeCard(scheduledAt: String) {
     val dateParts = parseFormattedDateParts(scheduledAt)
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, TealContainer),
-    ) {
+    MeetFairCard {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -850,12 +756,7 @@ private fun MeetupMeetingSpotCard(
     showCalendar: Boolean,
     calendarSection: @Composable () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, TealContainer),
-    ) {
+    MeetFairCard {
         Column(modifier = Modifier.fillMaxWidth()) {
             Image(
                 painter = painterResource(R.drawable.meetfair_map_meetup),
@@ -910,12 +811,7 @@ private fun MeetupMeetingSpotCard(
 
 @Composable
 private fun MeetupSetupStatusCard(submitted: Boolean, participantCount: Int) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, TealContainer),
-    ) {
+    MeetFairCard {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -963,12 +859,7 @@ private fun MeetupVotingStatusCard(votes: VotesSnapshot?) {
     val hasSelection = myVote != null
     val votedCount = votes?.tally?.lockedCount ?: 0
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, TealContainer),
-    ) {
+    MeetFairCard {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1108,10 +999,9 @@ private fun MeetupVotingActionButton(onOpenVoting: () -> Unit) {
 
 @Composable
 private fun MeetupTripArrivedCard(trip: com.example.cpen321application.data.MeetupTrip) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = StatusGreenLight),
+    MeetFairCard(
+        containerColor = StatusGreenLight,
+        borderWidth = 0.dp,
     ) {
         Row(
             modifier = Modifier
@@ -1165,10 +1055,9 @@ private fun MeetupTripArrivedCard(trip: com.example.cpen321application.data.Meet
 
 @Composable
 private fun MeetupTripOnWayCard() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = TealContainer),
+    MeetFairCard(
+        containerColor = TealContainer,
+        borderWidth = 0.dp,
     ) {
         Row(
             modifier = Modifier

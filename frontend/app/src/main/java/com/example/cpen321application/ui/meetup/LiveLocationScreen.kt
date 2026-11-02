@@ -19,8 +19,6 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -53,6 +51,7 @@ import com.example.cpen321application.data.MeetupTrip
 import com.example.cpen321application.location.LiveLocationService
 import com.example.cpen321application.model.Meetup
 import com.example.cpen321application.ui.common.LocalNotify
+import com.example.cpen321application.ui.common.MeetFairCard
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.theme.RosePrimary
 import com.example.cpen321application.ui.theme.TealContainer
@@ -136,13 +135,10 @@ fun LiveLocationScreen(container: AppContainer, meetupId: String, onBack: () -> 
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             val destination = meetup?.winner
             if (destination != null) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1.2f),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = TealContainer),
-                    border = BorderStroke(1.dp, TealContainer),
+                MeetFairCard(
+                    modifier = Modifier.weight(1.2f),
+                    containerColor = TealContainer,
+                    borderColor = TealContainer,
                 ) {
                     val camera = rememberCameraPositionState {
                         position = CameraPosition.fromLatLngZoom(LatLng(destination.lat, destination.lng), 12f)
@@ -168,12 +164,7 @@ fun LiveLocationScreen(container: AppContainer, meetupId: String, onBack: () -> 
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 if (destination != null) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        border = BorderStroke(1.dp, TealContainer),
-                    ) {
+                    MeetFairCard(shape = RoundedCornerShape(20.dp)) {
                         Row(
                             modifier = Modifier.padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -211,10 +202,10 @@ fun LiveLocationScreen(container: AppContainer, meetupId: String, onBack: () -> 
                 }
 
                 if (sharing.meetupId == meetupId) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
+                    MeetFairCard(
+                        containerColor = TealContainer,
+                        borderWidth = 0.dp,
                         shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = TealContainer),
                     ) {
                         Column(
                             modifier = Modifier.padding(16.dp),
@@ -254,10 +245,10 @@ fun LiveLocationScreen(container: AppContainer, meetupId: String, onBack: () -> 
 
                 if (own?.status == "ACTIVE") {
                     val elapsed = runCatching { maxOf(0, now.epochSecond - Instant.parse(own.startedAt).epochSecond) }.getOrDefault(0)
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
+                    MeetFairCard(
+                        containerColor = TealContainer,
+                        borderWidth = 0.dp,
                         shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = TealContainer),
                     ) {
                         Column(
                             modifier = Modifier.padding(18.dp),
@@ -319,10 +310,10 @@ fun LiveLocationScreen(container: AppContainer, meetupId: String, onBack: () -> 
                         }
                     }
                 } else if (own?.status == "ARRIVED") {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
+                    MeetFairCard(
+                        containerColor = StatusGreenLight,
+                        borderWidth = 0.dp,
                         shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = StatusGreenLight),
                     ) {
                         Row(
                             modifier = Modifier.padding(18.dp),
@@ -369,12 +360,7 @@ fun LiveLocationScreen(container: AppContainer, meetupId: String, onBack: () -> 
                     }
                 }
 
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = BorderStroke(1.dp, TealContainer),
-                ) {
+                MeetFairCard(shape = RoundedCornerShape(20.dp)) {
                     Column(
                         modifier = Modifier.padding(18.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),

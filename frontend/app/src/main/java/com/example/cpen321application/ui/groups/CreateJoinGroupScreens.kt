@@ -1,20 +1,15 @@
 package com.example.cpen321application.ui.groups
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -37,8 +32,10 @@ import com.example.cpen321application.data.GroupRepository
 import com.example.cpen321application.model.Group
 import com.example.cpen321application.ui.common.FormSpec
 import com.example.cpen321application.ui.common.FormState
+import com.example.cpen321application.ui.common.MeetFairCard
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
+import com.example.cpen321application.ui.common.meetFairTextFieldColors
 import com.example.cpen321application.ui.common.toFormState
 import com.example.cpen321application.ui.screenViewModel
 import com.example.cpen321application.ui.theme.RosePrimary
@@ -109,11 +106,10 @@ fun <T> MockupFormCard(
 ) {
     var input by rememberSaveable { mutableStateOf("") }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = TealContainer),
-        border = BorderStroke(1.5.dp, TealPrimary),
+    MeetFairCard(
+        containerColor = TealContainer,
+        borderColor = TealPrimary,
+        borderWidth = 1.5.dp,
     ) {
         Column(
             modifier = Modifier
@@ -165,14 +161,7 @@ private fun MockupInputField(
         placeholder = { Text(spec.label, color = MaterialTheme.colorScheme.onSurfaceVariant) },
         singleLine = true,
         shape = CircleShape,
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surface,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-            focusedBorderColor = TealPrimary,
-            unfocusedBorderColor = TealPrimary.copy(alpha = 0.6f),
-            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-        ),
+        colors = meetFairTextFieldColors(unfocusedAlpha = 0.6f),
         modifier = Modifier
             .fillMaxWidth()
             .testTag(spec.inputTag),

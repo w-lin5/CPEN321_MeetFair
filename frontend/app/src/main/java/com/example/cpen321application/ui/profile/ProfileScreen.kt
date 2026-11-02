@@ -14,12 +14,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -45,10 +42,12 @@ import com.example.cpen321application.model.GroupRole
 import com.example.cpen321application.model.ProfileGroup
 import com.example.cpen321application.model.UserProfile
 import com.example.cpen321application.ui.common.FormState
+import com.example.cpen321application.ui.common.MeetFairCard
 import com.example.cpen321application.ui.common.ScreenColumn
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.UiState
 import com.example.cpen321application.ui.common.UiStateContent
+import com.example.cpen321application.ui.common.meetFairTextFieldColors
 import com.example.cpen321application.ui.common.toFormState
 import com.example.cpen321application.ui.common.toUiState
 import com.example.cpen321application.ui.fairness.formatCredit
@@ -189,14 +188,7 @@ private fun DisplayNameForm(
             onValueChange = { input = it },
             singleLine = true,
             shape = CircleShape,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                focusedBorderColor = TealPrimary,
-                unfocusedBorderColor = TealPrimary.copy(alpha = 0.3f),
-                focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-            ),
+            colors = meetFairTextFieldColors(),
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag(TestTags.DISPLAY_NAME_INPUT),
@@ -291,13 +283,13 @@ private fun ProfileDetailsRow(
 @Composable
 private fun ProfileGroupRow(group: ProfileGroup, onOpen: (String) -> Unit) {
     val role = if (group.role == GroupRole.ORGANIZER) " (organizer)" else ""
-    Card(
+    MeetFairCard(
         modifier = Modifier
-            .fillMaxWidth()
             .clickable { onOpen(group.groupId) }
             .testTag(TestTags.profileGroupItem(group.groupId)),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = TealContainer),
+        containerColor = TealContainer,
+        borderWidth = 0.dp,
     ) {
         Column(Modifier.padding(Dimens.ScreenPadding)) {
             Text(
