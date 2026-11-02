@@ -247,8 +247,7 @@ fun GroupListContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(Dimens.ScreenPadding)
-            .verticalScroll(rememberScrollState()),
+            .padding(Dimens.ScreenPadding),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         MeetFairHeader(onProfile = onProfile)
@@ -262,8 +261,17 @@ fun GroupListContent(
 
         GroupActionButtons(onCreate = onCreate, onJoin = onJoin)
 
-        UiStateContent(state, onRetry = onRetry, emptyMessage = "No groups yet. Create one or join with a code.") { groups ->
-            GroupSections(groups, onOpen)
+        Box(modifier = Modifier.weight(1f)) {
+            UiStateContent(state, onRetry = onRetry, emptyMessage = "No groups yet. Create one or join with a code.") { groups ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    GroupSections(groups, onOpen)
+                }
+            }
         }
     }
 }

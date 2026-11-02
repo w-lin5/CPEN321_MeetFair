@@ -3,7 +3,6 @@ package com.example.cpen321application.ui.groups
 import android.content.ClipData
 import android.content.Intent
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,6 +56,7 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -664,13 +664,13 @@ private fun MemberRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .semantics(mergeDescendants = true) {}
             .testTag(TestTags.MEMBER_ITEM),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         MemberIdentity(
             name = member.name,
-            isOrganizer = isOrganizer,
             modifier = Modifier.weight(1f),
         )
 
@@ -688,7 +688,6 @@ private fun MemberRow(
 @Composable
 private fun MemberIdentity(
     name: String?,
-    isOrganizer: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val initial = (name ?: "U").take(1).uppercase()
@@ -718,15 +717,6 @@ private fun MemberIdentity(
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
         )
-
-        if (isOrganizer) {
-            // Invisible text for test assertion compatibility
-            Text(
-                text = "(organizer)",
-                fontSize = 0.sp,
-                color = Color.Transparent,
-            )
-        }
     }
 }
 

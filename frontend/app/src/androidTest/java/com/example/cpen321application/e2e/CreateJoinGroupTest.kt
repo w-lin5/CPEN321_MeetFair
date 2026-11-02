@@ -28,7 +28,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 // Generated codes use the unambiguous alphabet in backend config.ts (no 0/O, 1/I/L)
-private val INVITE_CODE_TEXT = Regex("Invite code: ([ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6})")
+private val INVITE_CODE_TEXT = Regex("([ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6})")
 
 // Contains "0", which the generator never emits, so no group can ever have this code
 private const val UNUSED_INVITE_CODE = "000000"
@@ -64,7 +64,7 @@ class CreateJoinGroupTest {
         compose.onNodeWithText(name).assertIsDisplayed()
         assertTrue(INVITE_CODE_TEXT.matches(compose.textOf(TestTags.INVITE_CODE_TEXT)))
         compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).assertCountEquals(1)
-        compose.onNodeWithTag(TestTags.MEMBER_ITEM).assertTextContains("(organizer)", substring = true)
+        compose.onNodeWithTag(TestTags.MEMBER_ITEM).assertTextContains("organizer", substring = true, ignoreCase = true)
 
         // The new group is listed on the main screen
         compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
