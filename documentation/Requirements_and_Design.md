@@ -5,8 +5,7 @@
 | **Change Date**   | **Modified Sections** | **Rationale** |
 | ----------------- | --------------------- | ------------- |
 | 2026-10-19 | All Sections | Initial submission for CP1 |
-| 2026-10-28 | 3.1, 3.3, 3.4, 3.6, 3.7, 4.1, 4.3, 4.4, 4.7 | Document map and time pickers, membership management, deletion, refresh and in-app notifications. |
-| 2026-11-01 | 3.1, 3.4, 3.5 (UC3, UC5), 4.1, 4.5, 4.6, 4.7 | Match the implementation of features 3 and 5. Recommendations now come from Google Places and Routes through `from-places` and `places/search`, replacing manual candidate entry. Trips are a separate Live Location component that receives locations over REST and notifies members with `trip:updated`. Fair Credit settlement and automatic arrival remain planned. |
+| 2026-11-01 | 3.1, 3.3-3.7, 4.1, 4.3-4.7 | Document map and time pickers, membership management, deletion, refresh and in-app notifications. Align UI action labels and screen presentation with implementation. Match the implementation of features 3 and 5. Recommendations now come from Google Places and Routes through `from-places` and `places/search`, replacing manual candidate entry. Trips are a separate Live Location component that receives locations over REST and notifies members with `trip:updated`. Fair Credit settlement and automatic arrival remain planned.|
 ---
 
 ## 2. Project Description
@@ -22,7 +21,7 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 2. **Groups and meetups**: Any user can create a group and invite others with its 6-character invite code. Any member can create a meetup with a title and a future time selected using a calendar followed by hour and minute wheels. Joining a group does not automatically join its meetups: a member participates by submitting their starting location, travel mode (walk, transit or drive) and preferences. Starting locations are selected on a map rather than entered as coordinates. Members can leave eligible meetups or groups; organizers can remove eligible members and delete the groups or meetups they manage, with confirmation before deletion.
 3. **Fair spot recommendation**: The back end collects candidate places (Google Places API), gets each member's travel time to each candidate (Google Routes API), then scores every candidate with our own fairness and preference algorithm and returns the top 3. Voting does not start if fewer than 3 usable places are found.
 4. **Weighted voting**: Members vote on the top 3 and lock their vote. A locked vote is weighted by the member's Fair Credit in the group (how much more than the group average they travelled in past meetups): 1 + 0.1 per hour of credit, between 1 and 1.5. Votes appear live; the organizer finalizes the vote, and each member can add the meetup at the winning place to their own Google Calendar.
-5. **Live commute tracking**: From the scheduled meetup time, participants tap "I am leaving" and share live location; the group sees who is on the way. The commute ends when they tap "I arrived", which records their actual commute time. *Status at CP2: tracking and sharing are implemented. Planned: ending the commute automatically when a location reaches the venue, updating Fair Credit from the actual commute time, and falling back to the Google Maps estimate for members who never start tracking.*
+5. **Live commute tracking**: From the scheduled meetup time, participants tap "I'mm leaving" and share live location; the group sees who is on the way. The commute ends when they tap "I arrived", which records their actual commute time. *Status at CP2: tracking and sharing are implemented. Planned: ending the commute automatically when a location reaches the venue, updating Fair Credit from the actual commute time, and falling back to the Google Maps estimate for members who never start tracking.*
 6. **Refresh and in-app notifications**: Data pages support pull-to-refresh. Participation changes update connected meetup pages automatically. Voting status changes and deletions produce temporary bottom Snackbars on the relevant subscribed pages.
 ### **3.2. Use Case Diagram**
 ![Use Case Diagram](images/Use_Case_Diagram.png)
@@ -76,7 +75,7 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 3. The member selects "Vote" on one place.
 4. The system records the vote and sends the updated tally to every member who has the voting screen open.
 5. The member may select "Change vote" on another place; the system replaces the vote and step 4 repeats.
-6. The member selects "Lock my vote".
+6. The member selects "Submit vote" to lock their vote.
 7. The system sets the vote's weight from the member's Fair Credit in the group (1 + 0.1 per hour of credit, between 1 and 1.5), locks the vote and sends the updated tally to every member who has the voting screen open.
 8. The app shows "Your vote is locked" with the vote's weight.
 
@@ -209,7 +208,7 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 1. The Organizer selects "Finalize meetup" on the voting screen.
 2. The system tallies the locked, weighted votes and determines the winning location (the largest share of locked vote weight).
 3. The system saves the winning location as the finalized destination in the database and marks the meetup as finalized.
-4. The system sends the result to every member who has the voting screen open, which then shows "Voting is closed" and marks the winner; the meetup page shows "Meeting at: <winning location>".
+4. The system sends the result to every member who has the voting screen open, which then shows "Voting is closed" and marks the winner; the meetup page displays the winning location under "MEETING SPOT".
 5. A member who entered their details selects "Add to Google Calendar" on the meetup page.
 6. The app obtains a short-lived Google Calendar access token for the member from Google, asking for the member's consent the first time, and sends it to the system.
 7. The system sends the meetup details (title, time, winning location) to the Google Calendar API, which creates the event in the member's primary calendar; the token is not stored.
@@ -249,10 +248,10 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 3. The system requests location permission if it has not already been granted.
 4. The participant grants permission.
 5. The system records the commute start time and begins receiving location updates.
-6. The system verifies the participant's access for each update and notifies members viewing the meetup that trips have changed.
-7. Other group members view the participant's latest location and travel status on the live map; locations older than 90 seconds are hidden.
-8. The participant selects "I arrived" and confirms; the system records the arrival time, calculates commute duration, and stops location sharing.
-9. *(Planned)* During settlement, the system compares each participant's travel burden with the group average and updates Fair Credit.
+6. The system verifies the participant's access and shares location updates with authorized group members viewing the meetup.
+7. Other group members view the participant's latest location and travel status.
+8. The participant selects "I arrived," and the system records the arrival time, calculates commute duration, and stops location sharing.
+9. During settlement, the system compares each participant's travel burden with the group average and updates Fair Credit.
 
 **Failure scenario(s)**:
 - 1a. The meetup's scheduled time has not arrived.

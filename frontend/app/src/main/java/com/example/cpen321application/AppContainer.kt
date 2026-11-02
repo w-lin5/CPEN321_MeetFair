@@ -13,6 +13,7 @@ import com.example.cpen321application.data.ProfileRepository
 import com.example.cpen321application.data.RealtimeClient
 import com.example.cpen321application.data.SessionStore
 import com.example.cpen321application.data.VotingRepository
+import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 
 class AppContainer(context: Context) {
@@ -24,7 +25,13 @@ class AppContainer(context: Context) {
 
     private val api = ApiClient(
         BuildConfig.API_BASE_URL,
-        OkHttpClient.Builder().addInterceptor(AuthInterceptor(sessionStore)).build(),
+        OkHttpClient.Builder()
+            .addInterceptor(AuthInterceptor(sessionStore))
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(8, TimeUnit.SECONDS)
+            .writeTimeout(5, TimeUnit.SECONDS)
+            .callTimeout(10, TimeUnit.SECONDS)
+            .build(),
     )
 
     val authRepository = AuthRepository(api, sessionStore)
@@ -33,7 +40,7 @@ class AppContainer(context: Context) {
     // A bounded request for alarm receivers, without changing the stored alarm during validation.
     val reminderMeetupRepository = MeetupRepository(ApiClient(BuildConfig.API_BASE_URL,
         OkHttpClient.Builder().addInterceptor(AuthInterceptor(sessionStore))
-            .callTimeout(8, java.util.concurrent.TimeUnit.SECONDS).build()))
+            .callTimeout(8, TimeUnit.SECONDS).build()))
     val profileRepository = ProfileRepository(api)
     val fairnessRepository = FairnessRepository(api)
     val votingRepository = VotingRepository(api)

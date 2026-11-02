@@ -2,5 +2,12 @@ package com.example.cpen321application.ui.meetup
 
 internal fun formatTripDuration(seconds: Long): String {
     val duration = seconds.coerceAtLeast(0)
-    return "${duration / 3600} h ${(duration % 3600) / 60} min ${duration % 60} sec"
+    val hours = duration / 3600
+    val minutes = (duration % 3600) / 60
+    val secs = duration % 60
+    return when {
+        hours > 0 -> "$hours h $minutes min $secs sec"
+        minutes > 0 -> "$minutes min $secs sec"
+        else -> "$secs sec"
+    }
 }

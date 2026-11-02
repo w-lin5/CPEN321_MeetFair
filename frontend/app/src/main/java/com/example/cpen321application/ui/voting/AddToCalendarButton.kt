@@ -6,20 +6,35 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import com.example.cpen321application.data.CalendarAuthResult
 import com.example.cpen321application.data.CalendarAuthorizer
 import com.example.cpen321application.model.CalendarEventResult
 import com.example.cpen321application.ui.common.FormState
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.theme.Dimens
+import com.example.cpen321application.ui.theme.TealPrimary
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.ApiException
 import kotlinx.coroutines.launch
@@ -57,11 +72,23 @@ fun AddToCalendarButton(
     }
 
     if (alreadyAdded || state.result != null) {
-        Text(
-            "Added to your Google Calendar",
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.testTag(TestTags.CALENDAR_ADDED_TEXT),
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = TealPrimary,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text = "Added to your Google Calendar",
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag(TestTags.CALENDAR_ADDED_TEXT),
+            )
+        }
         return
     }
 
@@ -82,10 +109,38 @@ fun AddToCalendarButton(
                 }
             },
             enabled = !state.submitting,
-            modifier = Modifier.testTag(TestTags.ADD_TO_CALENDAR_BUTTON),
-        ) { Text(if (state.submitting) "Adding..." else "Add to Google Calendar") }
+            shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = TealPrimary,
+                contentColor = Color.White,
+                disabledContainerColor = TealPrimary.copy(alpha = 0.5f),
+                disabledContentColor = Color.White.copy(alpha = 0.7f),
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .testTag(TestTags.ADD_TO_CALENDAR_BUTTON),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DateRange,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = if (state.submitting) "Adding..." else "Add to Google Calendar",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                    color = Color.White,
+                )
+            }
+        }
         state.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag(TestTags.ERROR_TEXT))
         }
     }
 }
+

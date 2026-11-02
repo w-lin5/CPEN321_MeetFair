@@ -1,5 +1,6 @@
 package com.example.cpen321application.data
 
+import android.util.Log
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -55,7 +56,8 @@ class ApiClient(baseUrl: String, private val http: OkHttpClient) {
                 }
             }
         } catch (e: IOException) {
-            ApiResult.Failure(AppError("Network error: ${e.message ?: "unreachable"}"))
+            Log.w("ApiClient", "Network call failed: ${e.message}", e)
+            ApiResult.Failure(AppError("Network error"))
         }
     }
 

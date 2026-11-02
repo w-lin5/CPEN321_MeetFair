@@ -15,6 +15,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
 import com.example.cpen321application.MainActivity
 import com.example.cpen321application.testutil.assertSignedInOnGroupList
 import com.example.cpen321application.testutil.textOf
@@ -28,7 +30,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 // Generated codes use the unambiguous alphabet in backend config.ts (no 0/O, 1/I/L)
-private val INVITE_CODE_TEXT = Regex("Invite code: ([ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6})")
+private val INVITE_CODE_TEXT = Regex("([ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6})")
 
 // Contains "0", which the generator never emits, so no group can ever have this code
 private const val UNUSED_INVITE_CODE = "000000"
@@ -64,7 +66,7 @@ class CreateJoinGroupTest {
         compose.onNodeWithText(name).assertIsDisplayed()
         assertTrue(INVITE_CODE_TEXT.matches(compose.textOf(TestTags.INVITE_CODE_TEXT)))
         compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).assertCountEquals(1)
-        compose.onNodeWithTag(TestTags.MEMBER_ITEM).assertTextContains("(organizer)", substring = true)
+        compose.onNodeWithTag(TestTags.MEMBER_ITEM).assertTextContains("organizer", substring = true, ignoreCase = true)
 
         // The new group is listed on the main screen
         compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
@@ -112,6 +114,32 @@ class CreateJoinGroupTest {
         // 3a1. The app says the user is already in the group
         compose.waitFor(hasTestTag(TestTags.ERROR_TEXT))
         compose.onNodeWithTag(TestTags.ERROR_TEXT).assertTextEquals("Already a member of this group")
+    }
+
+    // Create: failure scenario 3a; Join: failure scenario 3b, network unavailable
+    @Test
+    fun createAndJoinGroup_offlineShowsNetworkError() {
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        try {
+            // Turning airplane mode to cut off network connection
+            device.executeShellCommand("cmd connectivity airplane-mode enable")
+
+            compose.onNodeWithTag(TestTags.CREATE_GROUP_BUTTON).performClick()
+            compose.onNodeWithTag(TestTags.GROUP_NAME_INPUT).performTextInput(uniqueName("E2E Offline Create"))
+            compose.onNodeWithTag(TestTags.CREATE_GROUP_SUBMIT).performClick()
+            compose.waitFor(hasTestTag(TestTags.ERROR_TEXT))
+            compose.onNodeWithTag(TestTags.ERROR_TEXT).assertTextContains("Network error", substring = true)
+
+            compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
+            compose.waitFor(hasTestTag(TestTags.JOIN_GROUP_BUTTON))
+            compose.onNodeWithTag(TestTags.JOIN_GROUP_BUTTON).performClick()
+            compose.onNodeWithTag(TestTags.INVITE_CODE_INPUT).performTextInput(UNUSED_INVITE_CODE)
+            compose.onNodeWithTag(TestTags.JOIN_GROUP_SUBMIT).performClick()
+            compose.waitFor(hasTestTag(TestTags.ERROR_TEXT))
+            compose.onNodeWithTag(TestTags.ERROR_TEXT).assertTextContains("Network error", substring = true)
+        } finally {
+            device.executeShellCommand("cmd connectivity airplane-mode disable")
+        }
     }
 
     // Creates a group through the UI and returns its invite code (the group page stays open)
