@@ -16,7 +16,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function parsePlace(value: unknown): CandidateInput | undefined {
   if (!isRecord(value)) return undefined;
-  const { id, displayName, formattedAddress, location } = value;
+  const { id, displayName, formattedAddress, location, types } = value;
   if (typeof id !== 'string' || !id.trim() || id.length > tuning.placeIdMaxLength
     || !isRecord(displayName) || typeof displayName.text !== 'string'
     || !displayName.text.trim() || displayName.text.length > tuning.placeNameMaxLength
@@ -33,6 +33,7 @@ function parsePlace(value: unknown): CandidateInput | undefined {
     name: displayName.text,
     address: typeof formattedAddress === 'string' ? formattedAddress : '',
     location: { lat: latitude, lng: longitude },
+    types: Array.isArray(types) ? types.filter((type): type is string => typeof type === 'string') : [],
   };
 }
 
@@ -52,7 +53,7 @@ export async function searchNearby(center: LatLng, includedTypes: readonly strin
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': apiKey,
         'X-Goog-FieldMask':
-          'places.id,places.displayName,places.formattedAddress,places.location',
+          'places.id,places.displayName,places.formattedAddress,places.location,places.types',
       },
       body: JSON.stringify({
         includedTypes,

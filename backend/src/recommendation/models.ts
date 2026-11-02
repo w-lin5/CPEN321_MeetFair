@@ -3,11 +3,16 @@ import { type InferSchemaType, Schema, model } from 'mongoose';
 import { TRAVEL_MODES } from '../common/types';
 import { jsonOptions } from '../db';
 
-// Score breakdown from fairness scoring (feature 3); absent while candidates are still supplied by the organizer
+// Score breakdown (minutes of mode-normalized travel, lower is better); see recommendation/scoring.ts
 const scoresSchema = new Schema(
   {
-    efficiency: { type: Number, required: true },
-    fairness: { type: Number, required: true },
+    // Fair Credit-weighted average travel
+    weightedTravel: { type: Number, required: true },
+    // Longest single member's travel
+    maxTravel: { type: Number, required: true },
+    // Mean absolute deviation of members' travel
+    imbalance: { type: Number, required: true },
+    // Fair Credit-weighted preference mismatch penalty
     preference: { type: Number, required: true },
     total: { type: Number, required: true },
   },

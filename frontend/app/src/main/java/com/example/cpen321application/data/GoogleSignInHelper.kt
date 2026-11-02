@@ -12,12 +12,17 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingExcept
 class GoogleSignInHelper(private val serverClientId: String) {
     // Needs an Activity context so Credential Manager can show its sheet
     suspend fun getIdToken(activityContext: Context): Result<String> {
+        if (serverClientId.isBlank()) {
+            return Result.failure(IllegalStateException(
+                "Google sign-in is not configured. Set GOOGLE_CLIENT_ID in frontend/local.properties and rebuild the app."
+            ))
+        }
+
         // Configure Google sign in to request an ID token for backend auth
-        val request = GetCredentialRequest.Builder()
-            .addCredentialOption(GetSignInWithGoogleOption.Builder(serverClientId).build())
-            .build()
-        
         return try {
+            val request = GetCredentialRequest.Builder()
+                .addCredentialOption(GetSignInWithGoogleOption.Builder(serverClientId).build())
+                .build()
             val credential = CredentialManager.create(activityContext)
                 .getCredential(activityContext, request).credential
             
@@ -32,6 +37,8 @@ class GoogleSignInHelper(private val serverClientId: String) {
         } catch (e: GetCredentialException) {
             Result.failure(e)
         } catch (e: GoogleIdTokenParsingException) {
+            Result.failure(e)
+        } catch (e: IllegalArgumentException) {
             Result.failure(e)
         }
     }

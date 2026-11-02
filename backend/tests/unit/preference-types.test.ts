@@ -1,5 +1,5 @@
 import type { Preference } from '../../src/common/types';
-import { placeTypesForPreferences } from '../../src/recommendation/preference-types';
+import { placeTypesForPreferences, preferenceMismatch } from '../../src/recommendation/preference-types';
 
 // Interface placeTypesForPreferences (pure)
 describe('organizer preference categories', () => {
@@ -30,5 +30,21 @@ describe('organizer preference categories', () => {
   test('ignores removed STUDY in old saved preferences', () => {
     expect(placeTypesForPreferences(['STUDY', 'FOOD'])).toEqual(['restaurant']);
     expect(placeTypesForPreferences(['STUDY'])).toEqual(['cafe']);
+  });
+});
+
+// Interface preferenceMismatch (pure)
+describe('preference mismatch', () => {
+  // Input: preferences and a place's Google types
+  // Expected output: 0 when any preferred category matches or there are no (known) preferences, otherwise 1
+  test.each<[string[], string[], number]>([
+    [['COFFEE', 'FOOD'], ['restaurant', 'food'], 0],
+    [['SOCIAL'], ['bar'], 0],
+    [['OUTDOORS'], ['cafe'], 1],
+    [['COFFEE'], [], 1],
+    [[], ['cafe'], 0],
+    [['STUDY'], ['library'], 0],
+  ])('%j at %j is %i', (preferences, types, expected) => {
+    expect(preferenceMismatch(preferences, types)).toBe(expected);
   });
 });

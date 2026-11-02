@@ -6,6 +6,7 @@
 | ----------------- | --------------------- | ------------- |
 | 2026-10-19 | All Sections | Initial submission for CP1 |
 | 2026-10-28 | 3.1, 3.3, 3.4, 3.6, 3.7, 4.1, 4.3, 4.4, 4.7 | Document map and time pickers, membership management, deletion, refresh and in-app notifications. |
+| 2026-11-01 | 3.1, 3.4, 3.5 (UC3, UC5), 4.1, 4.5, 4.6, 4.7 | Match the implementation of features 3 and 5. Recommendations now come from Google Places and Routes through `from-places` and `places/search`, replacing manual candidate entry. Trips are a separate Live Location component that receives locations over REST and notifies members with `trip:updated`. Fair Credit settlement and automatic arrival remain planned. |
 ---
 
 ## 2. Project Description
@@ -19,9 +20,9 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 ### **3.1. List of Features**
 1. **Sign in with Google**: Users sign in with their Google account. The back end verifies the Google ID token and issues a MeetFair session that lasts 7 days or until the user signs out.
 2. **Groups and meetups**: Any user can create a group and invite others with its 6-character invite code. Any member can create a meetup with a title and a future time selected using a calendar followed by hour and minute wheels. Joining a group does not automatically join its meetups: a member participates by submitting their starting location, travel mode (walk, transit or drive) and preferences. Starting locations are selected on a map rather than entered as coordinates. Members can leave eligible meetups or groups; organizers can remove eligible members and delete the groups or meetups they manage, with confirmation before deletion.
-3. **Fair spot recommendation**: The back end collects candidate places (Google Places API), gets each member's travel time to each candidate (Google Routes API), then scores every candidate with our own fairness and preference algorithm and returns the top 3 (if there are 3). *Status at CP1: until the Google Maps integration is complete, the organizer enters the three candidate places by hand to open voting.*
+3. **Fair spot recommendation**: The back end collects candidate places (Google Places API), gets each member's travel time to each candidate (Google Routes API), then scores every candidate with our own fairness and preference algorithm and returns the top 3. Voting does not start if fewer than 3 usable places are found.
 4. **Weighted voting**: Members vote on the top 3 and lock their vote. A locked vote is weighted by the member's Fair Credit in the group (how much more than the group average they travelled in past meetups): 1 + 0.1 per hour of credit, between 1 and 1.5. Votes appear live; the organizer finalizes the vote, and each member can add the meetup at the winning place to their own Google Calendar.
-5. **Live commute tracking**: On meetup day, members tap "I'm leaving" and share live location; the group sees who is on the way. The commute ends when they tap "I'm here," or automatically when their location reaches the venue. The actual commute time updates their Fair Credit for the next meetup. If someone never starts tracking, we fall back to the Google Maps estimate. *Status at CP1: planned.*
+5. **Live commute tracking**: From the scheduled meetup time, participants tap "I am leaving" and share live location; the group sees who is on the way. The commute ends when they tap "I arrived", which records their actual commute time. *Status at CP2: tracking and sharing are implemented. Planned: ending the commute automatically when a location reaches the venue, updating Fair Credit from the actual commute time, and falling back to the Google Maps estimate for members who never start tracking.*
 6. **Refresh and in-app notifications**: Data pages support pull-to-refresh. Participation changes update connected meetup pages automatically. Voting status changes and deletions produce temporary bottom Snackbars on the relevant subscribed pages.
 ### **3.2. Use Case Diagram**
 ![Use Case Diagram](images/Use_Case_Diagram.png)
@@ -57,7 +58,7 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 4. **Add Meetup to Google Calendar**: A member adds the finalized meetup at the winning location to their own Google Calendar.
 5. **View Fairness History**: A member checks their profile and, for a specific group, every member's Fair Credit and their own past credit changes.
 - Use cases for feature 5: Live Location
-1. **Share Live Location**: A member opts in on the day of the event to broadcast their real-time device location to the group via WebSockets and to keep track of their actual commute time.
+1. **Share Live Location**: A member opts in on the day of the event to share their real-time device location with the group and to keep track of their actual commute time. Locations are sent over the REST API, and connected members are told over WebSockets to reload them.
 2. **View Members' Location**: A member opens the live map to check the current transit progress of other group members heading to the finalized spot.
 
 ### **3.5. Formal Use Case Specifications (5 Most Major Use Cases)**
@@ -148,40 +149,52 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
 **Primary actor(s)**: Organizer, Google Maps Platform
     
-**Main success scenario (Planned)**:
+**Main success scenario**:
 
 1. The organizer opens a meetup in SETUP and selects "Start voting".
 2. The system loads participants' starting locations, travel modes, preferences, and group-specific Fair Credit.
 3. The system searches for suitable candidate places using Google Places.
 4. The system obtains estimated travel times for the participants and candidates using Google Routes.
 5. The system evaluates feasible candidates using the fairness and preference scoring rules.
-6. The system selects up to three highest-ranked candidates.
+6. The system selects the three highest-ranked candidates.
 7. The system stores the recommendations, moves the meetup to VOTING and publishes the change to the meetup's live updates; the organizer's app opens the voting screen with the candidates.
 
 **Failure scenario(s)**:
 - 1a. The user is not the meetup's organizer.
-    - 1a1. The app does not offer "Start voting", and the system rejects such a request with "Only the meetup organizer can generate recommendations".
+    - 1a1. The app does not offer "Start voting", and the system rejects such a request with "Only the meetup organizer can search for places".
 
 - 1b. The meetup is no longer in SETUP.
-    - 1b1. The system rejects the request with "Recommendations can only be generated while the meetup is in SETUP" to prevent replacing candidates after voting has started.
+    - 1b1. The system rejects the request with "Places can only be searched while the meetup is in SETUP" to prevent replacing candidates after voting has started.
     - 1b2. The organizer may reload the meetup to view its current state.
 
-- 2a. No participant has submitted valid participation details.
-    - 2a1. The system does not generate recommendations.
-    - 2a2. The organizer is prompted to ask members to submit their details.
+- 2a. No participant has submitted participation details.
+    - 2a1. The system displays "At least one member must submit their starting location before searching for places." and does not generate recommendations.
+    - 2a2. The organizer may ask members to submit their details and select "Retry".
 
-- 3a. The place search returns no suitable candidates.
-    - 3a1. The system explains that no suitable locations were found.
+- 2b. The organizer has not submitted their own details.
+    - 2b1. The system displays "The organizer must submit their starting location and preferences before searching for places." and does not generate recommendations.
+
+- 2c. A participant's starting location is invalid.
+    - 2c1. The system displays "A member has an invalid starting location. Please submit it again." and does not generate recommendations.
+
+- 3a. The place search returns fewer than three places.
+    - 3a1. The system displays "Not enough nearby places found. At least 3 are needed to start voting."
     - 3a2. The meetup remains in SETUP so participants can revise their inputs.
 
-- 4a. The external service fails or returns insufficient usable travel-time data.
-    - 4a1. The system reports that recommendations could not be generated.
+- 3b. Google Places fails.
+    - 3b1. The system displays "Unable to retrieve nearby places. Please try again later."
+    - 3b2. The meetup remains in SETUP, and the organizer may retry.
+
+- 4a. Google Routes fails.
+    - 4a1. The system displays "Unable to estimate travel times. Please try again later."
     - 4a2. The meetup remains in SETUP, and the organizer may retry.
+
+- 5a. Fewer than three places have usable travel times.
+    - 5a1. The system displays "Not enough nearby places found. At least 3 are needed to start voting."
+    - 5a2. The meetup remains in SETUP, and the organizer may retry.
 
 - 7a. Storing the recommendations fails.
     - 7a1. The system reports an error and returns the meetup from VOTING to SETUP so the organizer can retry.
-
-*Status at CP1: steps 2–6 and failures 2a, 3a and 4a are planned. Until the Google Maps integration is complete, after step 1 the organizer enters the three candidate places (name, optional address, latitude and longitude) and selects "Start voting"; if an entry is incomplete or invalid, the app shows the validation error and the organizer corrects it. Step 7 and failures 1a, 1b and 7a are implemented.*
 
 
 <a name="uc4"></a>
@@ -230,29 +243,34 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
 **Primary actor(s)**: Member
     
-**Main success scenario (Planned)**:
-1. The participant opens the finalized meetup on the meetup day.
-2. The participant selects "I'm leaving."
+**Main success scenario**:
+1. The participant opens the finalized meetup at or after its scheduled time.
+2. The participant selects "I am leaving" and confirms "Share and start trip" in the dialog explaining who can see their location.
 3. The system requests location permission if it has not already been granted.
 4. The participant grants permission.
 5. The system records the commute start time and begins receiving location updates.
-6. The system verifies the participant's access and shares location updates with authorized group members viewing the meetup.
-7. Other group members view the participant's latest location and travel status.
-8. The participant selects "I'm here," and  the system records the arrival time, calculates commute duration, and stops location sharing.
-9. During settlement, the system compares each participant's travel burden with the group average and updates Fair Credit.
+6. The system verifies the participant's access for each update and notifies members viewing the meetup that trips have changed.
+7. Other group members view the participant's latest location and travel status on the live map; locations older than 90 seconds are hidden.
+8. The participant selects "I arrived" and confirms; the system records the arrival time, calculates commute duration, and stops location sharing.
+9. *(Planned)* During settlement, the system compares each participant's travel burden with the group average and updates Fair Credit.
 
 **Failure scenario(s)**:
+- 1a. The meetup's scheduled time has not arrived.
+    - 1a1. The app does not offer "I am leaving", and the system rejects such a request with "You can start your trip when the meetup time arrives".
+
 - 4a. The participant denies location permission.
-    - 4a1. The system explains that live tracking requires permission.
+    - 4a1. The system displays "Location permission is required to share your trip. No trip was started."
     - 4a2. The participant may grant permission later.
 
-- 6a. The network or realtime connection is lost.
-    - 6a1. The system indicates that live updates are unavailable.
-    - 6a2. The system attempts to reconnect and resumes sharing while the trip is still active.
+- 6a. The realtime connection is lost.
+    - 6a1. The system displays "Live connection unavailable. Refreshing periodically."
 
-- 9a. Settlement is requested more than once.
+- 6b. A location update fails.
+    - 6b1. The system displays "Location update failed. Retrying..." and tries again while the trip is still active.
+
+- 9a. *(Planned)* Settlement is requested more than once.
     - 9a1. The system prevents duplicate Fair Credit changes for the same participant and meetup.
-    
+
 ### **3.6. Screen Mock-ups**
 No separate mock-ups are included. The UI uses Material Design 3 forms, lists, confirmation dialogs and temporary bottom Snackbars, together with an interactive map picker and a calendar followed by hour and minute wheels. These interactions are described in Section 3.4.
 
@@ -336,14 +354,16 @@ No separate mock-ups are included. The UI uses Material Design 3 forms, lists, c
 2. **Recommendation Engine**
     - **Purpose**: Owns the `recommendations` collection. It builds the meetup's candidate places from Google Places and Google Routes, scores them with our fairness algorithm, stores the top 3 and opens voting. All slow and failure-prone Google Maps calls are kept in this one component, and the scoring itself is pure functions (search area, preference mapping, scoring) that can be tested without Google.
     - **Interfaces**:
-        1. `POST /api/meetups/:meetupId/recommendations` -> `201 Recommendation`
-            - **Purpose**: Organizer only; generates and stores the top 3 candidates and moves the meetup from SETUP to VOTING. *At CP1 the request body carries the organizer's three places: `{ candidates: [ { placeId, name, address, location: { lat, lng } } ×3 ] }`.*
-        2. `GET /api/meetups/:meetupId/recommendations` -> `200 Recommendation`
+        1. `POST /api/meetups/:meetupId/recommendations/from-places` -> `201 Recommendation`
+            - **Purpose**: Organizer only; finds places with Google Places, gets travel times with Google Routes, stores the top 3 candidates and moves the meetup from SETUP to VOTING.
+        2. `POST /api/meetups/:meetupId/places/search` -> `200 { candidates: List<Place>, message: String | null }`
+            - **Purpose**: Organizer only; previews nearby places without storing them or changing the meetup's status.
+        3. `GET /api/meetups/:meetupId/recommendations` -> `200 Recommendation`
             - **Purpose**: Returns the meetup's candidates with their score breakdown (members only).
-        3. `Recommendation getByMeetupId(String meetupId)`
+        4. `Recommendation getByMeetupId(String meetupId)`
             - **Purpose**: Gives Voting & Fairness the candidates a vote must refer to and the data of the winning place.
 3. **Voting & Fairness**
-    - **Purpose**: Owns the `votes`, `fairCredits`, `fairCreditEntries` and `trips` collections: casting, changing and locking votes, the weighted tally, finalizing, adding the meetup to Google Calendar, commute trips, and Fair Credit (balances plus a ledger explaining every change). Vote weights come from Fair Credit and settlement changes Fair Credit, so keeping both in one component keeps all fairness rules in one place. The rules themselves (vote weight, tally, credit change, arrival) are pure functions.
+    - **Purpose**: Owns the `votes`, `fairCredits` and `fairCreditEntries` collections: casting, changing and locking votes, the weighted tally, finalizing, adding the meetup to Google Calendar, and Fair Credit (balances plus a ledger explaining every change). Vote weights come from Fair Credit and settlement changes Fair Credit, so keeping both in one component keeps all fairness rules in one place. The rules themselves (vote weight, tally, credit change) are pure functions.
     - **Interfaces**:
         1. `PUT /api/meetups/:meetupId/vote` — body `{ placeId: String }` -> `200 Vote`
             - **Purpose**: Creates or changes the caller's vote while it is unlocked and the meetup is in VOTING.
@@ -359,23 +379,19 @@ No separate mock-ups are included. The UI uses Material Design 3 forms, lists, c
             - **Purpose**: The profile with the caller's Fair Credit in each group; updating changes the display name.
         7. `GET /api/groups/:groupId/fairness` -> `200 { groupId, members: [ { userId, name, balance } ], ledger: List<FairCreditEntry> }`
             - **Purpose**: Every member's Fair Credit in the group and the group's ledger, newest first.
-        8. *(planned)* `POST /api/meetups/:meetupId/trip/start`, `POST /api/meetups/:meetupId/trip/arrive`, `GET /api/meetups/:meetupId/trips`, `POST /api/meetups/:meetupId/settle`
-            - **Purpose**: Start and end the caller's trip, list the meetup's trips, and let the organizer settle the meetup.
-        9. `double getVoteWeight(String userId, String groupId)` / `double getBalance(String userId, String groupId)`
-            - **Purpose**: A member's Fair Credit in a group and the resulting vote weight; the Recommendation Engine uses the balance for fairness scoring.
-        10. `List<FairCreditEntry> settleMeetup(String groupId, String meetupId, List<Trip> trips)`
-            - **Purpose**: Turns each member's actual trip time into a credit change against the group average; a meetup can be settled only once.
-        11. *(planned)* `Trip recordLocation(String meetupId, String userId, LatLng position)`
-            - **Purpose**: Called by the Realtime Gateway for each live location; detects arrival within the arrival radius.
+        8. `double getVoteWeight(String userId, String groupId)` / `double getBalance(String userId, String groupId)` / `Map<String, double> getBalances(String groupId, List<String> userIds)`
+            - **Purpose**: Members' Fair Credit in a group and the resulting vote weight; the Recommendation Engine uses the balances for fairness scoring.
+        9. *(planned)* `List<FairCreditEntry> settleMeetup(String groupId, String meetupId, List<Trip> trips)`
+            - **Purpose**: Turns each member's actual trip time into a credit change against the group average; a meetup can be settled only once. The function is implemented and tested, but nothing calls it yet, so meetups do not reach SETTLED.
 4. **Realtime Gateway**
     - **Purpose**: The Socket.IO server on the same host and port as the REST API. It authenticates each connection with the MeetFair session token, lets only group members join a meetup's room, and delivers the other components' updates to the members of that room. We chose a persistent socket over polling (slower and more wasteful) and over Firebase push notifications, which change the phone's state rather than the app's and may not be used for major functionality. Components publish through a small publisher interface, so they do not depend on Socket.IO.
     - **Interfaces**:
         1. Client -> server `meetup:join` / `meetup:leave` — `{ meetupId }`, acknowledged with `{ ok: true }` or `{ ok: false, error }`
             - **Purpose**: Start or stop receiving a meetup's live updates (members of its group only).
-        2. *(planned)* Client -> server `location:update` — `{ meetupId, lat, lng, accuracyM, timestamp }`
-            - **Purpose**: A member's live position during an active trip.
-        3. Server -> client `vote:updated` (the tally), `meetup:status` (`{ meetupId, status, winner? }`), `recommendations:ready` (`{ meetupId }`), *(planned)* `location:updated`, `trip:arrived`
+        2. Server -> client `vote:updated` (the tally), `meetup:status` (`{ meetupId, status, winner? }`), `recommendations:ready` (`{ meetupId }`)
             - **Purpose**: Live changes pushed to everyone in the meetup's room.
+        3. Server -> client `trip:updated` — `{ meetupId }`
+            - **Purpose**: Tells the room that trips changed. It carries no coordinates: clients reload them with `GET /api/meetups/:meetupId/trips`, which rechecks membership.
         4. `void publish(String room, String event, Object payload)`
             - **Purpose**: Lets the other components send an update to a meetup's room.
         5. Server -> client `meetup:updated` — `{ meetupId }`
@@ -386,6 +402,19 @@ No separate mock-ups are included. The UI uses Material Design 3 forms, lists, c
             - **Purpose**: Updates group pages through authenticated private user rooms, which the server joins automatically. Group deletion notifies group members; meetup deletion refreshes affected lists but shows a notice only when `notifyParticipant` is true.
         8. `void revokeUser(String userId)` / `void closeRoom(String room)`
             - **Purpose**: Disconnects a departing or removed member's existing sockets, or removes subscriptions to a deleted meetup. Reconnection and later API requests must pass membership checks again.
+5. **Live Location**
+    - **Purpose**: Owns the `trips` collection: each participant's commute timing and latest shared location for a finalized meetup. It stores only the latest coordinate, which is cleared when sharing stops. Locations are sent over REST, so every update and every read goes through the session and membership checks.
+    - **Interfaces**:
+        1. `POST /api/meetups/:meetupId/trip/start` -> `200 Trip`
+            - **Purpose**: Starts the caller's trip, or resumes sharing on an active one; the server sets the start time once. Allowed for participants of a FINALIZED meetup from its scheduled time.
+        2. `PUT /api/meetups/:meetupId/trip/location` — body `{ lat: Number, lng: Number, accuracyM: Number }` -> `200 Trip`
+            - **Purpose**: Saves the caller's latest position while their sharing is active.
+        3. `POST /api/meetups/:meetupId/trip/arrive` -> `200 Trip`
+            - **Purpose**: Ends the caller's trip, computes the duration on the server and clears the location; repeating it changes nothing.
+        4. `POST /api/meetups/:meetupId/trip/stop` -> `204`
+            - **Purpose**: Pauses sharing and clears the location; the commute timer keeps running.
+        5. `GET /api/meetups/:meetupId/trips` -> `200 List<Trip>`
+            - **Purpose**: Lists the meetup's trips for group members, with a location only for members who are actively sharing.
 
 
 ### **4.2. Databases**
@@ -451,7 +480,7 @@ No separate mock-ups are included. The UI uses Material Design 3 forms, lists, c
 ### **4.5. Dependencies Diagram**
 ![Dependencies diagram](images/Dependency_Diagram.png)
 
-Solid arrows are implemented; dashed arrows are planned (features 3 and 5). The Mermaid source is [`res/Dependency_Diagram.mmd`](res/Dependency_Diagram.mmd).
+The Mermaid source is [`res/Dependency_Diagram.mmd`](res/Dependency_Diagram.mmd).
 
 
 ### **4.6. Use Case Sequence Diagram (5 Most Major Use Cases)**
@@ -477,10 +506,10 @@ The Mermaid sources of these diagrams are in [`res/`](res/).
     - **Implementation**: The back end serves HTTPS (and Socket.IO over WSS) on its port when a TLS certificate and private key are installed in `backend/certs/`; for deployment, the app's `API_BASE_URL` is set to the server's `https://` address. The Android app sends the MeetFair session token with protected API requests; the backend verifies the token and checks group or meetup membership before accessing protected resources. Organizer-only operations perform an additional role check. Google Calendar access tokens are used for individual requests and are not stored in the database.
 
 2. [**Location Privacy**](#nfr2)
-    - **Implementation (planned)**: Request Android location permission only when a participant starts sharing their commute. Send location updates through an authenticated Socket.IO connection and restrict each meetup room to authorized group members. Show when sharing is active, stop updates when the trip ends, and avoid retaining a continuous location history beyond the data needed to calculate travel time.
+    - **Implementation**: Request Android location permission only when a participant starts sharing their commute, after a confirmation dialog explains who can see their location. Send location updates over the authenticated REST API, and check group membership for every update and read. Realtime events carry no coordinates. Show when sharing is active with a system notification, stop updates when the trip ends, and store only the latest coordinate plus the data needed to calculate travel time.
 
 3. [**Response Time**](#nfr3)
-    - **Implementation**: Use Socket.IO to push vote totals and meetup status changes to connected members instead of requiring repeated requests. Run network calls outside the Android main thread and show loading or progress states. **Planned**: measure API response times and realtime delivery against the targets in Section 3.7; keep Google Places and Routes requests outside the UI thread and handle their longer response times explicitly.
+    - **Implementation**: Use Socket.IO to push vote totals and meetup status changes to connected members instead of requiring repeated requests. Run network calls outside the Android main thread and show loading or progress states. Google Places and Routes requests run on the back end, and the app shows "Generating places..." while waiting. **Planned**: measure API response times and realtime delivery against the targets in Section 3.7.
 
 4. [**Usability and Accessibility**](#nfr4)
     - **Implementation**: Show the selected candidate, locked-vote state, current vote totals, meetup status, and winner in text. Display loading and error messages near the relevant action, and ask for confirmation before the organizer finalizes while some participants have not locked their votes. **Planned**: check the main screens with Android font scaling, screen readers, and different screen sizes.

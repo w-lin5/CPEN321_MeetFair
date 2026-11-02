@@ -1,4 +1,4 @@
-﻿%% Dependency diagram (Requirements_and_Design.md section 4.5). Solid = implemented. Dashed = planned (for next chekcpoint).
+﻿%% Dependency diagram (Requirements_and_Design.md section 4.5).
 flowchart LR
     FE["Front-end<br/>(Android app)"]
     subgraph BE["Back-end (Node.js: Express + Socket.IO)"]
@@ -6,6 +6,7 @@ flowchart LR
         REC["Recommendation Engine"]
         VF["Voting & Fairness"]
         RT["Realtime Gateway"]
+        LL["Live Location"]
     end
     DB[("MongoDB")]
     GSI["Google Sign-In /<br/>Identity Services"]
@@ -15,18 +16,21 @@ flowchart LR
     FE -->|REST| UG
     FE -->|REST| REC
     FE -->|REST| VF
+    FE -->|REST| LL
     FE <-->|"Socket.IO events"| RT
     FE -->|"ID token,<br/>Calendar access token"| GSI
     UG -->|"verify ID token"| GSI
     REC -->|"getForMember,<br/>transitionStatus"| UG
-    REC <-->|"getBalance /<br/>getByMeetupId"| VF
+    REC <-->|"getBalances /<br/>getByMeetupId"| VF
     REC -->|publish| RT
-    REC -.->|"planned: searchNearby,<br/>computeRouteMatrix"| MAPS
+    REC -->|"searchNearby,<br/>computeRouteMatrix"| MAPS
     VF -->|"getForMember, finalize,<br/>recordCalendarEvent"| UG
     VF -->|publish| RT
     VF -->|"events.insert"| CAL
     RT -->|getForMember| UG
-    RT -.->|"planned: recordLocation"| VF
+    LL -->|"getForMember, requireMembership,<br/>findByIds"| UG
+    LL -->|publish| RT
     UG --> DB
     REC --> DB
     VF --> DB
+    LL --> DB

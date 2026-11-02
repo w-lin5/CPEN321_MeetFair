@@ -3,17 +3,23 @@ import request, { type Test } from 'supertest';
 import { createApp } from '../../src/app';
 import { Forbidden, NotFound, UpstreamError } from '../../src/common/errors';
 import { searchNearby } from '../../src/integrations/places.client';
+import { travelSeconds } from '../../src/integrations/routes.client';
 import { meetupService } from '../../src/users-groups/meetup.service';
 import { bearer } from '../helpers/auth';
 import { recommendationService } from '../../src/recommendation/recommendation.service';
+import { fairCreditService } from '../../src/voting-fairness/fair-credit.service';
 
 jest.mock('../../src/integrations/places.client');
+jest.mock('../../src/integrations/routes.client');
+jest.mock('../../src/voting-fairness/fair-credit.service');
 jest.mock('../../src/users-groups/meetup.service');
 jest.mock('../../src/recommendation/recommendation.service');
 
 const organizerId = '507f1f77bcf86cd799439011';
 const meetupId = '507f1f77bcf86cd799439012';
 const searchMock = jest.mocked(searchNearby);
+const travelMock = jest.mocked(travelSeconds);
+const balancesMock = jest.mocked(fairCreditService.getBalances);
 const memberMock = jest.mocked(meetupService.getForMember);
 
 beforeEach(() => {
@@ -60,15 +66,15 @@ describe('Mocked: POST /api/meetups/:meetupId/places/search', () => {
   // Mocked behavior: getForMember returns a member (COFFEE, 40/-74) and the organizer (OUTDOORS + FOOD, 42/-72)
   // Input: organizer searches
   // Expected status code: 200
-  // Expected behavior: Google is called with center (41, -73) and only the organizer's types ["park", "restaurant"]
+  // Expected behavior: Google is called with center (41, -73) and every participant's types ["cafe", "park", "restaurant"]
   // Expected output: None
-  test('uses only organizer preferences while keeping every submitted location in the center', async () => {
+  test('searches every participant\'s preferences around every submitted location', async () => {
     memberMock.mockResolvedValue({ organizerId, status: 'SETUP', participants: [
       { userId: 'other', preferences: ['COFFEE'], startLocation: { lat: 40, lng: -74 } },
       { userId: organizerId, preferences: ['OUTDOORS', 'FOOD'], startLocation: { lat: 42, lng: -72 } },
     ] } as unknown as Awaited<ReturnType<typeof meetupService.getForMember>>);
     expect((await search()).status).toBe(200);
-    expect(searchMock).toHaveBeenCalledWith({ lat: 41, lng: -73 }, ['park', 'restaurant']);
+    expect(searchMock).toHaveBeenCalledWith({ lat: 41, lng: -73 }, ['cafe', 'park', 'restaurant']);
   });
 
   // Mocked behavior: getForMember returns a meetup where only a non-organizer member submitted details
@@ -188,24 +194,85 @@ describe('Mocked: POST /api/meetups/:meetupId/recommendations/from-places', () =
     expect(meetupService.transitionStatus).not.toHaveBeenCalled();
   });
 
-  // Mocked behavior: searchNearby returns 4 places; recommendationService.generate returns the first 3
+  // Mocked behavior: searchNearby returns places a-d; both participants (organizer WALK, other DRIVE, no Fair Credit)
+  //   reach a, b, c, d in 40/10/20/30 minutes; recommendationService.generate echoes its candidates
   // Input: organizer generates recommendations
   // Expected status code: 201
-  // Expected behavior: generate is called with the meetup, the organizer and the first 3 places
-  // Expected output: recommendation whose candidates are the first 3 places
-  test('generates voting candidates from the first three Google places', async () => {
+  // Expected behavior: travel times are requested per participant (location and mode) to every place, Fair Credit
+  //   is read for the meetup's group, and generate receives the 3 lowest-scoring places
+  // Expected output: candidates b, c, d, best first, each with its score breakdown and per-member travel
+  test('ranks Google places by score and generates the best three', async () => {
+    const groupId = '507f1f77bcf86cd799439014';
+    memberMock.mockResolvedValue({ organizerId, groupId, status: 'SETUP', participants: [
+      { userId: organizerId, travelMode: 'WALK', preferences: [], startLocation: { lat: 49.2, lng: -123.1 } },
+      { userId: 'other', travelMode: 'DRIVE', preferences: [], startLocation: { lat: 49.4, lng: -123.3 } },
+    ] } as unknown as Awaited<ReturnType<typeof meetupService.getForMember>>);
     const candidates = ['a', 'b', 'c', 'd'].map(placeId => ({
-      placeId, name: placeId, address: 'UBC', location: { lat: 49.26, lng: -123.25 },
+      placeId, name: placeId, address: 'UBC', location: { lat: 49.26, lng: -123.25 }, types: ['cafe'],
     }));
     searchMock.mockResolvedValue(candidates);
+    const row = [40, 10, 20, 30].map(minutes => minutes * 60);
+    travelMock.mockResolvedValue([row, row]);
+    balancesMock.mockResolvedValue(new Map([[organizerId, 0], ['other', 0]]));
     const generateMock = jest.mocked(recommendationService.generate);
-    generateMock.mockResolvedValue({ meetupId, candidates: candidates.slice(0, 3) } as unknown as Awaited<ReturnType<typeof recommendationService.generate>>);
+    generateMock.mockImplementation(async (id, _user, ranked) =>
+      ({ meetupId: id, candidates: ranked }) as unknown as Awaited<ReturnType<typeof recommendationService.generate>>);
+
     const res = await request(createApp())
       .post(`/api/meetups/${meetupId}/recommendations/from-places`)
       .set('Authorization', bearer(organizerId));
+
     expect(res.status).toBe(201);
-    expect(res.body.candidates).toEqual(candidates.slice(0, 3));
-    expect(generateMock).toHaveBeenCalledWith(meetupId, organizerId, candidates.slice(0, 3));
+    expect(res.body.candidates.map((c: { placeId: string }) => c.placeId)).toEqual(['b', 'c', 'd']);
+    expect(res.body.candidates[0].scores).toEqual({ weightedTravel: 10, maxTravel: 10, imbalance: 0, preference: 0, total: 15 });
+    expect(res.body.candidates[0].travel).toEqual([
+      { userId: organizerId, mode: 'WALK', seconds: 600, normalizedSeconds: 600 },
+      { userId: 'other', mode: 'DRIVE', seconds: 600, normalizedSeconds: 600 },
+    ]);
+    expect(travelMock).toHaveBeenCalledWith(
+      [expect.objectContaining({ location: { lat: 49.2, lng: -123.1 }, mode: 'WALK' }),
+        expect.objectContaining({ location: { lat: 49.4, lng: -123.3 }, mode: 'DRIVE' })],
+      candidates.map(c => c.location),
+    );
+    expect(balancesMock).toHaveBeenCalledWith(groupId, [organizerId, 'other']);
+    expect(generateMock).toHaveBeenCalledWith(meetupId, organizerId, expect.any(Array));
+  });
+
+  // Mocked behavior: searchNearby returns 4 places but Google finds a route to only 2 of them
+  // Input: organizer generates recommendations
+  // Expected status code: 400
+  // Expected behavior: generate is not called
+  // Expected output: error mentioning "At least 3"
+  test('does not start voting when fewer than three places are reachable', async () => {
+    searchMock.mockResolvedValue(['a', 'b', 'c', 'd'].map(placeId => ({
+      placeId, name: placeId, address: '', location: { lat: 49.26, lng: -123.25 },
+    })));
+    travelMock.mockResolvedValue([[600, null, 600, null], [600, 600, null, null]]);
+    balancesMock.mockResolvedValue(new Map());
+    const res = await request(createApp())
+      .post(`/api/meetups/${meetupId}/recommendations/from-places`)
+      .set('Authorization', bearer(organizerId));
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('At least 3');
+    expect(recommendationService.generate).not.toHaveBeenCalled();
+  });
+
+  // Mocked behavior: searchNearby returns 3 places; travelSeconds rejects with UpstreamError
+  // Input: organizer generates recommendations
+  // Expected status code: 502
+  // Expected behavior: generate is not called, so the meetup stays in SETUP
+  // Expected output: None
+  test('does not generate when travel times are unavailable', async () => {
+    searchMock.mockResolvedValue(['a', 'b', 'c'].map(placeId => ({
+      placeId, name: placeId, address: '', location: { lat: 49.26, lng: -123.25 },
+    })));
+    travelMock.mockRejectedValue(new UpstreamError('Unable to estimate travel times. Please try again later.'));
+    balancesMock.mockResolvedValue(new Map());
+    const res = await request(createApp())
+      .post(`/api/meetups/${meetupId}/recommendations/from-places`)
+      .set('Authorization', bearer(organizerId));
+    expect(res.status).toBe(502);
+    expect(recommendationService.generate).not.toHaveBeenCalled();
   });
 
   // Mocked behavior: searchNearby returns 0, 1 or 2 places
