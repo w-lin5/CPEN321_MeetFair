@@ -1,4 +1,4 @@
-﻿%% Use Case 3: Get Recommendations (Requirements_and_Design.md section 4.6). Google Maps steps are planned.
+﻿%% Use Case 3: Get Recommendations (Requirements_and_Design.md section 4.6).
 sequenceDiagram
     actor O as Organizer
     participant FE as Front-end
@@ -10,32 +10,31 @@ sequenceDiagram
     participant DB as MongoDB
 
     O->>FE: tap "Start voting"
-    FE->>REC: POST /api/meetups/:meetupId/recommendations
+    FE->>REC: POST /api/meetups/:meetupId/recommendations/from-places
     REC->>UG: getForMember(meetupId, userId)
     UG-->>REC: Meetup (organizer, participants, status)
-    alt caller is not the organizer
-        REC-->>FE: 403 "Only the meetup organizer can generate recommendations"
+    alt not the organizer, not in SETUP, or details missing
+        REC-->>FE: 403, 409 or 400 with the reason
         FE-->>O: show error
-    else organizer
-        REC->>UG: transitionStatus(meetupId, SETUP, VOTING)
-        alt meetup no longer in SETUP
-            UG-->>REC: false
-            REC-->>FE: 409 "Recommendations can only be generated while the meetup is in SETUP"
-            FE-->>O: show error
-        else claimed
-            UG-->>REC: true
-            REC->>VF: getBalance(userId, groupId) for each participant
-            VF-->>REC: Fair Credit balances
-            REC->>MAPS: Places searchNearby(search area, place types)
-            MAPS-->>REC: candidate places
-            REC->>MAPS: Routes computeRouteMatrix(origins, places), one per travel mode
-            MAPS-->>REC: travel times
-            alt Google Maps fails or no suitable place
-                REC->>UG: transitionStatus(meetupId, VOTING, SETUP)
-                REC-->>FE: error (502 or no places found)
-                FE-->>O: show error, organizer may retry
-            else results
-                REC->>REC: score places, keep the top 3
+    else valid
+        REC->>MAPS: Places searchNearby(center, place types)
+        MAPS-->>REC: candidate places
+        REC->>VF: getBalances(groupId, userIds)
+        VF-->>REC: Fair Credit balances
+        REC->>MAPS: Routes computeRouteMatrix(origins, places), one per travel mode
+        MAPS-->>REC: travel times
+        alt Google Maps fails or fewer than 3 usable places
+            REC-->>FE: 502 or 400 with the reason
+            FE-->>O: show error, meetup stays in SETUP, organizer may retry
+        else at least 3 usable places
+            REC->>REC: score places, keep the top 3
+            REC->>UG: transitionStatus(meetupId, SETUP, VOTING)
+            alt meetup no longer in SETUP
+                UG-->>REC: false
+                REC-->>FE: 409 "Recommendations can only be generated while the meetup is in SETUP"
+                FE-->>O: show error
+            else claimed
+                UG-->>REC: true
                 REC->>DB: store recommendation
                 REC->>RT: publish(meetup room, recommendations:ready and meetup:status VOTING)
                 RT-->>FE: recommendations:ready, meetup:status (members in the room)
