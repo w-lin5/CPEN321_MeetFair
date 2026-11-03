@@ -5,7 +5,7 @@
 | **Change Date** | **Modified Sections** | **Rationale** |
 | --------------- | --------------------- | ------------- |
 | 2026-10-19 | All Sections | Initial submission for CP1 |
-| 2026-11-01 | 2.1.1, 2.1.2, 2.1.3, 4.1, 4.2 | CP2 update. 2.1.1 now lists every Recommendation Engine interface, because the manual `POST /recommendations` route was replaced by `POST /recommendations/from-places` and `POST /places/search`; line references were corrected. 2.1.3 explains how to run the mocked `places/search` tests, which the interface script does not include. 4.1 and 4.2 now specify Create or Join Group, the feature with an implemented end-to-end suite, in place of Sign In. |
+| 2026-11-03 | 2.1.1, 2.1.2, 2.1.3, 4.1, 4.2 | CP2 updates: documented the current Recommendation Engine interfaces and test commands; updated Create or Join Group and Vote on a Candidate front-end test scenarios, including their automated coverage and manual multi-user cases. |
 ---
 
 ## 2. Back-end Test Specification: APIs
@@ -16,6 +16,31 @@
 
 | **Interface**                                    | **Describe Group Location, No Mocks**                     | **Describe Group Location, With Mocks**                 | **Mocked Components**                                                                                                            |
 | ------------------------------------------------ | --------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **GET /health**                                  | [`backend/tests/no-mock/health.test.ts#L6`](../backend/tests/no-mock/health.test.ts#L6)            | N/A *(no external dependencies)*                        | None                                                                                                                             |
+| **POST /api/auth/google**                        | [`backend/tests/no-mock/auth.test.ts#L14`](../backend/tests/no-mock/auth.test.ts#L14)             | [`backend/tests/mock/auth.test.ts#L21`](../backend/tests/mock/auth.test.ts#L21)               | Google OAuth ID Token Client (`idTokenClient`), MongoDB User Collection (`UserModel`)                                           |
+| **GET /api/users/me**                            | [`backend/tests/no-mock/auth.test.ts#L63`](../backend/tests/no-mock/auth.test.ts#L63)             | [`backend/tests/mock/auth.test.ts#L147`](../backend/tests/mock/auth.test.ts#L147)             | MongoDB User Collection (`UserModel`), Session Token Auth Middleware (`requireAuth`)                                             |
+| **POST /api/groups**                             | [`backend/tests/no-mock/groups.test.ts#L14`](../backend/tests/no-mock/groups.test.ts#L14)           | [`backend/tests/mock/groups.test.ts#L27`](../backend/tests/mock/groups.test.ts#L27)             | MongoDB Group & Member Collections (`GroupModel`, `MemberModel`), Unique Invite Code Generation                                  |
+| **GET /api/groups**                              | [`backend/tests/no-mock/groups.test.ts#L72`](../backend/tests/no-mock/groups.test.ts#L72)           | [`backend/tests/mock/groups.test.ts#L79`](../backend/tests/mock/groups.test.ts#L79)             | MongoDB Group & Member Collections (`GroupModel`, `MemberModel`), Session Token Auth Middleware (`requireAuth`)                    |
+| **POST /api/groups/join**                        | [`backend/tests/no-mock/groups.test.ts#L170`](../backend/tests/no-mock/groups.test.ts#L170)          | [`backend/tests/mock/groups.test.ts#L149`](../backend/tests/mock/groups.test.ts#L149)            | MongoDB Group & Member Collections (`GroupModel`, `MemberModel`), Session Token Auth Middleware (`requireAuth`)                    |
+| **GET /api/groups/:groupId**                     | [`backend/tests/no-mock/groups.test.ts#L112`](../backend/tests/no-mock/groups.test.ts#L112)          | [`backend/tests/mock/groups.test.ts#L99`](../backend/tests/mock/groups.test.ts#L99)             | MongoDB Group, Member, and User Collections (`GroupModel`, `MemberModel`, `UserModel`)                                           |
+| **POST /api/groups/:groupId/meetups**            | [`backend/tests/no-mock/meetups.test.ts#L30`](../backend/tests/no-mock/meetups.test.ts#L30)          | [`backend/tests/mock/meetups.test.ts#L31`](../backend/tests/mock/meetups.test.ts#L31)            | MongoDB Meetup & Member Collections (`MeetupModel`, `MemberModel`), Session Token Auth Middleware (`requireAuth`)                 |
+| **GET /api/groups/:groupId/meetups**             | [`backend/tests/no-mock/meetups.test.ts#L138`](../backend/tests/no-mock/meetups.test.ts#L138)         | [`backend/tests/mock/meetups.test.ts#L70`](../backend/tests/mock/meetups.test.ts#L70)            | MongoDB Meetup & Member Collections (`MeetupModel`, `MemberModel`), Session Token Auth Middleware (`requireAuth`)                 |
+| **GET /api/meetups/:meetupId**                   | [`backend/tests/no-mock/meetups.test.ts#L187`](../backend/tests/no-mock/meetups.test.ts#L187)         | [`backend/tests/mock/meetups.test.ts#L90`](../backend/tests/mock/meetups.test.ts#L90)            | MongoDB Meetup, Participation, & Member Collections, Session Token Auth Middleware (`requireAuth`)                               |
+| **PUT /api/meetups/:meetupId/participation**     | [`backend/tests/no-mock/meetups.test.ts#L234`](../backend/tests/no-mock/meetups.test.ts#L234)         | [`backend/tests/mock/meetups.test.ts#L123`](../backend/tests/mock/meetups.test.ts#L123)           | MongoDB Participation & Meetup Collections (`ParticipationModel`, `MeetupModel`)                                                 |
+| **POST /api/meetups/:meetupId/recommendations/from-places** | [`backend/tests/no-mock/recommendations.test.ts#L129`](../backend/tests/no-mock/recommendations.test.ts#L129) | [`backend/tests/mock/recommendations.test.ts#L45`](../backend/tests/mock/recommendations.test.ts#L45), [`#L123`](../backend/tests/mock/recommendations.test.ts#L123); [`backend/tests/unit/place-search.routes.test.ts#L176`](../backend/tests/unit/place-search.routes.test.ts#L176) | Google Places Client (`searchNearby`), Google Routes Client (`travelSeconds`), MongoDB Recommendation Collection (`RecommendationModel.create`); in the `unit` file also Meetup Service (`meetupService.getForMember`), Fair Credit Service (`fairCreditService.getBalances`), Recommendation Service (`recommendationService.generate`) |
+| **POST /api/meetups/:meetupId/places/search** | [`backend/tests/no-mock/recommendations.test.ts#L134`](../backend/tests/no-mock/recommendations.test.ts#L134) | [`backend/tests/unit/place-search.routes.test.ts#L36`](../backend/tests/unit/place-search.routes.test.ts#L36) | Google Places Client (`searchNearby`), Meetup Service (`meetupService.getForMember`) |
+| **GET /api/meetups/:meetupId/recommendations** | [`backend/tests/no-mock/recommendations.test.ts#L153`](../backend/tests/no-mock/recommendations.test.ts#L153) | [`backend/tests/mock/recommendations.test.ts#L78`](../backend/tests/mock/recommendations.test.ts#L78) | MongoDB Recommendation Collection (`RecommendationModel.findOne`) |
+| **recommendationService.getByMeetupId** *(internal; used by Voting & Fairness)* | [`backend/tests/no-mock/recommendations.test.ts#L139`](../backend/tests/no-mock/recommendations.test.ts#L139) | [`backend/tests/mock/recommendations.test.ts#L78`](../backend/tests/mock/recommendations.test.ts#L78) *(through the GET route)* | MongoDB Recommendation Collection (`RecommendationModel.findOne`) |
+| **PUT /api/meetups/:meetupId/vote**              | [`backend/tests/no-mock/voting.test.ts#L73`](../backend/tests/no-mock/voting.test.ts#L73)           | [`backend/tests/mock/voting.test.ts#L37`](../backend/tests/mock/voting.test.ts#L37)             | Voting Service (`votingService.castVote`), MongoDB Vote Collection (`VoteModel`)                                                 |
+| **POST /api/meetups/:meetupId/vote/lock**        | [`backend/tests/no-mock/voting.test.ts#L166`](../backend/tests/no-mock/voting.test.ts#L166)          | [`backend/tests/mock/voting.test.ts#L57`](../backend/tests/mock/voting.test.ts#L57)             | Voting Service (`votingService.lockVote`), Fair Credit Service, MongoDB Vote Collection (`VoteModel`)                            |
+| **GET /api/meetups/:meetupId/votes**             | [`backend/tests/no-mock/voting.test.ts#L206`](../backend/tests/no-mock/voting.test.ts#L206)          | [`backend/tests/mock/voting.test.ts#L76`](../backend/tests/mock/voting.test.ts#L76)             | Voting Service (`votingService.getVotes`), MongoDB Vote, Member, and User Collections                                            |
+| **POST /api/meetups/:meetupId/finalize**         | [`backend/tests/no-mock/voting.test.ts#L271`](../backend/tests/no-mock/voting.test.ts#L271)          | [`backend/tests/mock/voting.test.ts#L111`](../backend/tests/mock/voting.test.ts#L111)            | Voting Service (`votingService.finalize`), Tally Algorithm, Fair Credit Ledger, MongoDB Meetup Collection                         |
+| **POST /api/meetups/:meetupId/calendar-event**   | [`backend/tests/no-mock/calendar.test.ts#L29`](../backend/tests/no-mock/calendar.test.ts#L29)         | [`backend/tests/mock/calendar.test.ts#L46`](../backend/tests/mock/calendar.test.ts#L46)           | Google Calendar API Client (`calendarClient.createEvent`), MongoDB Meetup Collection (`MeetupModel`)                            |
+| **GET /api/users/me/profile**                    | [`backend/tests/no-mock/profile.test.ts#L39`](../backend/tests/no-mock/profile.test.ts#L39)          | [`backend/tests/mock/profile.test.ts#L24`](../backend/tests/mock/profile.test.ts#L24)            | Fair Credit Service (`fairCreditService.getProfile`), MongoDB User, Member, and Fairness Credit Collections                      |
+| **PUT /api/users/me/profile**                    | [`backend/tests/no-mock/profile.test.ts#L89`](../backend/tests/no-mock/profile.test.ts#L89)          | [`backend/tests/mock/profile.test.ts#L64`](../backend/tests/mock/profile.test.ts#L64)            | Fair Credit Service (`fairCreditService.updateProfile`), MongoDB User Collection (`UserModel`)                                   |
+| **GET /api/groups/:groupId/fairness**            | [`backend/tests/no-mock/fairness.test.ts#L39`](../backend/tests/no-mock/fairness.test.ts#L39)         | [`backend/tests/mock/fairness.test.ts#L20`](../backend/tests/mock/fairness.test.ts#L20)           | Fair Credit Service (`fairCreditService.getGroupFairness`), MongoDB Fair Credit Ledger Collection (`FairCreditLedgerModel`)      |
+
+The Recommendation Engine is the component specified in full for CP2. Its `from-places` and `places/search` no-mock tests cover the cases rejected before Google is called (authentication, invalid or unknown meetup, non-organizer, wrong status, missing participation details). Successful generation, Google failures and insufficient results are covered by the tests with mocks, because a successful run depends on paid Google APIs and live results that a test cannot assert on.
 | **GET /health**                                  | [`backend/tests/no-mock/health.test.ts#L6`](../backend/tests/no-mock/health.test.ts#L6)            | N/A *(no external dependencies)*                        | None                                                                                                                             |
 | **POST /api/auth/google**                        | [`backend/tests/no-mock/auth.test.ts#L14`](../backend/tests/no-mock/auth.test.ts#L14)             | [`backend/tests/mock/auth.test.ts#L21`](../backend/tests/mock/auth.test.ts#L21)               | Google OAuth ID Token Client (`idTokenClient`), MongoDB User Collection (`UserModel`)                                           |
 | **GET /api/users/me**                            | [`backend/tests/no-mock/auth.test.ts#L63`](../backend/tests/no-mock/auth.test.ts#L63)             | [`backend/tests/mock/auth.test.ts#L147`](../backend/tests/mock/auth.test.ts#L147)             | MongoDB User Collection (`UserModel`), Session Token Auth Middleware (`requireAuth`)                                             |
@@ -150,6 +175,7 @@ The Recommendation Engine is the component specified in full for CP2. Its `from-
 `frontend/app/src/androidTest/java/com/example/cpen321application/e2e/`
 
 The suite is run with `./scripts/run-frontend-e2e-tests.sh` (macOS/Linux) or `./scripts/run-frontend-e2e-tests.ps1` (Windows), with an emulator running and the back end reachable at `API_BASE_URL`. The script starts the back end and installs the app, then waits: sign in to MeetFair on the emulator, and press Enter once the group list is visible. Tests start signed in on the group list and fail with a setup message otherwise. UI elements are located by the test tags defined in `ui/common/TestTags.kt`. Each test creates its own uniquely named groups, so tests do not depend on each other or on existing data.
+The suite is run with `./scripts/run-frontend-e2e-tests.sh` (macOS/Linux) or `./scripts/run-frontend-e2e-tests.ps1` (Windows), with an emulator running and the back end reachable at `API_BASE_URL`. The script starts the back end and installs the app, then waits: sign in to MeetFair on the emulator, and press Enter once the group list is visible. Tests start signed in on the group list and fail with a setup message otherwise. UI elements are located by the test tags defined in `ui/common/TestTags.kt`. Each test creates its own uniquely named groups, so tests do not depend on each other or on existing data.
 
 ### 4.2. Tests
 
@@ -184,7 +210,59 @@ The suite is run with `./scripts/run-frontend-e2e-tests.sh` (macOS/Linux) or `./
     | Create, failure 2b (name longer than 60 characters) | No end-to-end test yet. | The back-end validation is tested at `POST /api/groups`. |
     | Create, failure 3a and Join, failure 3b (no network) | Requires turning off the emulator's network during a test. | Manual: turn on airplane mode, submit the form, and check that a "Network error" message appears and the form stays open. |
 
+
+- **Use Case: Vote on a Candidate** ([`VotingTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/VotingTest.kt))
+
+  - **Expected Behaviors (automated):**
+
+    | **Scenario Steps** | **Test Case Steps** |
+    | ------------------ | ------------------- |
+    | **Main success scenario: open voting, vote, change vote, and lock vote** (`vote_castChangeAndLockVote`) | |
+    | 1. The member opens a meetup in VOTING and selects "Vote on a spot". | Navigate to a meetup in `VOTING` status.<br>Wait for the button with test tag `open_voting_button` ("Vote on a spot") and click it. |
+    | 2. The app shows the three places, their picks and locked weights, the locked participant count, and the live update indicator. | Wait for `voting_status_text` ("Voting is open").<br>Check that exactly three `candidate_item_<placeId>` cards exist, that three "Picks:" labels and three "Locked weight:" labels are present, and that `voter_count_text` mentions participants who locked their vote.<br>Check that `voting_live_text` says "Live: votes update automatically". |
+    | 3. The member selects "Vote" on one place. | Click the button with test tag `vote_button_<placeId>` for the chosen candidate place. |
+    | 4. The system records the vote; live tally updates are sent to members viewing the screen. | Wait for the vote request to complete.<br>Check that the selected candidate's button says "Your vote" and that `lock_vote_button` ("Submit vote") is enabled and displayed. The update on another member's screen is checked manually. |
+    | 5. The member may select "Change vote" on another place; the system replaces the vote. | Click another candidate's `vote_button_<placeId>` ("Change vote").<br>Wait for its button to say "Your vote" and check that the previous candidate's button says "Change vote". |
+    | 6. The member selects "Submit vote" to lock their vote. | Click `lock_vote_button` ("Submit vote") and wait for the locked state or an error. The test accepts the transient "Locking…" state but does not assert that it is observed. |
+    | 7. The system snapshots the member's Fair Credit as vote weight and locks the vote.<br>8. The app shows "Your vote is locked" with its weight. | Wait for `vote_locked_text` and check the displayed weight is between 1.0 and 1.5.<br>Check that `voter_count_text` starts with "1 of ", all candidate vote buttons are absent, and "Your locked vote" is displayed on the selected candidate. |
+    | **Failure 2a: live updates disconnected** (`vote_disconnectedLiveShowsManualRefresh`) | |
+    | 2a. Live updates disconnect while the voting screen is open. | Use UiAutomator to turn on airplane mode on the emulator. |
+    | 2a1. The screen switches to manual refresh. | Check that `voting_live_text` disappears and `refresh_results_button` is displayed. |
+    | 2a2. An offline vote attempt fails without selecting a candidate. | Tap a candidate's `vote_button_<placeId>` while offline.<br>Check for "Network error" and that its button remains labeled "Vote". |
+    | 2a3. The member can request a results refresh. | Tap `refresh_results_button` and check that the voter count remains displayed. The test does not verify changed tally values after refreshing. |
+    | **Failure 3b: offline voting preserves the previous choice** (`vote_offlineNetworkFailureKeepsPreviousVoteAndCanRetry`) | |
+    | 3b. The member already has a vote when connectivity is lost. | Select a candidate, then use UiAutomator to turn on airplane mode. |
+    | 3b1. A failed change does not replace the saved choice. | Tap "Change vote" for another candidate.<br>Check for "Network error", "Your vote" on the original candidate, and "Change vote" on the attempted candidate. |
+    | 3b2. The member can retry after restoring connectivity. | Turn airplane mode off, wait for Android to report a validated network, and tap "Change vote" again.<br>Check that the replacement candidate is selected and the original candidate now says "Change vote". |
+    | Finalizing voting closes the screen (`vote_finalizeClosesVoting`) | |
+    | The organizer finalizes a meetup with no locked votes. | Click Finalize; if the early-finalization confirmation appears, confirm it. Choose a winner when prompted. |
+    | The voting UI closes and removes voting controls. | Check that the status says "Voting is closed" and that candidate vote buttons and `lock_vote_button` are absent. |
+
+  - **Scenarios not covered by the automated suite:**
+
+    | **Scenario** | **Reason** | **How It Is Checked Instead** |
+    | ------------ | ---------- | ----------------------------- |
+    | Failure 1a: non-participant member viewing voting | The automated setup uses one signed-in account, which creates the group and enters meetup details. A different group member account is needed to view voting without participating. | Manual: use a second group member who has not submitted meetup participation details; open voting and check that no vote or lock controls appear and that the non-participant message is shown. |
+    | Failure 3a: vote arrives after organizer finalizes | Reproducing the stale-screen request requires two users and coordinated timing; finalizing through the same screen immediately hides its vote controls. | Manual two-user check: User B organizes a meetup and starts voting. User A joins the group, enters meetup details, opens voting, and selects a candidate. Coordinate User B finalizing while User A's vote request is still in flight. On User A's device, check that the request error is shown and the screen updates to "Voting is closed" with voting controls hidden. |
+    | Multi-member live tally broadcast (steps 4 & 7) | Testing that another user's screen updates in real time via Socket.IO without manual interaction requires two concurrent active client sessions running on separate emulators. | Manual: Member A and Member B open the voting screen simultaneously; Member A votes and locks; Member B's screen displays the updated picks, locked weight, and voter count automatically. Realtime socket event delivery is tested at `backend/tests/no-mock/realtime.test.ts` and `backend/tests/no-mock/voting.test.ts`. |
+
   - **Test Logs:**
     ```
-    [Paste the output of ./scripts/run-frontend-e2e-tests.sh here]
+    ==> Running frontend E2E tests (com.example.cpen321application.e2e.CreateJoinGroupTest,com.example.cpen321application.e2e.VotingTest) ...
+
+    > Task :app:connectedDebugAndroidTest
+    Starting 9 tests on Pixel_9(AVD) - 16
+
+    Pixel_9(AVD) - 16 Tests 1/9 completed. (0 skipped) (0 failed)
+    Pixel_9(AVD) - 16 Tests 2/9 completed. (0 skipped) (0 failed)
+    Pixel_9(AVD) - 16 Tests 3/9 completed. (0 skipped) (0 failed)
+    Pixel_9(AVD) - 16 Tests 5/9 completed. (0 skipped) (0 failed)
+    Pixel_9(AVD) - 16 Tests 6/9 completed. (0 skipped) (0 failed)
+    Pixel_9(AVD) - 16 Tests 7/9 completed. (0 skipped) (0 failed)
+    Pixel_9(AVD) - 16 Tests 8/9 completed. (0 skipped) (0 failed)
+    Finished 9 tests on Pixel_9(AVD) - 16
+
+    BUILD SUCCESSFUL in 2m 20s
+    71 actionable tasks: 3 executed, 68 up-to-date
+    ==> Frontend E2E tests finished.
     ```

@@ -23,7 +23,9 @@ import com.example.cpen321application.testutil.textOf
 import com.example.cpen321application.testutil.uniqueName
 import com.example.cpen321application.testutil.waitFor
 import com.example.cpen321application.ui.common.TestTags
+import com.example.cpen321application.testutil.cleanupCreatedGroups
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -45,13 +47,22 @@ class CreateJoinGroupTest {
     @get:Rule
     val compose = createAndroidComposeRule<MainActivity>()
 
+    private val createdGroupNames = mutableListOf<String>()
+
     @Before
-    fun startOnGroupList() = compose.assertSignedInOnGroupList()
+    fun startOnGroupList() {
+        createdGroupNames.clear()
+        compose.assertSignedInOnGroupList()
+    }
+
+    @After
+    fun deleteGroupsCreatedByTest() = compose.cleanupCreatedGroups(createdGroupNames)
 
     // Create: main success scenario, steps 1-5
     @Test
     fun createGroup_showsInviteCodeAndListsTheGroup() {
         val name = uniqueName("E2E Create")
+        createdGroupNames += name
 
         // 1. The user selects the option to create a group
         compose.onNodeWithTag(TestTags.CREATE_GROUP_BUTTON).performClick()
@@ -119,13 +130,15 @@ class CreateJoinGroupTest {
     // Create: failure scenario 3a; Join: failure scenario 3b, network unavailable
     @Test
     fun createAndJoinGroup_offlineShowsNetworkError() {
+        val name = uniqueName("E2E Offline Create")
+        createdGroupNames += name
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
         try {
             // Turning airplane mode to cut off network connection
             device.executeShellCommand("cmd connectivity airplane-mode enable")
 
             compose.onNodeWithTag(TestTags.CREATE_GROUP_BUTTON).performClick()
-            compose.onNodeWithTag(TestTags.GROUP_NAME_INPUT).performTextInput(uniqueName("E2E Offline Create"))
+            compose.onNodeWithTag(TestTags.GROUP_NAME_INPUT).performTextInput(name)
             compose.onNodeWithTag(TestTags.CREATE_GROUP_SUBMIT).performClick()
             compose.waitFor(hasTestTag(TestTags.ERROR_TEXT))
             compose.onNodeWithTag(TestTags.ERROR_TEXT).assertTextContains("Network error", substring = true)
@@ -144,6 +157,7 @@ class CreateJoinGroupTest {
 
     // Creates a group through the UI and returns its invite code (the group page stays open)
     private fun createGroupAndReadInviteCode(name: String): String {
+        createdGroupNames += name
         compose.onNodeWithTag(TestTags.CREATE_GROUP_BUTTON).performClick()
         compose.onNodeWithTag(TestTags.GROUP_NAME_INPUT).performTextInput(name)
         compose.onNodeWithTag(TestTags.CREATE_GROUP_SUBMIT).performClick()
