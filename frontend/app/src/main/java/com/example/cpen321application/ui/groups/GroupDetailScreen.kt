@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
@@ -71,6 +72,8 @@ import com.example.cpen321application.data.ApiResult
 import com.example.cpen321application.data.GroupEvent
 import com.example.cpen321application.data.GroupRepository
 import com.example.cpen321application.data.MeetupRepository
+import com.example.cpen321application.data.TripRepository
+import java.time.Instant
 import com.example.cpen321application.model.Group
 import com.example.cpen321application.model.GroupMember
 import com.example.cpen321application.model.GroupRole
@@ -90,9 +93,10 @@ import com.example.cpen321application.ui.meetup.isoToDisplay
 import com.example.cpen321application.ui.screenViewModel
 import com.example.cpen321application.ui.theme.Dimens
 import com.example.cpen321application.ui.theme.RosePrimary
+import com.example.cpen321application.ui.theme.StatusGreen
+import com.example.cpen321application.ui.theme.StatusGreenLight
 import com.example.cpen321application.ui.theme.TealContainer
 import com.example.cpen321application.ui.theme.TealPrimary
-import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -138,22 +142,18 @@ private val CopyIcon: ImageVector
     }.build()
 
 /** A group together with its meetups, loaded as one unit so the screen has a single loading/error state. */
-data class GroupDetailData(val group: Group, val meetups: List<Meetup>)
+data class GroupDetailData(
+    val group: Group,
+    val meetups: List<Meetup>,
+    val hasTrackingStage: Boolean = false,
+)
 data class MemberRemovalState(val pending: Boolean = false, val error: String? = null)
-
-private fun combine(group: ApiResult<Group>, meetups: ApiResult<List<Meetup>>): UiState<GroupDetailData> =
-    when (group) {
-        is ApiResult.Failure -> UiState.Error(group.error.message)
-        is ApiResult.Success -> when (meetups) {
-            is ApiResult.Failure -> UiState.Error(meetups.error.message)
-            is ApiResult.Success -> UiState.Success(GroupDetailData(group.data, meetups.data))
-        }
-    }
 
 /** Loads one group (with members' names) and its meetups. */
 class GroupDetailViewModel(
     private val groups: GroupRepository,
     private val meetups: MeetupRepository,
+    private val trips: TripRepository,
     private val groupId: String,
 ) : ViewModel() {
     private val _state = MutableStateFlow<UiState<GroupDetailData>>(UiState.Loading)
@@ -203,10 +203,20 @@ class GroupDetailViewModel(
             when (val result = groups.removeMember(groupId, memberId)) {
                 is ApiResult.Failure -> _removal.value = MemberRemovalState(error = result.error.message)
                 is ApiResult.Success -> {
-                    _state.value = combine(groups.detail(groupId), meetups.listForGroup(groupId))
+                    load()
                     _removal.value = MemberRemovalState()
                 }
             }
+        }
+    }
+
+    private suspend fun isTrackingStage(meetupList: List<Meetup>): Boolean {
+        return meetupList.any { meetup ->
+            if (meetup.status != MeetupStatus.FINALIZED) return@any false
+            val isMeetingTime = runCatching { !Instant.now().isBefore(Instant.parse(meetup.scheduledAt)) }.getOrDefault(false)
+            if (isMeetingTime) return@any true
+            val tripResult = trips.list(meetup.id)
+            tripResult is ApiResult.Success && tripResult.data.isNotEmpty()
         }
     }
 
@@ -215,20 +225,28 @@ class GroupDetailViewModel(
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             _state.value = UiState.Loading
-            val group = groups.detail(groupId)
-            if (group is ApiResult.Failure && group.error.httpCode == 404) {
+            val groupRes = groups.detail(groupId)
+            if (groupRes is ApiResult.Failure && groupRes.error.httpCode == 404) {
                 deleted = true
                 _missing.value = true
                 _state.value = UiState.Empty
-            } else {
-                _state.value = combine(group, meetups.listForGroup(groupId))
+            } else if (groupRes is ApiResult.Success) {
+                val meetupRes = meetups.listForGroup(groupId)
+                if (meetupRes is ApiResult.Success) {
+                    val tracking = isTrackingStage(meetupRes.data)
+                    _state.value = UiState.Success(GroupDetailData(groupRes.data, meetupRes.data, tracking))
+                } else if (meetupRes is ApiResult.Failure) {
+                    _state.value = UiState.Error(meetupRes.error.message)
+                }
+            } else if (groupRes is ApiResult.Failure) {
+                _state.value = UiState.Error(groupRes.error.message)
             }
         }
     }
 
     companion object {
         fun factory(c: AppContainer, groupId: String) = viewModelFactory {
-            initializer { GroupDetailViewModel(c.groupRepository, c.meetupRepository, groupId) }
+            initializer { GroupDetailViewModel(c.groupRepository, c.meetupRepository, c.tripRepository, groupId) }
         }
     }
 }
@@ -363,6 +381,33 @@ fun GroupDetailScreen(
 }
 
 @Composable
+private fun GroupTrackingBadge() {
+    Surface(
+        shape = CircleShape,
+        color = StatusGreenLight,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = StatusGreen,
+                modifier = Modifier.size(14.dp),
+            )
+            Text(
+                text = "Tracking live",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = StatusGreen,
+            )
+        }
+    }
+}
+
+@Composable
 private fun GroupInfo(
     data: GroupDetailData,
     currentUserId: String?,
@@ -460,20 +505,29 @@ private fun GroupInfo(
                         }
                     }
 
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "GROUP",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            letterSpacing = 1.5.sp,
-                        )
-                        Text(
-                            text = data.group.name,
-                            style = MaterialTheme.typography.headlineLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TealPrimary,
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = "GROUP",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                letterSpacing = 1.5.sp,
+                            )
+                            Text(
+                                text = data.group.name,
+                                style = MaterialTheme.typography.headlineLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = TealPrimary,
+                            )
+                        }
+                        if (data.hasTrackingStage) {
+                            GroupTrackingBadge()
+                        }
                     }
 
                     leaving.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

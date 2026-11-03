@@ -1,15 +1,22 @@
 package com.example.cpen321application.ui.meetup
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
-import com.example.cpen321application.model.PlaceCandidate
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
@@ -32,6 +40,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -45,6 +54,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -57,7 +67,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -67,6 +80,8 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.cpen321application.AppContainer
 import com.example.cpen321application.R
 import com.example.cpen321application.data.ApiResult
+import com.example.cpen321application.data.CalendarAuthResult
+import com.example.cpen321application.data.CalendarAuthorizer
 import com.example.cpen321application.data.GroupRepository
 import com.example.cpen321application.data.MeetupEvent
 import com.example.cpen321application.data.MeetupRepository
@@ -74,8 +89,7 @@ import com.example.cpen321application.data.VotingRepository
 import com.example.cpen321application.model.CalendarEventResult
 import com.example.cpen321application.model.Meetup
 import com.example.cpen321application.model.MeetupStatus
-import com.example.cpen321application.model.MyVote
-import com.example.cpen321application.model.VoteTally
+import com.example.cpen321application.model.PlaceCandidate
 import com.example.cpen321application.model.VotesSnapshot
 import com.example.cpen321application.ui.common.DeleteConfirmation
 import com.example.cpen321application.ui.common.FormState
@@ -90,11 +104,12 @@ import com.example.cpen321application.ui.common.toUiState
 import com.example.cpen321application.ui.screenViewModel
 import com.example.cpen321application.ui.theme.Dimens
 import com.example.cpen321application.ui.theme.RosePrimary
-import com.example.cpen321application.ui.theme.TealContainer
 import com.example.cpen321application.ui.theme.StatusGreen
 import com.example.cpen321application.ui.theme.StatusGreenLight
+import com.example.cpen321application.ui.theme.TealContainer
 import com.example.cpen321application.ui.theme.TealPrimary
-import com.example.cpen321application.ui.voting.AddToCalendarButton
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.ApiException
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -107,174 +122,115 @@ import kotlinx.coroutines.launch
 
 private val LockIcon: ImageVector
     get() = ImageVector.Builder(
-        name = "Lock",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f,
+        name = "Lock", defaultWidth = 24.dp, defaultHeight = 24.dp,
+        viewportWidth = 24f, viewportHeight = 24f,
     ).path(fill = SolidColor(TealPrimary)) {
-        moveTo(18f, 8f)
-        horizontalLineTo(17f)
-        verticalLineTo(6f)
-        curveTo(17f, 3.24f, 14.76f, 1f, 12f, 1f)
-        curveTo(9.24f, 1f, 7f, 3.24f, 7f, 6f)
-        verticalLineTo(8f)
-        horizontalLineTo(6f)
-        curveTo(4.9f, 8f, 4f, 8.9f, 4f, 10f)
-        verticalLineTo(20f)
-        curveTo(4f, 21.1f, 4.9f, 22f, 6f, 22f)
-        horizontalLineTo(18f)
-        curveTo(19.1f, 22f, 20f, 21.1f, 20f, 20f)
-        verticalLineTo(10f)
-        curveTo(20f, 8.9f, 19.1f, 8f, 18f, 8f)
-        close()
-        moveTo(9f, 6f)
-        curveTo(9f, 4.34f, 10.34f, 3f, 12f, 3f)
-        curveTo(13.66f, 3f, 15f, 4.34f, 15f, 6f)
-        verticalLineTo(8f)
-        horizontalLineTo(9f)
-        verticalLineTo(6f)
-        close()
+        moveTo(18f, 8f); horizontalLineTo(17f); verticalLineTo(6f); curveTo(17f, 3.24f, 14.76f, 1f, 12f, 1f)
+        curveTo(9.24f, 1f, 7f, 3.24f, 7f, 6f); verticalLineTo(8f); horizontalLineTo(6f)
+        curveTo(4.9f, 8f, 4f, 8.9f, 4f, 10f); verticalLineTo(20f); curveTo(4f, 21.1f, 4.9f, 22f, 6f, 22f)
+        horizontalLineTo(18f); curveTo(19.1f, 22f, 20f, 21.1f, 20f, 20f); verticalLineTo(10f)
+        curveTo(20f, 8.9f, 19.1f, 8f, 18f, 8f); close()
+        moveTo(9f, 6f); curveTo(9f, 4.34f, 10.34f, 3f, 12f, 3f); curveTo(13.66f, 3f, 15f, 4.34f, 15f, 6f)
+        verticalLineTo(8f); horizontalLineTo(9f); verticalLineTo(6f); close()
     }.build()
 
 private val CalendarIcon: ImageVector
     get() = ImageVector.Builder(
-        name = "Calendar",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f,
+        name = "Calendar", defaultWidth = 24.dp, defaultHeight = 24.dp,
+        viewportWidth = 24f, viewportHeight = 24f,
     ).path(fill = SolidColor(TealPrimary)) {
-        moveTo(19f, 4f)
-        horizontalLineTo(18f)
-        verticalLineTo(2f)
-        horizontalLineTo(16f)
-        verticalLineTo(4f)
-        horizontalLineTo(8f)
-        verticalLineTo(2f)
-        horizontalLineTo(6f)
-        verticalLineTo(4f)
-        horizontalLineTo(5f)
-        curveTo(3.89f, 4f, 3.01f, 4.9f, 3.01f, 6f)
-        lineTo(3f, 20f)
-        curveTo(3f, 21.1f, 3.89f, 22f, 5f, 22f)
-        horizontalLineTo(19f)
-        curveTo(20.1f, 22f, 21f, 21.1f, 21f, 20f)
-        verticalLineTo(6f)
-        curveTo(21f, 4.9f, 20.1f, 4f, 19f, 4f)
-        close()
-        moveTo(19f, 20f)
-        horizontalLineTo(5f)
-        verticalLineTo(10f)
-        horizontalLineTo(19f)
-        verticalLineTo(20f)
-        close()
+        moveTo(19f, 4f); horizontalLineTo(18f); verticalLineTo(2f); horizontalLineTo(16f); verticalLineTo(4f)
+        horizontalLineTo(8f); verticalLineTo(2f); horizontalLineTo(6f); verticalLineTo(4f); horizontalLineTo(5f)
+        curveTo(3.89f, 4f, 3.01f, 4.9f, 3.01f, 6f); lineTo(3f, 20f); curveTo(3f, 21.1f, 3.89f, 22f, 5f, 22f)
+        horizontalLineTo(19f); curveTo(20.1f, 22f, 21f, 21.1f, 21f, 20f); verticalLineTo(6f)
+        curveTo(21f, 4.9f, 20.1f, 4f, 19f, 4f); close()
+        moveTo(19f, 20f); horizontalLineTo(5f); verticalLineTo(10f); horizontalLineTo(19f); verticalLineTo(20f); close()
+    }.build()
+
+private val CalendarAddIcon: ImageVector
+    get() = ImageVector.Builder(
+        name = "CalendarAdd", defaultWidth = 24.dp, defaultHeight = 24.dp,
+        viewportWidth = 24f, viewportHeight = 24f,
+    ).path(fill = SolidColor(TealPrimary)) {
+        moveTo(19f, 4f); horizontalLineTo(18f); verticalLineTo(2f); horizontalLineTo(16f); verticalLineTo(4f)
+        horizontalLineTo(8f); verticalLineTo(2f); horizontalLineTo(6f); verticalLineTo(4f); horizontalLineTo(5f)
+        curveTo(3.89f, 4f, 3.01f, 4.9f, 3.01f, 6f); lineTo(3f, 20f); curveTo(3f, 21.1f, 3.89f, 22f, 5f, 22f)
+        horizontalLineTo(19f); curveTo(20.1f, 22f, 21f, 21.1f, 21f, 20f); verticalLineTo(6f)
+        curveTo(21f, 4.9f, 20.1f, 4f, 19f, 4f); close()
+        moveTo(19f, 20f); horizontalLineTo(5f); verticalLineTo(10f); horizontalLineTo(19f); verticalLineTo(20f); close()
+        moveTo(11f, 12f); horizontalLineTo(13f); verticalLineTo(14f); horizontalLineTo(15f); verticalLineTo(16f)
+        horizontalLineTo(13f); verticalLineTo(18f); horizontalLineTo(11f); verticalLineTo(16f); horizontalLineTo(9f)
+        verticalLineTo(14f); horizontalLineTo(11f); verticalLineTo(12f); close()
     }.build()
 
 private val DirectionsArrowIcon: ImageVector
     get() = ImageVector.Builder(
-        name = "DirectionsArrow",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f,
+        name = "DirectionsArrow", defaultWidth = 24.dp, defaultHeight = 24.dp,
+        viewportWidth = 24f, viewportHeight = 24f,
     ).path(fill = SolidColor(TealPrimary)) {
-        moveTo(21f, 3f)
-        lineTo(3f, 10.53f)
-        verticalLineTo(11.51f)
-        lineTo(9.84f, 14.16f)
-        lineTo(12.49f, 21f)
-        horizontalLineTo(13.47f)
-        lineTo(21f, 3f)
-        close()
+        moveTo(21f, 3f); lineTo(3f, 10.53f); verticalLineTo(11.51f); lineTo(9.84f, 14.16f)
+        lineTo(12.49f, 21f); horizontalLineTo(13.47f); lineTo(21f, 3f); close()
     }.build()
 
 private val BarChartIcon: ImageVector
     get() = ImageVector.Builder(
-        name = "BarChart",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f,
+        name = "BarChart", defaultWidth = 24.dp, defaultHeight = 24.dp,
+        viewportWidth = 24f, viewportHeight = 24f,
     ).path(fill = SolidColor(TealPrimary)) {
-        moveTo(5f, 9.2f)
-        horizontalLineTo(8f)
-        verticalLineTo(19f)
-        horizontalLineTo(5f)
-        verticalLineTo(9.2f)
-        close()
-        moveTo(10.6f, 5f)
-        horizontalLineTo(13.4f)
-        verticalLineTo(19f)
-        horizontalLineTo(10.6f)
-        verticalLineTo(5f)
-        close()
-        moveTo(16.2f, 13f)
-        horizontalLineTo(19f)
-        verticalLineTo(19f)
-        horizontalLineTo(16.2f)
-        verticalLineTo(13f)
-        close()
+        moveTo(5f, 9.2f); horizontalLineTo(8f); verticalLineTo(19f); horizontalLineTo(5f); verticalLineTo(9.2f); close()
+        moveTo(10.6f, 5f); horizontalLineTo(13.4f); verticalLineTo(19f); horizontalLineTo(10.6f); verticalLineTo(5f); close()
+        moveTo(16.2f, 13f); horizontalLineTo(19f); verticalLineTo(19f); horizontalLineTo(16.2f); verticalLineTo(13f); close()
     }.build()
 
 private val TimerIcon: ImageVector
     get() = ImageVector.Builder(
-        name = "Timer",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f,
+        name = "Timer", defaultWidth = 24.dp, defaultHeight = 24.dp,
+        viewportWidth = 24f, viewportHeight = 24f,
     ).path(fill = SolidColor(Color.White)) {
-        moveTo(15f, 1f)
-        horizontalLineTo(9f)
-        verticalLineTo(3f)
-        horizontalLineTo(15f)
-        verticalLineTo(1f)
-        close()
-        moveTo(11f, 14f)
-        horizontalLineTo(13f)
-        verticalLineTo(9f)
-        horizontalLineTo(11f)
-        verticalLineTo(14f)
-        close()
-        moveTo(19.03f, 7.39f)
-        lineTo(20.45f, 5.97f)
-        curveTo(20.02f, 5.46f, 19.55f, 5.01f, 19.04f, 4.6f)
-        lineTo(17.62f, 6.02f)
-        curveTo(16.07f, 4.74f, 14.12f, 4f, 12f, 4f)
-        curveTo(7.03f, 4f, 3f, 8.03f, 3f, 13f)
-        curveTo(3f, 17.97f, 7.02f, 22f, 12f, 22f)
-        curveTo(16.97f, 22f, 21f, 17.97f, 21f, 13f)
-        curveTo(21f, 10.88f, 20.26f, 8.93f, 19.03f, 7.39f)
-        close()
-        moveTo(12f, 20f)
-        curveTo(8.13f, 20f, 5f, 16.87f, 5f, 13f)
-        curveTo(5f, 9.13f, 8.13f, 6f, 12f, 6f)
-        curveTo(15.87f, 6f, 19f, 9.13f, 19f, 13f)
-        curveTo(19f, 16.87f, 15.87f, 20f, 12f, 20f)
-        close()
+        moveTo(15f, 1f); horizontalLineTo(9f); verticalLineTo(3f); horizontalLineTo(15f); verticalLineTo(1f); close()
+        moveTo(11f, 14f); horizontalLineTo(13f); verticalLineTo(9f); horizontalLineTo(11f); verticalLineTo(14f); close()
+        moveTo(19.03f, 7.39f); lineTo(20.45f, 5.97f); curveTo(20.02f, 5.46f, 19.55f, 5.01f, 19.04f, 4.6f)
+        lineTo(17.62f, 6.02f); curveTo(16.07f, 4.74f, 14.12f, 4f, 12f, 4f); curveTo(7.03f, 4f, 3f, 8.03f, 3f, 13f)
+        curveTo(3f, 17.97f, 7.02f, 22f, 12f, 22f); curveTo(16.97f, 22f, 21f, 17.97f, 21f, 13f)
+        curveTo(21f, 10.88f, 20.26f, 8.93f, 19.03f, 7.39f); close()
+        moveTo(12f, 20f); curveTo(8.13f, 20f, 5f, 16.87f, 5f, 13f); curveTo(5f, 9.13f, 8.13f, 6f, 12f, 6f)
+        curveTo(15.87f, 6f, 19f, 9.13f, 19f, 13f); curveTo(19f, 16.87f, 15.87f, 20f, 12f, 20f); close()
     }.build()
 
 private val FlagIcon: ImageVector
     get() = ImageVector.Builder(
-        name = "Flag",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f,
+        name = "Flag", defaultWidth = 24.dp, defaultHeight = 24.dp,
+        viewportWidth = 24f, viewportHeight = 24f,
     ).path(fill = SolidColor(Color.White)) {
-        moveTo(14.4f, 6f)
-        lineTo(14f, 4f)
-        horizontalLineTo(5f)
-        verticalLineTo(21f)
-        horizontalLineTo(7f)
-        verticalLineTo(14f)
-        horizontalLineTo(12.6f)
-        lineTo(13f, 16f)
-        horizontalLineTo(20f)
-        verticalLineTo(6f)
-        horizontalLineTo(14.4f)
-        close()
+        moveTo(14.4f, 6f); lineTo(14f, 4f); horizontalLineTo(5f); verticalLineTo(21f); horizontalLineTo(7f)
+        verticalLineTo(14f); horizontalLineTo(12.6f); lineTo(13f, 16f); horizontalLineTo(20f); verticalLineTo(6f)
+        horizontalLineTo(14.4f); close()
+    }.build()
+
+private val PersonIcon: ImageVector
+    get() = ImageVector.Builder(
+        name = "Person", defaultWidth = 24.dp, defaultHeight = 24.dp,
+        viewportWidth = 24f, viewportHeight = 24f,
+    ).path(fill = SolidColor(Color(0xFF666666))) {
+        moveTo(12f, 12f); curveTo(14.21f, 12f, 16f, 10.21f, 16f, 8f); curveTo(16f, 5.79f, 14.21f, 4f, 12f, 4f)
+        curveTo(9.79f, 4f, 8f, 5.79f, 8f, 8f); curveTo(8f, 10.21f, 9.79f, 12f, 12f, 12f); close()
+        moveTo(12f, 6f); curveTo(13.1f, 6f, 14f, 6.9f, 14f, 8f); curveTo(14f, 9.1f, 13.1f, 10f, 12f, 10f)
+        curveTo(10.9f, 10f, 10f, 9.1f, 10f, 8f); curveTo(10f, 6.9f, 10.9f, 6f, 12f, 6f); close()
+        moveTo(12f, 14f); curveTo(9.33f, 14f, 4f, 15.34f, 4f, 18f); verticalLineTo(20f); horizontalLineTo(20f)
+        verticalLineTo(18f); curveTo(20f, 15.34f, 14.67f, 14f, 12f, 14f); close()
+        moveTo(6f, 18f); curveTo(6.22f, 17.28f, 9.31f, 15.9f, 12f, 15.9f); curveTo(14.7f, 15.9f, 17.79f, 17.28f, 18f, 18f)
+        horizontalLineTo(6f); close()
+    }.build()
+
+private val SwapHorizontalIcon: ImageVector
+    get() = ImageVector.Builder(
+        name = "SwapHorizontal", defaultWidth = 24.dp, defaultHeight = 24.dp,
+        viewportWidth = 24f, viewportHeight = 24f,
+    ).path(fill = SolidColor(Color.White)) {
+        moveTo(6.99f, 11f); lineTo(3f, 15f); lineTo(6.99f, 19f); verticalLineTo(16f); horizontalLineTo(14f)
+        verticalLineTo(14f); horizontalLineTo(6.99f); verticalLineTo(11f); close()
+        moveTo(17.01f, 13f); lineTo(21f, 9f); lineTo(17.01f, 5f); verticalLineTo(8f); horizontalLineTo(10f)
+        verticalLineTo(10f); horizontalLineTo(17.01f); verticalLineTo(13f); close()
     }.build()
 
 private data class FormattedDateParts(val date: String, val time: String)
@@ -310,7 +266,24 @@ class MeetupViewModel(
     val deletion: StateFlow<FormState<Unit>> = _deletion.asStateFlow()
     private val _leaving = MutableStateFlow(FormState<Unit>())
     val leaving: StateFlow<FormState<Unit>> = _leaving.asStateFlow()
+    private val _settlement = MutableStateFlow(FormState<Unit>())
+    val settlement: StateFlow<FormState<Unit>> = _settlement.asStateFlow()
     private var loadJob: Job? = null
+
+    fun settle() {
+        if (_settlement.value.submitting) return
+        _settlement.value = FormState(submitting = true)
+        viewModelScope.launch {
+            when (val result = meetups.settle(meetupId)) {
+                is ApiResult.Success -> {
+                    loadJob?.cancel()
+                    _state.value = UiState.Success(result.data)
+                    _settlement.value = FormState(result = Unit)
+                }
+                is ApiResult.Failure -> _settlement.value = FormState(error = result.error.message)
+            }
+        }
+    }
 
     fun leaveMeetup() {
         if (_leaving.value.submitting || _deletion.value.submitting) return
@@ -390,6 +363,48 @@ class MeetupViewModel(
     }
 }
 
+/** Navigation callbacks for the next steps the meetup screen can offer. */
+private data class MeetupActions(
+    val onEnterDetails: () -> Unit,
+    val onStartVoting: () -> Unit,
+    val onOpenVoting: () -> Unit,
+    val onOpenLiveLocation: () -> Unit,
+)
+
+@Composable
+private fun MeetupEventEffects(
+    container: AppContainer,
+    meetupId: String,
+    vm: MeetupViewModel,
+    deletionSubmitting: Boolean,
+    deletionResult: Unit?,
+    settlementResult: Unit?,
+    onBack: () -> Unit,
+    onTripUpdated: suspend () -> Unit,
+) {
+    val notify = LocalNotify.current
+    var exited by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(container, meetupId) {
+        container.realtimeClient.meetupEvents(meetupId).collect { event ->
+            if (event is MeetupEvent.Joined || event is MeetupEvent.RecommendationsReady) vm.refreshLive()
+            if (event is MeetupEvent.StatusChanged) vm.onStatusChanged(event)
+            if (event is MeetupEvent.TripUpdated || event is MeetupEvent.Joined) onTripUpdated()
+            if (event is MeetupEvent.Deleted && !deletionSubmitting && deletionResult == null && !exited) {
+                exited = true
+                if (event.notifyParticipant) notify("This meetup has been deleted by its organizer.")
+                onBack()
+            }
+        }
+    }
+    LaunchedEffect(deletionResult) {
+        if (deletionResult != null && !exited) { exited = true; notify("Meetup deleted."); onBack() }
+    }
+    LaunchedEffect(settlementResult) {
+        if (settlementResult != null) notify("Fair Credit updated. View balances in the group's Fair Credit page.")
+    }
+}
+
 /** Status hub: shows the meetup and whatever the current status lets the user do next. */
 @Composable
 fun MeetupScreen(
@@ -408,327 +423,393 @@ fun MeetupScreen(
     val calendar by vm.calendar.collectAsState()
     val deletion by vm.deletion.collectAsState()
     val leaving by vm.leaving.collectAsState()
-    var confirmLeave by rememberSaveable { mutableStateOf(false) }
-    val notify = LocalNotify.current
-    var confirmDelete by rememberSaveable { mutableStateOf(false) }
-    var exited by rememberSaveable { mutableStateOf(false) }
+    val settlement by vm.settlement.collectAsState()
     val userId = container.sessionStore.currentUserId()
-    var now by remember { mutableStateOf(java.time.Instant.now()) }
+    var now by remember { mutableStateOf(Instant.now()) }
     var ownTrip by remember { mutableStateOf<com.example.cpen321application.data.MeetupTrip?>(null) }
+
     val refreshTrip: suspend () -> Unit = {
         val result = container.tripRepository.list(meetupId)
         if (result is ApiResult.Success) ownTrip = result.data.find { it.userId == userId }
     }
     LaunchedEffect(meetupId) {
         refreshTrip()
-        while (true) { now = java.time.Instant.now(); kotlinx.coroutines.delay(1000) }
+        while (true) { now = Instant.now(); kotlinx.coroutines.delay(1000) }
     }
-    val actions = MeetupActions(onEnterDetails, onStartVoting, onOpenVoting, onOpenLiveLocation)
-    var showMenu by remember { mutableStateOf(false) }
-
     LaunchedEffect(Unit) { vm.load() }
     BackHandler(onBack = onBack)
 
-    LaunchedEffect(container, meetupId) {
-        container.realtimeClient.meetupEvents(meetupId).collect { event ->
-            if (event is MeetupEvent.Joined || event is MeetupEvent.RecommendationsReady) vm.refreshLive()
-            if (event is MeetupEvent.StatusChanged) vm.onStatusChanged(event)
-            if (event is MeetupEvent.TripUpdated || event is MeetupEvent.Joined) refreshTrip()
-            if (event is MeetupEvent.Deleted && !vm.deletion.value.submitting &&
-                vm.deletion.value.result == null && !exited) {
-                exited = true
-                if (event.notifyParticipant) notify("This meetup has been deleted by its organizer.")
-                onBack()
-            }
-        }
-    }
-    LaunchedEffect(deletion.result) {
-        if (deletion.result != null && !exited) { exited = true; notify("Meetup deleted."); onBack() }
-    }
+    MeetupEventEffects(container, meetupId, vm, deletion.submitting, deletion.result, settlement.result, onBack, refreshTrip)
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .safeDrawingPadding()
-            .padding(Dimens.ScreenPadding),
-    ) {
+    Box(modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(Dimens.ScreenPadding)) {
         UiStateContent(state, onRetry = vm::load, emptyMessage = "") { meetup ->
-            if (confirmLeave) {
-                AlertDialog(
-                    onDismissRequest = { confirmLeave = false },
-                    title = { Text("Leave meetup?") },
-                    text = { Text("Your starting location and preferences for this meetup will be deleted and will no longer affect place searches. You can join again by entering your details before voting starts.") },
-                    confirmButton = { TextButton(onClick = { confirmLeave = false; vm.leaveMeetup() }) { Text("Leave") } },
-                    dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text("Cancel") } },
-                )
-            }
-            if (confirmDelete) {
-                DeleteConfirmation(
-                    title = "Delete meetup?",
-                    description = "Delete ${meetup.title}, its participation details, candidates and votes? This cannot be undone. Settled Fair Credit and external calendar events will remain.",
-                    votingWarning = if (meetup.status == MeetupStatus.VOTING)
-                        "Warning: this meetup currently has voting in progress. Deleting it will end the vote." else null,
-                    onDismiss = { confirmDelete = false },
-                    onDelete = { confirmDelete = false; vm.deleteMeetup() },
-                )
-            }
-
-            val submitted = meetup.participants.any { it.userId == userId }
-            val isOrganizer = meetup.organizerId == userId
-            val isSetup = meetup.status == MeetupStatus.SETUP
-
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                // Top Navigation Bar
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.testTag(TestTags.BACK_BUTTON),
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = TealPrimary,
-                        )
-                    }
-
-                    if ((isSetup && submitted) || isOrganizer) {
-                        Box {
-                            IconButton(onClick = { showMenu = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.MoreVert,
-                                    contentDescription = "Options",
-                                    tint = TealPrimary,
-                                )
-                            }
-
-                            DropdownMenu(
-                                expanded = showMenu,
-                                onDismissRequest = { showMenu = false },
-                            ) {
-                                if (isSetup && submitted) {
-                                    DropdownMenuItem(
-                                        text = { Text(if (leaving.submitting) "Leaving..." else "Leave meetup") },
-                                        onClick = { showMenu = false; confirmLeave = true },
-                                        enabled = !leaving.submitting && !deletion.submitting,
-                                        modifier = Modifier.testTag("leave_meetup"),
-                                    )
-                                }
-                                if (isOrganizer) {
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                if (deletion.submitting) "Deleting..." else "Delete meetup",
-                                                color = MaterialTheme.colorScheme.error,
-                                            )
-                                        },
-                                        onClick = { showMenu = false; confirmDelete = true },
-                                        enabled = !deletion.submitting,
-                                        modifier = Modifier.testTag("delete_meetup"),
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Status Chip
-                val spec = getStatusSpec(meetup.status)
-                Surface(
-                    shape = CircleShape,
-                    color = spec.backgroundColor,
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier
-                            .padding(horizontal = 14.dp, vertical = 6.dp)
-                            .testTag(TestTags.MEETUP_STATUS_TEXT),
-                    ) {
-                        Icon(
-                            imageVector = spec.icon,
-                            contentDescription = null,
-                            tint = spec.color,
-                            modifier = Modifier.size(14.dp),
-                        )
-                        Text(
-                            text = spec.label,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = spec.color,
-                        )
-                        Text(
-                            text = "Status: ${meetup.status.name}",
-                            fontSize = 0.sp,
-                            color = Color.Transparent,
-                        )
-                    }
-                }
-
-                // Title
-                Text(
-                    text = meetup.title,
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = TealPrimary,
-                    modifier = Modifier.testTag(TestTags.MEETUP_TITLE_TEXT),
-                )
-
-                val organizerName by vm.organizerName.collectAsState()
-                val organizerDisplay = if (isOrganizer) "You" else (organizerName ?: "Organizer")
-                Text(
-                    text = "Meeting Organizer: $organizerDisplay",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.testTag("meetup_organizer_text"),
-                )
-
-                leaving.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                deletion.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-
-                // Meetup Details Cards & Actions
-                MeetupInfoCard(
-                    meetup = meetup,
-                    userId = userId,
-                    votes = votes,
-                    actions = actions,
-                    ownTrip = ownTrip,
-                    container = container,
-                    calendarSection = {
-                        val alreadyAdded = meetup.participants.any { it.userId == userId && it.calendarEventId != null }
-                        AddToCalendarButton(
-                            container.calendarAuthorizer,
-                            calendar,
-                            alreadyAdded,
-                            onToken = vm::addToCalendar,
-                            onError = vm::setCalendarError,
-                        )
-                    },
-                )
-            }
+            MeetupScreenBody(
+                meetup = meetup, userId = userId, votes = votes, calendar = calendar, deletion = deletion,
+                leaving = leaving, settlement = settlement, ownTrip = ownTrip, container = container, vm = vm,
+                actions = MeetupActions(onEnterDetails, onStartVoting, onOpenVoting, onOpenLiveLocation), onBack = onBack,
+            )
         }
     }
 }
 
-/** Navigation callbacks for the next steps the meetup screen can offer. */
-private data class MeetupActions(
-    val onEnterDetails: () -> Unit,
-    val onStartVoting: () -> Unit,
-    val onOpenVoting: () -> Unit,
-    val onOpenLiveLocation: () -> Unit,
-)
-
 @Composable
-private fun MeetupInfoCard(
+private fun MeetupScreenBody(
     meetup: Meetup,
     userId: String?,
     votes: VotesSnapshot?,
-    actions: MeetupActions,
+    calendar: FormState<CalendarEventResult>,
+    deletion: FormState<Unit>,
+    leaving: FormState<Unit>,
+    settlement: FormState<Unit>,
     ownTrip: com.example.cpen321application.data.MeetupTrip?,
     container: AppContainer,
-    calendarSection: @Composable () -> Unit,
+    vm: MeetupViewModel,
+    actions: MeetupActions,
+    onBack: () -> Unit,
 ) {
-    val submitted = meetup.participants.any { it.userId == userId }
-    val setup = meetup.status == MeetupStatus.SETUP
-    val decided = meetup.status == MeetupStatus.FINALIZED || meetup.status == MeetupStatus.SETTLED
+    var confirmSettlement by rememberSaveable { mutableStateOf(false) }
+    var confirmLeave by rememberSaveable { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+    val isOrganizer = meetup.organizerId == userId
+    val organizerName by vm.organizerName.collectAsState()
 
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        MeetupDateTimeCard(scheduledAt = meetup.scheduledAt)
+    MeetupDialogs(
+        confirmSettlement = confirmSettlement, confirmLeave = confirmLeave, confirmDelete = confirmDelete, meetup = meetup,
+        onDismissSettlement = { confirmSettlement = false }, onConfirmSettlement = { confirmSettlement = false; vm.settle() },
+        onDismissLeave = { confirmLeave = false }, onConfirmLeave = { confirmLeave = false; vm.leaveMeetup() },
+        onDismissDelete = { confirmDelete = false }, onConfirmDelete = { confirmDelete = false; vm.deleteMeetup() },
+    )
+    MeetupContent(
+        meetup = meetup, userId = userId, votes = votes, ownTrip = ownTrip, container = container, actions = actions,
+        organizerDisplay = if (isOrganizer) "you" else (organizerName ?: "Organizer"), showMenu = showMenu,
+        showOptionsMenu = (meetup.status == MeetupStatus.SETUP && meetup.participants.any { it.userId == userId }) || isOrganizer,
+        leavingError = leaving.error, deletionError = deletion.error, settlementError = settlement.error, onBack = onBack,
+        onMenuClick = { showMenu = true }, onDismissMenu = { showMenu = false },
+        onLeaveClick = { showMenu = false; confirmLeave = true }, onDeleteClick = { showMenu = false; confirmDelete = true },
+        leavingSubmitting = leaving.submitting, deletionSubmitting = deletion.submitting, settlementSubmitting = settlement.submitting,
+        submitted = meetup.participants.any { it.userId == userId }, onSettle = { confirmSettlement = true },
+        calendarSection = {
+            SmallCalendarButton(
+                authorizer = container.calendarAuthorizer, state = calendar,
+                alreadyAdded = meetup.participants.any { it.userId == userId && it.calendarEventId != null },
+                onToken = vm::addToCalendar, onError = vm::setCalendarError,
+            )
+        },
+        modifier = Modifier.fillMaxSize(),
+    )
+}
 
-        if (decided || meetup.winner != null) {
-            MeetupMeetingSpotCard(
-                winner = meetup.winner,
-                showCalendar = submitted,
-                calendarSection = calendarSection,
+@Composable
+private fun MeetupDialogs(
+    confirmSettlement: Boolean,
+    confirmLeave: Boolean,
+    confirmDelete: Boolean,
+    meetup: Meetup,
+    onDismissSettlement: () -> Unit,
+    onConfirmSettlement: () -> Unit,
+    onDismissLeave: () -> Unit,
+    onConfirmLeave: () -> Unit,
+    onDismissDelete: () -> Unit,
+    onConfirmDelete: () -> Unit,
+) {
+    if (confirmSettlement) {
+        AlertDialog(
+            onDismissRequest = onDismissSettlement,
+            title = { Text("Settle Fair Credit?") },
+            text = { Text("Finish this meetup and update everyone's Fair Credit. Completed trips use actual travel time; members who never started tracking use estimated travel time. All started trips must arrive first. This cannot be undone.") },
+            confirmButton = { TextButton(onClick = onConfirmSettlement) { Text("Settle") } },
+            dismissButton = { TextButton(onClick = onDismissSettlement) { Text("Cancel") } },
+        )
+    }
+    if (confirmLeave) {
+        AlertDialog(
+            onDismissRequest = onDismissLeave,
+            title = { Text("Leave meetup?") },
+            text = { Text("Your starting location and preferences for this meetup will be deleted and will no longer affect place searches. You can join again by entering your details before voting starts.") },
+            confirmButton = { TextButton(onClick = onConfirmLeave) { Text("Leave") } },
+            dismissButton = { TextButton(onClick = onDismissLeave) { Text("Cancel") } },
+        )
+    }
+    if (confirmDelete) {
+        DeleteConfirmation(
+            title = "Delete meetup?",
+            description = "Delete ${meetup.title}, its participation details, candidates and votes? This cannot be undone. Settled Fair Credit and external calendar events will remain.",
+            votingWarning = if (meetup.status == MeetupStatus.VOTING) "Warning: this meetup currently has voting in progress. Deleting it will end the vote." else null,
+            onDismiss = onDismissDelete,
+            onDelete = onConfirmDelete,
+        )
+    }
+}
+
+@Composable
+private fun MeetupOptionsMenu(
+    showMenu: Boolean,
+    onDismissMenu: () -> Unit,
+    status: MeetupStatus,
+    submitted: Boolean,
+    isOrganizer: Boolean,
+    leavingSubmitting: Boolean,
+    deletionSubmitting: Boolean,
+    onLeaveClick: () -> Unit,
+    onDeleteClick: () -> Unit,
+) {
+    DropdownMenu(expanded = showMenu, onDismissRequest = onDismissMenu) {
+        if (status == MeetupStatus.SETUP && submitted) {
+            DropdownMenuItem(
+                text = { Text(if (leavingSubmitting) "Leaving..." else "Leave meetup") },
+                onClick = onLeaveClick, enabled = !leavingSubmitting && !deletionSubmitting,
+                modifier = Modifier.testTag("leave_meetup"),
             )
         }
-
-        if (setup) {
-            MeetupSetupStatusCard(
-                submitted = submitted,
-                participantCount = meetup.participants.size,
-            )
-            MeetupSetupActionButtons(
-                isOrganizer = meetup.organizerId == userId,
-                submitted = submitted,
-                onEnterDetails = actions.onEnterDetails,
-                onStartVoting = actions.onStartVoting,
-            )
-        }
-
-        if (meetup.status == MeetupStatus.VOTING) {
-            MeetupVotingStatusCard(votes = votes)
-            MeetupVotingActionButton(onOpenVoting = actions.onOpenVoting)
-        }
-
-        if (decided) {
-            if (submitted) {
-                MeetupTripStatusSection(
-                    meetupId = meetup.id,
-                    ownTrip = ownTrip,
-                    container = container,
-                    onOpenLiveLocation = actions.onOpenLiveLocation,
-                )
-            }
-            MeetupFinalizedActionButtons(
-                onOpenLiveLocation = actions.onOpenLiveLocation,
-                onOpenVoting = actions.onOpenVoting,
+        if (isOrganizer) {
+            DropdownMenuItem(
+                text = { Text(if (deletionSubmitting) "Deleting..." else "Delete meetup", color = MaterialTheme.colorScheme.error) },
+                onClick = onDeleteClick, enabled = !deletionSubmitting, modifier = Modifier.testTag("delete_meetup"),
             )
         }
     }
 }
 
 @Composable
-private fun MeetupDateTimeCard(scheduledAt: String) {
+private fun MeetupContent(
+    meetup: Meetup,
+    userId: String?,
+    votes: VotesSnapshot?,
+    ownTrip: com.example.cpen321application.data.MeetupTrip?,
+    container: AppContainer,
+    actions: MeetupActions,
+    organizerDisplay: String,
+    showMenu: Boolean,
+    showOptionsMenu: Boolean,
+    leavingError: String?,
+    deletionError: String?,
+    settlementError: String?,
+    onBack: () -> Unit,
+    onMenuClick: () -> Unit,
+    onDismissMenu: () -> Unit,
+    onLeaveClick: () -> Unit,
+    onDeleteClick: () -> Unit,
+    leavingSubmitting: Boolean,
+    deletionSubmitting: Boolean,
+    settlementSubmitting: Boolean,
+    submitted: Boolean,
+    onSettle: () -> Unit,
+    calendarSection: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        MeetupHeader(
+            meetup = meetup, organizerDisplay = organizerDisplay, showOptionsMenu = showOptionsMenu, onBack = onBack, onMenuClick = onMenuClick,
+            menuContent = {
+                MeetupOptionsMenu(
+                    showMenu = showMenu, onDismissMenu = onDismissMenu, status = meetup.status, submitted = submitted,
+                    isOrganizer = meetup.organizerId == userId, leavingSubmitting = leavingSubmitting, deletionSubmitting = deletionSubmitting,
+                    onLeaveClick = onLeaveClick, onDeleteClick = onDeleteClick,
+                )
+            },
+        )
+        leavingError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        deletionError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        settlementError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (meetup.status == MeetupStatus.SETTLED) Text("Fair Credit settled. View updated balances and history in the group's Fair Credit page.")
+        MeetupDateTimeCard(scheduledAt = meetup.scheduledAt, calendarSection = calendarSection)
+        if (meetup.status == MeetupStatus.FINALIZED || meetup.status == MeetupStatus.SETTLED || meetup.winner != null) MeetupMeetingSpotCard(winner = meetup.winner)
+        if (meetup.status == MeetupStatus.SETUP) MeetupSetupStatusCard(submitted = submitted, participantCount = meetup.participants.size)
+        if (meetup.status == MeetupStatus.VOTING) MeetupVotingStatusCard(votes = votes)
+        if (meetup.status == MeetupStatus.FINALIZED || meetup.status == MeetupStatus.SETTLED) MeetupNavCard(onOpenLiveLocation = actions.onOpenLiveLocation, onOpenVoting = actions.onOpenVoting)
+        MeetupBottomBar(
+            meetup = meetup, userId = userId, ownTrip = ownTrip, container = container, actions = actions,
+            settlementSubmitting = settlementSubmitting, deletionSubmitting = deletionSubmitting, onSettle = onSettle,
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun MeetupTopNav(
+    showOptionsMenu: Boolean,
+    onBack: () -> Unit,
+    onMenuClick: () -> Unit,
+    menuContent: @Composable () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().statusBarsPadding(),
+        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack, modifier = Modifier.testTag(TestTags.BACK_BUTTON)) {
+            Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TealPrimary)
+        }
+        if (showOptionsMenu) {
+            Box {
+                IconButton(onClick = onMenuClick) {
+                    Icon(imageVector = Icons.Default.MoreVert, contentDescription = "Options", tint = TealPrimary)
+                }
+                menuContent()
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeetupTitleSection(title: String, organizerDisplay: String) {
+    Text(
+        text = title, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold,
+        color = TealPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.testTag(TestTags.MEETUP_TITLE_TEXT),
+    )
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Icon(imageVector = PersonIcon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+        Text(
+            text = "Organized by $organizerDisplay", style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("meetup_organizer_text"),
+        )
+    }
+}
+
+@Composable
+private fun MeetupHeader(
+    meetup: Meetup,
+    organizerDisplay: String,
+    showOptionsMenu: Boolean,
+    onBack: () -> Unit,
+    onMenuClick: () -> Unit,
+    menuContent: @Composable () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        MeetupTopNav(showOptionsMenu = showOptionsMenu, onBack = onBack, onMenuClick = onMenuClick, menuContent = menuContent)
+        val spec = getStatusSpec(meetup.status)
+        Surface(shape = CircleShape, color = spec.backgroundColor) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp).testTag(TestTags.MEETUP_STATUS_TEXT),
+            ) {
+                Icon(imageVector = spec.icon, contentDescription = null, tint = spec.color, modifier = Modifier.size(14.dp))
+                Text(text = spec.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = spec.color)
+                Text(text = "Status: ${meetup.status.name}", fontSize = 0.sp, color = Color.Transparent)
+            }
+        }
+        MeetupTitleSection(title = meetup.title, organizerDisplay = organizerDisplay)
+    }
+}
+
+@Composable
+private fun MeetupDateTimeCard(
+    scheduledAt: String,
+    calendarSection: @Composable () -> Unit,
+) {
     val dateParts = parseFormattedDateParts(scheduledAt)
     MeetFairCard {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = TealContainer,
-                modifier = Modifier.size(48.dp),
+            Row(
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.weight(1f, fill = false),
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = CalendarIcon,
-                        contentDescription = null,
-                        tint = TealPrimary,
-                        modifier = Modifier.size(24.dp),
-                    )
+                Surface(shape = RoundedCornerShape(14.dp), color = TealContainer, modifier = Modifier.size(48.dp)) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(imageVector = CalendarIcon, contentDescription = null, tint = TealPrimary, modifier = Modifier.size(24.dp))
+                    }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(text = dateParts.date, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = TealPrimary)
+                    Text(text = dateParts.time, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = dateParts.date,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = TealPrimary,
-                )
-                Text(
-                    text = dateParts.time,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            calendarSection()
         }
+    }
+}
+
+@Composable
+private fun rememberCalendarConsentLauncher(
+    onToken: (String) -> Unit,
+    onError: (String) -> Unit,
+): ActivityResultLauncher<IntentSenderRequest> {
+    val context = LocalContext.current
+    return rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { activityResult ->
+        val intent = activityResult.data
+        if (activityResult.resultCode == Activity.RESULT_OK && intent != null) {
+            try {
+                val result = Identity.getAuthorizationClient(context).getAuthorizationResultFromIntent(intent)
+                val token = result.accessToken
+                if (token != null) onToken(token) else onError("Google Calendar did not return an access token.")
+            } catch (_: ApiException) {
+                onError("Google Calendar authorization failed. Please try again.")
+            }
+        } else {
+            onError("Google Calendar permission request was canceled.")
+        }
+    }
+}
+
+@Composable
+private fun InCalendarLabel() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.testTag(TestTags.CALENDAR_ADDED_TEXT),
+    ) {
+        Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = StatusGreen, modifier = Modifier.size(16.dp))
+        Text(text = "In calendar", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = StatusGreen)
+    }
+}
+
+@Composable
+private fun AddCalendarButton(
+    submitting: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick, enabled = !submitting, shape = CircleShape, color = TealContainer,
+        modifier = Modifier.testTag(TestTags.ADD_TO_CALENDAR_BUTTON),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.semantics { contentDescription = "Add to Google Calendar" }.padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            Icon(imageVector = CalendarAddIcon, contentDescription = null, tint = TealPrimary, modifier = Modifier.size(16.dp))
+            Text(text = if (submitting) "..." else "Add", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = TealPrimary)
+        }
+    }
+}
+
+@Composable
+private fun SmallCalendarButton(
+    authorizer: CalendarAuthorizer,
+    state: FormState<CalendarEventResult>,
+    alreadyAdded: Boolean,
+    onToken: (String) -> Unit,
+    onError: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val consentLauncher = rememberCalendarConsentLauncher(onToken, onError)
+
+    if (alreadyAdded || state.result != null) {
+        InCalendarLabel()
+    } else {
+        AddCalendarButton(
+            submitting = state.submitting,
+            onClick = {
+                scope.launch {
+                    when (val auth = authorizer.requestCalendarAuthorization(context)) {
+                        is CalendarAuthResult.Success -> onToken(auth.accessToken)
+                        is CalendarAuthResult.NeedsConsent -> auth.result.pendingIntent?.let { pendingIntent ->
+                            consentLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+                        } ?: onError("Google Calendar permission request could not be started.")
+                        is CalendarAuthResult.Failure -> {
+                            val cause = auth.error.message ?: "Please grant Calendar permissions."
+                            onError("Google Calendar authorization failed: $cause")
+                        }
+                    }
+                }
+            },
+        )
     }
 }
 
@@ -750,25 +831,12 @@ private fun MeetupDirectionsButton(winner: PlaceCandidate) {
                 context.startActivity(fallback)
             }
         },
-        shape = CircleShape,
-        border = BorderStroke(1.dp, TealPrimary),
+        shape = CircleShape, border = BorderStroke(1.dp, TealPrimary),
         modifier = Modifier.testTag("open_directions_button"),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Icon(
-                imageVector = DirectionsArrowIcon,
-                contentDescription = null,
-                tint = TealPrimary,
-                modifier = Modifier.size(16.dp),
-            )
-            Text(
-                text = "Directions",
-                fontWeight = FontWeight.Bold,
-                color = TealPrimary,
-            )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(imageVector = DirectionsArrowIcon, contentDescription = null, tint = TealPrimary, modifier = Modifier.size(16.dp))
+            Text(text = "Directions", fontWeight = FontWeight.Bold, color = TealPrimary)
         }
     }
 }
@@ -776,59 +844,58 @@ private fun MeetupDirectionsButton(winner: PlaceCandidate) {
 @Composable
 private fun MeetupMeetingSpotCard(
     winner: PlaceCandidate?,
-    showCalendar: Boolean,
-    calendarSection: @Composable () -> Unit,
 ) {
     MeetFairCard {
         Column(modifier = Modifier.fillMaxWidth()) {
             Image(
-                painter = painterResource(R.drawable.meetfair_map_meetup),
-                contentDescription = "Meetup map graphic",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(180.dp),
+                painter = painterResource(R.drawable.meetfair_map_meetup), contentDescription = "Meetup map graphic",
+                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().height(180.dp),
             )
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(18.dp),
+                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Text(
-                            text = "MEETING SPOT",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            letterSpacing = 1.2.sp,
-                        )
-                        Text(
-                            text = winner?.name ?: "Pending selection",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TealPrimary,
-                            modifier = Modifier.testTag(TestTags.MEETUP_WINNER_TEXT),
-                        )
-                    }
-
-                    if (winner != null) {
-                        MeetupDirectionsButton(winner = winner)
-                    }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(text = "MEETING SPOT", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, letterSpacing = 1.2.sp)
+                    Text(text = winner?.name ?: "Pending selection", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = TealPrimary, modifier = Modifier.testTag(TestTags.MEETUP_WINNER_TEXT))
                 }
-
-                if (showCalendar) calendarSection()
+                if (winner != null) MeetupDirectionsButton(winner = winner)
             }
         }
+    }
+}
+
+@Composable
+private fun MeetupNavCard(
+    onOpenLiveLocation: () -> Unit,
+    onOpenVoting: () -> Unit,
+) {
+    MeetFairCard {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            MeetupNavRow(icon = Icons.Default.LocationOn, label = "View live locations", onClick = onOpenLiveLocation, testTag = null)
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f), thickness = 1.dp, modifier = Modifier.padding(horizontal = 18.dp))
+            MeetupNavRow(icon = BarChartIcon, label = "See voting results", onClick = onOpenVoting, testTag = TestTags.OPEN_VOTING_BUTTON)
+        }
+    }
+}
+
+@Composable
+private fun MeetupNavRow(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    testTag: String?,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .then(if (testTag != null) Modifier.testTag(testTag) else Modifier).padding(18.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Icon(imageVector = icon, contentDescription = null, tint = TealPrimary, modifier = Modifier.size(20.dp))
+            Text(text = label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = TealPrimary)
+        }
+        Icon(imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
     }
 }
 
@@ -836,40 +903,21 @@ private fun MeetupMeetingSpotCard(
 private fun MeetupSetupStatusCard(submitted: Boolean, participantCount: Int) {
     MeetFairCard {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = TealContainer,
-                modifier = Modifier.size(48.dp),
-            ) {
+            Surface(shape = RoundedCornerShape(16.dp), color = TealContainer, modifier = Modifier.size(48.dp)) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = LockIcon,
-                        contentDescription = null,
-                        tint = TealPrimary,
-                        modifier = Modifier.size(24.dp),
-                    )
+                    Icon(imageVector = LockIcon, contentDescription = null, tint = TealPrimary, modifier = Modifier.size(24.dp))
                 }
             }
-
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = if (submitted) "Your details are in" else "You have not submitted your details",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = TealPrimary,
+                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = TealPrimary,
                     modifier = Modifier.testTag(TestTags.PARTICIPATION_STATUS_TEXT),
                 )
-                Text(
-                    text = "$participantCount member(s) have submitted their details.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Text(text = "$participantCount member(s) have submitted their details.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -884,27 +932,14 @@ private fun MeetupVotingStatusCard(votes: VotesSnapshot?) {
 
     MeetFairCard {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = TealContainer,
-                modifier = Modifier.size(48.dp),
-            ) {
+            Surface(shape = RoundedCornerShape(16.dp), color = TealContainer, modifier = Modifier.size(48.dp)) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = BarChartIcon,
-                        contentDescription = null,
-                        tint = TealPrimary,
-                        modifier = Modifier.size(24.dp),
-                    )
+                    Icon(imageVector = BarChartIcon, contentDescription = null, tint = TealPrimary, modifier = Modifier.size(24.dp))
                 }
             }
-
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = when {
@@ -912,16 +947,10 @@ private fun MeetupVotingStatusCard(votes: VotesSnapshot?) {
                         hasSelection -> "Vote selected (not locked yet)"
                         else -> "You have not voted yet"
                     },
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = TealPrimary,
+                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = TealPrimary,
                     modifier = Modifier.testTag("voting_status_text"),
                 )
-                Text(
-                    text = "$votedCount member(s) have locked their vote.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Text(text = "$votedCount member(s) have locked their vote.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -936,52 +965,22 @@ private fun MeetupSetupActionButtons(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Button(
-            onClick = onEnterDetails,
-            shape = CircleShape,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = TealPrimary,
-                contentColor = Color.White,
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(54.dp)
-                .testTag(TestTags.PARTICIPATION_BUTTON),
+            onClick = onEnterDetails, shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(containerColor = TealPrimary, contentColor = Color.White),
+            modifier = Modifier.fillMaxWidth().height(54.dp).testTag(TestTags.PARTICIPATION_BUTTON),
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    imageVector = if (submitted) Icons.Default.Edit else Icons.Default.LocationOn,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp),
-                )
-                Text(
-                    text = if (submitted) "Edit my details" else "Enter my details",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                    color = Color.White,
-                )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(imageVector = if (submitted) Icons.Default.Edit else Icons.Default.LocationOn, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Text(text = if (submitted) "Edit my details" else "Enter my details", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold), color = Color.White)
             }
         }
-
         if (isOrganizer) {
             Button(
-                onClick = onStartVoting,
-                shape = CircleShape,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = RosePrimary,
-                    contentColor = Color.White,
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp)
-                    .testTag(TestTags.START_VOTING_BUTTON),
+                onClick = onStartVoting, shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(containerColor = RosePrimary, contentColor = Color.White),
+                modifier = Modifier.fillMaxWidth().height(54.dp).testTag(TestTags.START_VOTING_BUTTON),
             ) {
-                Text(
-                    text = "Start voting",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                )
+                Text(text = "Start voting", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold))
             }
         }
     }
@@ -990,216 +989,131 @@ private fun MeetupSetupActionButtons(
 @Composable
 private fun MeetupVotingActionButton(onOpenVoting: () -> Unit) {
     Button(
-        onClick = onOpenVoting,
-        shape = CircleShape,
-        colors = ButtonDefaults.buttonColors(
-            containerColor = TealPrimary,
-            contentColor = Color.White,
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(54.dp)
-            .testTag(TestTags.OPEN_VOTING_BUTTON),
+        onClick = onOpenVoting, shape = CircleShape,
+        colors = ButtonDefaults.buttonColors(containerColor = TealPrimary, contentColor = Color.White),
+        modifier = Modifier.fillMaxWidth().height(54.dp).testTag(TestTags.OPEN_VOTING_BUTTON),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(
-                imageVector = BarChartIcon,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(18.dp),
-            )
-            Text(
-                text = "Vote on a spot",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                color = Color.White,
-            )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(imageVector = BarChartIcon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+            Text(text = "Vote on a spot", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold), color = Color.White)
         }
     }
 }
 
 @Composable
 private fun MeetupTripArrivedCard(trip: com.example.cpen321application.data.MeetupTrip) {
-    MeetFairCard(
-        containerColor = StatusGreenLight,
-        borderWidth = 0.dp,
-    ) {
+    MeetFairCard(containerColor = StatusGreenLight, borderWidth = 0.dp) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                modifier = Modifier.weight(1f, fill = false),
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = StatusGreen,
-                    modifier = Modifier.size(44.dp),
-                ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.weight(1f, fill = false)) {
+                Surface(shape = CircleShape, color = StatusGreen, modifier = Modifier.size(44.dp)) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = FlagIcon,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(22.dp),
-                        )
+                        Icon(imageVector = FlagIcon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
                     }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = "You arrived",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = StatusGreen,
-                    )
-                    Text(
-                        text = "Actual commute",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Text(text = "You arrived", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = StatusGreen)
+                    Text(text = "Actual commute", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text(
-                text = formatTripDuration(trip.actualSeconds ?: 0),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.ExtraBold,
-                color = StatusGreen,
-            )
+            Text(text = formatTripDuration(trip.actualSeconds ?: 0), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = StatusGreen)
         }
     }
 }
 
 @Composable
 private fun MeetupTripOnWayCard() {
-    MeetFairCard(
-        containerColor = TealContainer,
-        borderWidth = 0.dp,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = TealPrimary,
-                modifier = Modifier.size(44.dp),
-            ) {
+    MeetFairCard(containerColor = TealContainer, borderWidth = 0.dp) {
+        Row(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Surface(shape = CircleShape, color = TealPrimary, modifier = Modifier.size(44.dp)) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = TimerIcon,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp),
-                    )
+                    Icon(imageVector = TimerIcon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
                 }
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = "On your way",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = TealPrimary,
-                )
-                Text(
-                    text = "We're timing your commute.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Text(text = "On your way", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = TealPrimary)
+                Text(text = "We're timing your commute.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
 }
 
 @Composable
-private fun MeetupTripStatusSection(
-    meetupId: String,
+private fun SettleFairCreditButton(
+    submitting: Boolean,
+    enabled: Boolean,
+    isPrimary: Boolean = true,
+    onClick: () -> Unit,
+) {
+    if (isPrimary) {
+        Button(
+            onClick = onClick, enabled = enabled && !submitting, shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(containerColor = RosePrimary, contentColor = Color.White, disabledContainerColor = RosePrimary.copy(alpha = 0.5f), disabledContentColor = Color.White.copy(alpha = 0.7f)),
+            modifier = Modifier.fillMaxWidth().height(54.dp).testTag("settle_fair_credit"),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(imageVector = SwapHorizontalIcon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                Text(text = if (submitting) "Settling..." else "Settle Fair Credit", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+            }
+        }
+    } else {
+        OutlinedButton(
+            onClick = onClick, enabled = enabled && !submitting, shape = CircleShape,
+            border = BorderStroke(1.dp, RosePrimary),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = RosePrimary),
+            modifier = Modifier.fillMaxWidth().height(54.dp).testTag("settle_fair_credit"),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(imageVector = SwapHorizontalIcon, contentDescription = null, tint = RosePrimary, modifier = Modifier.size(20.dp))
+                Text(text = if (submitting) "Settling..." else "Settle Fair Credit", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = RosePrimary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeetupBottomBar(
+    meetup: Meetup,
+    userId: String?,
     ownTrip: com.example.cpen321application.data.MeetupTrip?,
     container: AppContainer,
-    onOpenLiveLocation: () -> Unit,
+    actions: MeetupActions,
+    settlementSubmitting: Boolean,
+    deletionSubmitting: Boolean,
+    onSettle: () -> Unit,
 ) {
-    when {
-        ownTrip?.status == "ARRIVED" -> MeetupTripArrivedCard(trip = ownTrip)
-        ownTrip != null -> MeetupTripOnWayCard()
-        else -> StartTripButton(
-            container = container,
-            meetupId = meetupId,
-            label = "I'm leaving",
-            onStarted = onOpenLiveLocation,
-        )
-    }
-}
+    val isOrganizer = meetup.organizerId == userId
+    val submitted = meetup.participants.any { it.userId == userId }
+    val isFinalized = meetup.status == MeetupStatus.FINALIZED
+    val isSettled = meetup.status == MeetupStatus.SETTLED
 
-@Composable
-private fun MeetupFinalizedActionButtons(
-    onOpenLiveLocation: () -> Unit,
-    onOpenVoting: () -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Button(
-            onClick = onOpenLiveLocation,
-            shape = CircleShape,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = TealContainer,
-                contentColor = TealPrimary,
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(54.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.LocationOn,
-                    contentDescription = null,
-                    tint = TealPrimary,
-                    modifier = Modifier.size(18.dp),
-                )
-                Text(
-                    text = "View live locations",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                    color = TealPrimary,
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+        if (isFinalized) {
+            val isArrived = ownTrip?.status == "ARRIVED"
+            when {
+                isArrived -> MeetupTripArrivedCard(trip = ownTrip!!)
+                ownTrip != null -> MeetupTripOnWayCard()
+                else -> StartTripButton(container = container, meetupId = meetup.id, label = "I'm leaving", onStarted = actions.onOpenLiveLocation)
+            }
+            if (isOrganizer) {
+                SettleFairCreditButton(
+                    submitting = settlementSubmitting,
+                    enabled = !deletionSubmitting,
+                    isPrimary = isArrived,
+                    onClick = onSettle,
                 )
             }
-        }
-
-        OutlinedButton(
-            onClick = onOpenVoting,
-            shape = CircleShape,
-            border = BorderStroke(1.dp, TealPrimary),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(54.dp)
-                .testTag(TestTags.OPEN_VOTING_BUTTON),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    imageVector = BarChartIcon,
-                    contentDescription = null,
-                    tint = TealPrimary,
-                    modifier = Modifier.size(18.dp),
-                )
-                Text(
-                    text = "See voting results",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                    color = TealPrimary,
-                )
+        } else if (isSettled) {
+            when {
+                ownTrip?.status == "ARRIVED" -> MeetupTripArrivedCard(trip = ownTrip)
+                ownTrip != null -> MeetupTripOnWayCard()
             }
+        } else if (meetup.status == MeetupStatus.SETUP) {
+            MeetupSetupActionButtons(isOrganizer = isOrganizer, submitted = submitted, onEnterDetails = actions.onEnterDetails, onStartVoting = actions.onStartVoting)
+        } else if (meetup.status == MeetupStatus.VOTING) {
+            MeetupVotingActionButton(onOpenVoting = actions.onOpenVoting)
         }
     }
 }
-
