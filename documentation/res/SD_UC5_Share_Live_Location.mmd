@@ -1,45 +1,37 @@
-﻿%% Use Case 5: Share Live Location (Requirements_and_Design.md section 4.6). Planned feature.
+﻿%% Use Case 5: Share Live Location (Requirements_and_Design.md section 4.6). Fair Credit settlement is planned.
 sequenceDiagram
     actor M as Member
+    actor O as Other members
     participant FE as Front-end
-    participant VF as Voting & Fairness
+    participant LL as Live Location
     participant UG as Users & Groups
     participant RT as Realtime Gateway
     participant DB as MongoDB
 
-    M->>FE: tap "I'm leaving"
+    M->>FE: tap "I am leaving", confirm "Share and start trip"
     FE-->>M: request location permission (first time)
     alt permission denied
-        FE-->>M: explain that live tracking needs permission
+        FE-->>M: explain that no trip was started
     else permission granted
-        FE->>VF: POST /api/meetups/:meetupId/trip/start
-        VF->>UG: getForMember(meetupId, userId)
-        VF->>DB: create trip (startedAt)
-        VF-->>FE: 201 Trip
-        FE->>RT: meetup:join {meetupId}
-        RT->>UG: getForMember(meetupId, userId)
-        RT-->>FE: ack {ok: true}
-        loop while the trip is active
-            FE->>RT: location:update {meetupId, lat, lng, accuracyM, timestamp}
-            RT->>VF: recordLocation(meetupId, userId, position)
-            RT-->>FE: location:updated (other members in the room)
+        FE->>LL: POST /api/meetups/:meetupId/trip/start
+        LL->>UG: getForMember(meetupId, userId)
+        LL->>DB: create trip (server-set startedAt)
+        LL->>RT: publish(meetup room, trip:updated)
+        LL-->>FE: 200 Trip
+        loop while sharing is active
+            FE->>LL: PUT /api/meetups/:meetupId/trip/location {lat, lng, accuracyM}
+            LL->>UG: getForMember(meetupId, userId)
+            LL->>DB: save latest location
+            LL->>RT: publish(meetup room, trip:updated)
+            RT-->>O: trip:updated {meetupId}
+            O->>LL: GET /api/meetups/:meetupId/trips
+            LL->>UG: requireMembership(groupId, userId)
+            LL-->>O: trips with latest locations
         end
-        M->>FE: tap "I'm here"
-        FE->>VF: POST /api/meetups/:meetupId/trip/arrive
-        VF->>DB: set arrivedAt
-        VF->>RT: publish(meetup room, trip:arrived)
-        RT-->>FE: trip:arrived (every member in the room)
-        VF-->>FE: 200 Trip (commute duration)
-        FE-->>M: stop sharing location
-    end
-
-    opt every participant arrived, or organizer settles
-        VF->>VF: settleMeetup(groupId, meetupId, trips)
-        alt meetup already settled
-            VF-->>VF: reject, no duplicate Fair Credit change
-        else first settlement
-            VF->>DB: write ledger entries, then balances
-            VF->>UG: transitionStatus(meetupId, FINALIZED, SETTLED)
-            VF->>RT: publish(meetup room, meetup:status SETTLED)
-        end
+        M->>FE: tap "I arrived", confirm
+        FE->>LL: POST /api/meetups/:meetupId/trip/arrive
+        LL->>DB: set arrivedAt and actualSeconds, clear location
+        LL->>RT: publish(meetup room, trip:updated)
+        LL-->>FE: 200 Trip (commute duration)
+        FE-->>M: stop sharing, show actual commute
     end

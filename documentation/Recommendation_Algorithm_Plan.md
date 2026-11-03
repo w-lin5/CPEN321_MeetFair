@@ -200,3 +200,25 @@ In this extended model, Fair Credit influences two aspects of the recommendation
 This ensures that the recommendation algorithm does not simply prioritize shorter commutes for members with higher Fair Credit, but also gives greater consideration to their preferred types of meetup locations.
 
 **Overall, the objective is to recommend locations that balance travel efficiency, individual preferences, and long-term fairness across multiple meetups.**
+
+---
+
+## 4. Implementation Notes
+
+Both phases are implemented in `backend/src/recommendation/scoring.ts` (pure functions) and wired into `POST /api/meetups/:meetupId/recommendations/from-places`:
+
+1. Google Places Nearby Search finds up to 10 places around the members' average start location, matching **every** participant's preference categories.
+2. Google Routes `computeRouteMatrix` estimates $ETA_{ij}$ for each member in their own travel mode. Places that any member cannot reach are dropped.
+3. Each place is scored with the extended formula in §3.3, and the 3 lowest scores are stored best first. Exact ties are broken by `placeId`, so the same inputs always give the same ranking.
+4. Each stored candidate has `scores` (`weightedTravel` $=W_j$, `maxTravel` $=M_j^{max}$, `imbalance` $=I_j$, `preference` $=P_j^{weighted}$, `total`, all in minutes) and `travel` (each member's `seconds` and `normalizedSeconds`).
+
+$P_{ij}=0$ when the place's Google types include any type mapped from the member's categories (`preference-types.ts`), or when the member has no preferences; otherwise $P_{ij}=1$.
+
+Current parameters (in `backend/src/config.ts`, still to be calibrated through testing):
+
+| Parameter | Value |
+|---|---|
+| $\beta$ (`recommendationMaxTravelWeight`) | 0.5 |
+| $\gamma$ (`recommendationImbalanceWeight`) | 0.5 |
+| $\mu$ (`recommendationPreferencePenaltyMinutes`) | 10 minutes |
+| $M_i$ (walk / transit / drive burden multipliers) | 1 / 1 / 1 |

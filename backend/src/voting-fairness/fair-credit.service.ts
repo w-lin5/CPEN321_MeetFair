@@ -32,6 +32,13 @@ async function getBalance(userId: string, groupId: string): Promise<number> {
   return row?.balance ?? tuning.initialFairCredit;
 }
 
+// Balances of several members in one group; members without a balance yet get the initial credit
+async function getBalances(groupId: string, userIds: string[]): Promise<Map<string, number>> {
+  const rows = await FairCreditModel.find({ groupId, userId: { $in: userIds } });
+  const balances = new Map(rows.map((r): [string, number] => [String(r.userId), r.balance]));
+  return new Map(userIds.map((id): [string, number] => [id, balances.get(id) ?? tuning.initialFairCredit]));
+}
+
 // Vote weight from the member's Fair Credit in the meetup's group, snapshotted when a vote is locked
 async function getVoteWeight(userId: string, groupId: string): Promise<number> {
   return voteWeight(await getBalance(userId, groupId));
@@ -134,6 +141,7 @@ async function settleMeetup(groupId: string, meetupId: string, trips: Settlement
 
 export const fairCreditService = {
   getBalance,
+  getBalances,
   getVoteWeight,
   getProfile,
   updateProfile,
