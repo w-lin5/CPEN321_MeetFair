@@ -84,6 +84,7 @@ import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.UiState
 import com.example.cpen321application.ui.common.UiStateContent
 import com.example.cpen321application.ui.common.toFormState
+import com.example.cpen321application.ui.meetup.MeetupStatusSpec
 import com.example.cpen321application.ui.meetup.getStatusSpec
 import com.example.cpen321application.ui.meetup.isoToDisplay
 import com.example.cpen321application.ui.screenViewModel
@@ -790,6 +791,93 @@ private fun parseMeetupDateParts(iso: String): MeetupDateParts = try {
 }
 
 @Composable
+private fun MeetupDateBadge(
+    parts: MeetupDateParts,
+    spec: MeetupStatusSpec,
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = spec.backgroundColor,
+        modifier = Modifier.size(width = 56.dp, height = 56.dp),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = parts.month,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = spec.color.copy(alpha = 0.8f),
+            )
+            Text(
+                text = parts.day,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = spec.color,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MeetupStatusChip(
+    spec: MeetupStatusSpec,
+) {
+    Surface(
+        shape = CircleShape,
+        color = spec.backgroundColor,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+        ) {
+            Icon(
+                imageVector = spec.icon,
+                contentDescription = null,
+                tint = spec.color,
+                modifier = Modifier.size(12.dp),
+            )
+            Text(
+                text = spec.label,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = spec.color,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MeetupDetails(
+    title: String,
+    time: String,
+    organizerDisplay: String,
+    spec: MeetupStatusSpec,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = time,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = "Organizer: $organizerDisplay",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        MeetupStatusChip(spec = spec)
+    }
+}
+
+@Composable
 private fun MeetupRow(
     meetup: Meetup,
     members: List<GroupMember>,
@@ -819,75 +907,13 @@ private fun MeetupRow(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.weight(1f),
             ) {
-                // Date Badge Box with Status Tint Accent
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = spec.backgroundColor,
-                    modifier = Modifier.size(width = 56.dp, height = 56.dp),
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        Text(
-                            text = parts.month,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = spec.color.copy(alpha = 0.8f),
-                        )
-                        Text(
-                            text = parts.day,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = spec.color,
-                        )
-                    }
-                }
-
-                // Title & Details
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = meetup.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = parts.time,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = "Organizer: $organizerDisplay",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-
-                    // Status Chip with Icon, Color and Badge
-                    Surface(
-                        shape = CircleShape,
-                        color = spec.backgroundColor,
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        ) {
-                            Icon(
-                                imageVector = spec.icon,
-                                contentDescription = null,
-                                tint = spec.color,
-                                modifier = Modifier.size(12.dp),
-                            )
-                            Text(
-                                text = spec.label,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = spec.color,
-                            )
-                        }
-                    }
-                }
+                MeetupDateBadge(parts = parts, spec = spec)
+                MeetupDetails(
+                    title = meetup.title,
+                    time = parts.time,
+                    organizerDisplay = organizerDisplay,
+                    spec = spec,
+                )
             }
 
             Icon(
