@@ -166,7 +166,7 @@ describe('Unmocked: fairCreditService settlement', () => {
   });
 
   // Input: member with no settled meetups, then one with 2 h of credit
-  // Expected output: initial credit 0 and weight 1; then weight 1.2
+  // Expected output: initial credit 0 and weight 1; then weight 1.4
   test('Vote weight follows the balance', async () => {
     const { ada, grace, groupA, meetupA } = await setup();
     expect(await fairCreditService.getBalance(ada.id, groupA.id)).toBe(0);
@@ -174,7 +174,7 @@ describe('Unmocked: fairCreditService settlement', () => {
 
     await fairCreditService.settleMeetup(groupA.id, meetupA.id, [trip(ada.id, 240), trip(grace.id, 0)]);
 
-    expect(await fairCreditService.getVoteWeight(ada.id, groupA.id)).toBeCloseTo(1.2);
+    expect(await fairCreditService.getVoteWeight(ada.id, groupA.id)).toBeCloseTo(1.4);
     expect(await fairCreditService.getVoteWeight(grace.id, groupA.id)).toBe(1);
   });
 });

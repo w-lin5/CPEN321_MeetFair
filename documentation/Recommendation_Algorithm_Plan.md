@@ -20,11 +20,12 @@ This calculation is already implemented in the existing settlement logic. The re
 
 $$
 \boxed{
-w_i=\mathrm{clamp}\left(1+0.1\frac{FC_i}{3600},1,1.5\right)
+w_i=\mathrm{clamp}\left(1+0.1\frac{FC_i}{1800},1,1.5\right)
 }
 $$
 
 This formula converts a member's historical Fair Credit balance into a recommendation weight.
+Fair Credit is stored in seconds; each 30 minutes adds 0.1 to the weight, with proportional increases for shorter durations.
 
 - **Zero or negative Fair Credit:** The member receives a weight of 1.
 - **Positive Fair Credit:** The member receives a higher weight, up to a maximum of 1.5.

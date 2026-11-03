@@ -55,12 +55,12 @@ export const tuning = {
   walkBurdenMultiplier: 1,
   transitBurdenMultiplier: 1,
   driveBurdenMultiplier: 1,
-  // Vote weight = base + perHour x (Fair Credit in hours), clamped to [min, max]
+  // Vote/recommendation weight grows by 0.1 per 30 minutes of Fair Credit.
   voteWeightBase: 1,
-  voteWeightPerHour: 0.1,
+  voteWeightPerInterval: 0.1,
   minVoteWeight: 1,
   maxVoteWeight: 1.5,
-  secondsPerHour: 60 * 60,
+  fairCreditWeightIntervalSeconds: 30 * 60,
 
   // Recommendation: the top candidates the group votes on
   recommendationCount: 3,

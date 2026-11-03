@@ -40,7 +40,7 @@ test('settles tracked and estimated commutes, updates history and next vote weig
   expect(result.body.status).toBe('SETTLED');
   expect(await fairCreditService.getBalance(organizer.id, group.id)).toBe(3600);
   expect(await fairCreditService.getBalance(member.id, group.id)).toBe(-3600);
-  expect(await fairCreditService.getVoteWeight(organizer.id, group.id)).toBeCloseTo(1.1);
+  expect(await fairCreditService.getVoteWeight(organizer.id, group.id)).toBeCloseTo(1.2);
   const entries = await FairCreditEntryModel.find({ meetupId: meetup.id }).lean();
   expect(entries).toEqual(expect.arrayContaining([
     expect.objectContaining({ source: 'TRACKED', actualSeconds: 7800, delta: 3600 }),

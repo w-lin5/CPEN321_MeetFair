@@ -48,12 +48,14 @@ describe('creditChanges', () => {
 
 // Interface voteWeight (pure)
 describe('voteWeight', () => {
-  // Input: Fair Credit of 0, 1 h, 2.5 h
-  // Expected output: 1, 1.1, 1.25 (1 + 0.1 per hour)
-  test('Grows by 0.1 per hour of credit', () => {
+  // Input: Fair Credit of 0, 15 min, 30 min, 1 h, 2.5 h
+  // Expected output: 1, 1.05, 1.1, 1.2, 1.5 (continuous growth by 0.1 per 30 minutes)
+  test('Grows continuously by 0.1 per 30 minutes of credit', () => {
     expect(voteWeight(0)).toBe(1);
-    expect(voteWeight(HOUR)).toBeCloseTo(1.1);
-    expect(voteWeight(2.5 * HOUR)).toBeCloseTo(1.25);
+    expect(voteWeight(15 * 60)).toBeCloseTo(1.05);
+    expect(voteWeight(30 * 60)).toBeCloseTo(1.1);
+    expect(voteWeight(HOUR)).toBeCloseTo(1.2);
+    expect(voteWeight(2.5 * HOUR)).toBeCloseTo(1.5);
   });
 
   // Input: negative credit; very large credit
