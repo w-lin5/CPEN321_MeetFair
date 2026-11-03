@@ -2,9 +2,16 @@ package com.example.cpen321application.testutil
 
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.ComposeTestRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
 import com.example.cpen321application.ui.common.TestTags
 import org.junit.Assert.fail
 
@@ -28,6 +35,45 @@ fun ComposeTestRule.assertSignedInOnGroupList() {
     waitUntil(NETWORK_TIMEOUT_MS) { exists(groupList) || exists(signIn) }
     if (!exists(groupList)) {
         fail("Sign in to MeetFair on the device before running the E2E tests (see documentation/Testing.md)")
+    }
+}
+
+/**
+ * Best-effort UI cleanup for groups created by an E2E test. Cleanup errors are swallowed so they
+ * never replace the test's original failure.
+ */
+fun ComposeTestRule.cleanupCreatedGroups(names: Iterable<String>) {
+    try {
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        val groupList = hasTestTag(TestTags.CREATE_GROUP_BUTTON)
+
+        // Return from whichever screen the test left open to the group list.
+        repeat(6) {
+            if (!exists(groupList)) {
+                if (exists(hasTestTag(TestTags.BACK_BUTTON))) {
+                    onNodeWithTag(TestTags.BACK_BUTTON).performClick()
+                } else {
+                    device.pressBack()
+                }
+                waitUntil(5_000) { exists(groupList) || !exists(hasTestTag(TestTags.BACK_BUTTON)) }
+            }
+        }
+        if (!exists(groupList)) return
+
+        for (name in names.toList().distinct().asReversed()) {
+            val group = hasTestTag(TestTags.GROUP_ITEM) and hasText(name)
+            if (!exists(group)) continue
+
+            onNode(group).performClick()
+            waitUntil(5_000) { exists(hasContentDescription("Options")) }
+            onNodeWithContentDescription("Options").performClick()
+            waitUntil(5_000) { exists(hasTestTag("delete_group")) }
+            onNodeWithTag("delete_group").performClick()
+            onNodeWithText("Delete").performClick()
+            waitUntil(NETWORK_TIMEOUT_MS) { !exists(group) && exists(groupList) }
+        }
+    } catch (_: Throwable) {
+        // Cleanup is intentionally best-effort; preserve the test result.
     }
 }
 

@@ -95,6 +95,7 @@ class RealtimeClient(private val baseUrl: String, private val sessionStore: Sess
             socket.emit(EVENT_JOIN, arrayOf<Any>(joinPayload), Ack { args -> trySend(joinAckToEvent(args)) })
         }
         socket.on(Socket.EVENT_CONNECT_ERROR) { trySend(MeetupEvent.Unavailable("Live updates unavailable")) }
+        socket.on(Socket.EVENT_DISCONNECT) { trySend(MeetupEvent.Unavailable("Live updates disconnected")) }
         socket.on(EVENT_VOTE_UPDATED) { args ->
             trySend(parseEvent(args) { MeetupEvent.VoteUpdated(parseVoteTally(it)) })
         }

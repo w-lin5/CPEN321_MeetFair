@@ -27,11 +27,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -93,6 +95,16 @@ internal fun StartLocationPicker(
                 )
             }
 
+            val context = LocalContext.current
+            val playServicesAvailable = remember(context) {
+                try {
+                    com.google.android.gms.common.GoogleApiAvailability.getInstance()
+                        .isGooglePlayServicesAvailable(context) == com.google.android.gms.common.ConnectionResult.SUCCESS
+                } catch (_: Throwable) {
+                    false
+                }
+            }
+
             if (isInspection) {
                 // Placeholder map view for Compose Previews in Android Studio
                 Surface(
@@ -105,7 +117,7 @@ internal fun StartLocationPicker(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
-            } else if (BuildConfig.MAPS_CONFIGURED) {
+            } else if (BuildConfig.MAPS_CONFIGURED && playServicesAvailable) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -140,7 +152,8 @@ internal fun StartLocationPicker(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
+                        .weight(1f)
+                        .testTag(TestTags.LOCATION_MAP),
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(containerColor = TealContainer),
                 ) {

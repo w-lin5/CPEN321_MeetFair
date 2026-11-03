@@ -5,7 +5,7 @@
 | **Change Date** | **Modified Sections** | **Rationale** |
 | --------------- | --------------------- | ------------- |
 | 2026-10-19 | All Sections | Initial submission for CP1 |
-| 2026-11-01 | 2.1.1, 2.1.2, 2.1.3, 4.1, 4.2 | CP2 update. 2.1.1 now lists every Recommendation Engine interface, because the manual `POST /recommendations` route was replaced by `POST /recommendations/from-places` and `POST /places/search`; line references were corrected. 2.1.3 explains how to run the mocked `places/search` tests, which the interface script does not include. 4.1 and 4.2 now specify Create or Join Group, the feature with an implemented end-to-end suite, in place of Sign In. |
+| 2026-11-03 | 2.1.1, 2.1.2, 2.1.3, 4.1, 4.2 | CP2 updates: documented the current Recommendation Engine interfaces and test commands; updated Create or Join Group and Vote on a Candidate front-end test scenarios, including their automated coverage and manual multi-user cases. |
 ---
 
 ## 2. Back-end Test Specification: APIs
@@ -160,21 +160,21 @@ The suite is run with `./scripts/run-frontend-e2e-tests.sh` (macOS/Linux) or `./
     | **Scenario Steps** | **Test Case Steps** |
     | ------------------ | ------------------- |
     | **Create, main success scenario** (`createGroup_showsInviteCodeAndListsTheGroup`) | |
-    | 1. The user selects "Create group" on the group list. | Click the button with test tag `create_group_button`.<br>Check that the button with test tag `create_group_submit` is disabled. |
-    | 2. The user enters a group name and selects "Create". | Input a unique group name in the field with test tag `group_name_input`.<br>Check that the button with test tag `create_group_submit` is enabled, and click it. |
-    | 3. The system creates the group with the user as its only member and organizer. | Wait for the node with test tag `invite_code_text`.<br>Check that exactly one node with test tag `member_item` exists.<br>Check that it contains "(organizer)". |
+    | 1. The user selects "Create group" on the group list. | Click the button with test tag `create_group_button`. Check that the button with test tag `create_group_submit` is disabled. |
+    | 2. The user enters a group name and selects "Create". | Input a unique group name in the field with test tag `group_name_input`. Check that the button with test tag `create_group_submit` is enabled, and click it. |
+    | 3. The system creates the group with the user as its only member and organizer. | Wait for the node with test tag `invite_code_text`. Check that exactly one node with test tag `member_item` exists. Check that it contains "(organizer)". |
     | 4. The system generates a unique 6-character invite code. | Check that the text of `invite_code_text` matches `Invite code: ` followed by 6 characters from the invite code alphabet. |
-    | 5. The system displays the group page with the group name, invite code and member list. | Check that the group name is displayed.<br>Click the button with test tag `back_button`.<br>Wait for a node with test tag `group_item` and the group name on the group list. |
+    | 5. The system displays the group page with the group name, invite code and member list. | Check that the group name is displayed. Click the button with test tag `back_button`. Wait for a node with test tag `group_item` and the group name on the group list. |
     | **Create, failure 2a** (`createGroup_blankNameCannotBeSubmitted`) | |
-    | 2a. The user enters only spaces as the group name. | Click the button with test tag `create_group_button`.<br>Input "   " in the field with test tag `group_name_input`. |
+    | 2a. The user enters only spaces as the group name. | Click the button with test tag `create_group_button`. Input "   " in the field with test tag `group_name_input`. |
     | 2a1. The "Create" button stays disabled. | Check that the button with test tag `create_group_submit` is disabled. |
     | **Join, failure 2a** (`joinGroup_invalidCodeShowsErrorAndAllowsRetry`) | |
-    | 2a. The user enters an invite code that does not belong to any group. | Click the button with test tag `join_group_button`.<br>Input "000000" in the field with test tag `invite_code_input`.<br>Click the button with test tag `join_group_submit`. |
-    | 2a1. The system displays "Invalid invite code". | Wait for the node with test tag `error_text`.<br>Check that its text is "Invalid invite code". |
-    | 2a2. The user stays on the join screen and may enter another code. | Check that the field with test tag `invite_code_input` is displayed.<br>Check that the button with test tag `join_group_submit` is enabled. |
+    | 2a. The user enters an invite code that does not belong to any group. | Click the button with test tag `join_group_button`. Input "000000" in the field with test tag `invite_code_input`. Click the button with test tag `join_group_submit`. |
+    | 2a1. The system displays "Invalid invite code". | Wait for the node with test tag `error_text`. Check that its text is "Invalid invite code". |
+    | 2a2. The user stays on the join screen and may enter another code. | Check that the field with test tag `invite_code_input` is displayed. Check that the button with test tag `join_group_submit` is enabled. |
     | **Join, failure 3a** (`joinGroup_alreadyMemberShowsError`) | |
-    | 3a. The user is already a member of this group; letter case does not matter. | Create a group through the UI and read its invite code.<br>Click `back_button`, then `join_group_button`.<br>Input the code in lower case in `invite_code_input`.<br>Click `join_group_submit`. |
-    | 3a1. The system displays "Already a member of this group". | Wait for the node with test tag `error_text`.<br>Check that its text is "Already a member of this group". |
+    | 3a. The user is already a member of this group; letter case does not matter. | Create a group through the UI and read its invite code. Click `back_button`, then `join_group_button`. Input the code in lower case in `invite_code_input`. Click `join_group_submit`. |
+    | 3a1. The system displays "Already a member of this group". | Wait for the node with test tag `error_text`. Check that its text is "Already a member of this group". |
 
   - **Scenarios not covered by the automated suite:**
 
@@ -184,7 +184,58 @@ The suite is run with `./scripts/run-frontend-e2e-tests.sh` (macOS/Linux) or `./
     | Create, failure 2b (name longer than 60 characters) | No end-to-end test yet. | The back-end validation is tested at `POST /api/groups`. |
     | Create, failure 3a and Join, failure 3b (no network) | Requires turning off the emulator's network during a test. | Manual: turn on airplane mode, submit the form, and check that a "Network error" message appears and the form stays open. |
 
+- **Use Case: Vote on a Candidate** ([`VotingTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/VotingTest.kt))
+
+  - **Expected Behaviors (automated):**
+
+    | **Scenario Steps** | **Test Case Steps** |
+    | ------------------ | ------------------- |
+    | **Main success scenario: open voting, vote, change vote, and lock vote** (`vote_castChangeAndLockVote`) | |
+    | 1. The member opens a meetup in VOTING and selects "Vote on a spot". | Navigate to a meetup in `VOTING` status. Wait for the button with test tag `open_voting_button` ("Vote on a spot") and click it. |
+    | 2. The app shows the three places, their picks and locked weights, the locked participant count, and the live update indicator. | Wait for `voting_status_text` ("Voting is open"). Check that exactly three `candidate_item_<placeId>` cards exist, that three "Picks:" labels and three "Locked weight:" labels are present, and that `voter_count_text` mentions participants who locked their vote. Check that `voting_live_text` says "Live: votes update automatically". |
+    | 3. The member selects "Vote" on one place. | Click the button with test tag `vote_button_<placeId>` for the chosen candidate place. |
+    | 4. The system records the vote; live tally updates are sent to members viewing the screen. | Wait for the vote request to complete. Check that the selected candidate's button says "Your vote" and that `lock_vote_button` ("Submit vote") is enabled and displayed. The update on another member's screen is checked manually. |
+    | 5. The member may select "Change vote" on another place; the system replaces the vote. | Click another candidate's `vote_button_<placeId>` ("Change vote"). Wait for its button to say "Your vote" and check that the previous candidate's button says "Change vote". |
+    | 6. The member selects "Submit vote" to lock their vote. | Click `lock_vote_button` ("Submit vote") and wait for the locked state or an error. The test accepts the transient "Locking…" state but does not assert that it is observed. |
+    | 7. The system snapshots the member's Fair Credit as vote weight and locks the vote. 8. The app shows "Your vote is locked" with its weight. | Wait for `vote_locked_text` and check the displayed weight is between 1.0 and 1.5. Check that `voter_count_text` starts with "1 of ", all candidate vote buttons are absent, and "Your locked vote" is displayed on the selected candidate. |
+    | **Failure 2a: live updates disconnected** (`vote_disconnectedLiveShowsManualRefresh`) | |
+    | 2a. Live updates disconnect while the voting screen is open. | Use UiAutomator to turn on airplane mode on the emulator. |
+    | 2a1. The screen switches to manual refresh. | Check that `voting_live_text` disappears and `refresh_results_button` is displayed. |
+    | 2a2. An offline vote attempt fails without selecting a candidate. | Tap a candidate's `vote_button_<placeId>` while offline. Check for "Network error" and that its button remains labeled "Vote". |
+    | 2a3. The member can request a results refresh. | Tap `refresh_results_button` and check that the voter count remains displayed. The test does not verify changed tally values after refreshing. |
+    | **Failure 3b: offline voting preserves the previous choice** (`vote_offlineNetworkFailureKeepsPreviousVoteAndCanRetry`) | |
+    | 3b. The member already has a vote when connectivity is lost. | Select a candidate, then use UiAutomator to turn on airplane mode. |
+    | 3b1. A failed change does not replace the saved choice. | Tap "Change vote" for another candidate. Check for "Network error", "Your vote" on the original candidate, and "Change vote" on the attempted candidate. |
+    | 3b2. The member can retry after restoring connectivity. | Turn airplane mode off, wait for Android to report a validated network, and tap "Change vote" again. Check that the replacement candidate is selected and the original candidate now says "Change vote". |
+    | Finalizing voting closes the screen (`vote_finalizeClosesVoting`) | |
+    | The organizer finalizes a meetup with no locked votes. | Click Finalize; if the early-finalization confirmation appears, confirm it. Choose a winner when prompted. |
+    | The voting UI closes and removes voting controls. | Check that the status says "Voting is closed" and that candidate vote buttons and `lock_vote_button` are absent. |
+
+  - **Scenarios not covered by the automated suite:**
+
+    | **Scenario** | **Reason** | **How It Is Checked Instead** |
+    | ------------ | ---------- | ----------------------------- |
+    | Failure 1a: non-participant member viewing voting | The automated setup uses one signed-in account, which creates the group and enters meetup details. A different group member account is needed to view voting without participating. | Manual: use a second group member who has not submitted meetup participation details; open voting and check that no vote or lock controls appear and that the non-participant message is shown. |
+    | Failure 3a: vote arrives after organizer finalizes | Reproducing the stale-screen request requires two users and coordinated timing; finalizing through the same screen immediately hides its vote controls. | Manual two-user check: User B organizes a meetup and starts voting. User A joins the group, enters meetup details, opens voting, and selects a candidate. Coordinate User B finalizing while User A's vote request is still in flight. On User A's device, check that the request error is shown and the screen updates to "Voting is closed" with voting controls hidden. |
+    | Multi-member live tally broadcast (steps 4 & 7) | Testing that another user's screen updates in real time via Socket.IO without manual interaction requires two concurrent active client sessions running on separate emulators. | Manual: Member A and Member B open the voting screen simultaneously; Member A votes and locks; Member B's screen displays the updated picks, locked weight, and voter count automatically. Realtime socket event delivery is tested at `backend/tests/no-mock/realtime.test.ts` and `backend/tests/no-mock/voting.test.ts`. |
+
   - **Test Logs:**
     ```
-    [Paste the output of ./scripts/run-frontend-e2e-tests.sh here]
+    ==> Running frontend E2E tests (com.example.cpen321application.e2e.CreateJoinGroupTest,com.example.cpen321application.e2e.VotingTest) ...
+
+    > Task :app:connectedDebugAndroidTest
+    Starting 9 tests on Pixel_9(AVD) - 16
+
+    Pixel_9(AVD) - 16 Tests 1/9 completed. (0 skipped) (0 failed)
+    Pixel_9(AVD) - 16 Tests 2/9 completed. (0 skipped) (0 failed)
+    Pixel_9(AVD) - 16 Tests 3/9 completed. (0 skipped) (0 failed)
+    Pixel_9(AVD) - 16 Tests 5/9 completed. (0 skipped) (0 failed)
+    Pixel_9(AVD) - 16 Tests 6/9 completed. (0 skipped) (0 failed)
+    Pixel_9(AVD) - 16 Tests 7/9 completed. (0 skipped) (0 failed)
+    Pixel_9(AVD) - 16 Tests 8/9 completed. (0 skipped) (0 failed)
+    Finished 9 tests on Pixel_9(AVD) - 16
+
+    BUILD SUCCESSFUL in 2m 20s
+    71 actionable tasks: 3 executed, 68 up-to-date
+    ==> Frontend E2E tests finished.
     ```

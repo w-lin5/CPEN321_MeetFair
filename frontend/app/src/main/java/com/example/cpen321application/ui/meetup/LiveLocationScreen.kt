@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -135,6 +136,15 @@ fun LiveLocationScreen(container: AppContainer, meetupId: String, onBack: () -> 
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             val destination = meetup?.winner
             if (destination != null) {
+                val context = LocalContext.current
+                val playServicesAvailable = remember(context) {
+                    try {
+                        com.google.android.gms.common.GoogleApiAvailability.getInstance()
+                            .isGooglePlayServicesAvailable(context) == com.google.android.gms.common.ConnectionResult.SUCCESS
+                    } catch (_: Throwable) {
+                        false
+                    }
+                }
                 MeetFairCard(
                     modifier = Modifier.weight(1.2f),
                     containerColor = TealContainer,
@@ -143,14 +153,29 @@ fun LiveLocationScreen(container: AppContainer, meetupId: String, onBack: () -> 
                     val camera = rememberCameraPositionState {
                         position = CameraPosition.fromLatLngZoom(LatLng(destination.lat, destination.lng), 12f)
                     }
-                    GoogleMap(Modifier.fillMaxWidth(), cameraPositionState = camera) {
-                        Marker(state = rememberMarkerState(position = LatLng(destination.lat, destination.lng)), title = destination.name)
-                        for (trip in trips) {
-                            val point = trip.location
-                            val recent = point != null && runCatching { now.epochSecond - Instant.parse(point.updatedAt).epochSecond < 90 }.getOrDefault(false)
-                            if (trip.sharing && trip.status == "ACTIVE" && point != null && recent) key(trip.userId) {
-                                AvatarMarker(trip.userId, trip.name, trip.photoUrl, LatLng(point.lat, point.lng))
+                    if (playServicesAvailable) {
+                        GoogleMap(Modifier.fillMaxWidth(), cameraPositionState = camera) {
+                            Marker(state = rememberMarkerState(position = LatLng(destination.lat, destination.lng)), title = destination.name)
+                            for (trip in trips) {
+                                val point = trip.location
+                                val recent = point != null && runCatching { now.epochSecond - Instant.parse(point.updatedAt).epochSecond < 90 }.getOrDefault(false)
+                                if (trip.sharing && trip.status == "ACTIVE" && point != null && recent) key(trip.userId) {
+                                    AvatarMarker(trip.userId, trip.name, trip.photoUrl, LatLng(point.lat, point.lng))
+                                }
                             }
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(16.dp),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                text = "Destination: ${destination.name}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = TealPrimary,
+                            )
                         }
                     }
                 }

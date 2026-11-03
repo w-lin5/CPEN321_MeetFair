@@ -132,6 +132,7 @@ private fun GroupRoutes(container: AppContainer, navigator: Navigator, route: Ro
             onBack = navigator::pop,
             onNewMeetup = { navigator.push(Route.CreateMeetup(route.groupId)) },
             onOpenMeetup = { navigator.push(Route.Meetup(it)) },
+            onOpenFairness = { navigator.push(Route.GroupFairness(route.groupId)) },
         )
     }
 }
