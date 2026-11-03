@@ -184,7 +184,6 @@ The suite is run with `./scripts/run-frontend-e2e-tests.sh` (macOS/Linux) or `./
     | Create, failure 2b (name longer than 60 characters) | No end-to-end test yet. | The back-end validation is tested at `POST /api/groups`. |
     | Create, failure 3a and Join, failure 3b (no network) | Requires turning off the emulator's network during a test. | Manual: turn on airplane mode, submit the form, and check that a "Network error" message appears and the form stays open. |
 
-
 - **Use Case: Vote on a Candidate** ([`VotingTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/VotingTest.kt))
 
   - **Expected Behaviors (automated):**
