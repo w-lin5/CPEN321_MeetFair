@@ -1,6 +1,10 @@
 package com.example.cpen321application.ui.voting
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,6 +41,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -395,6 +401,24 @@ private fun VotingHeader(state: VotingState, onRefresh: () -> Unit) {
 
 @Composable
 private fun CandidateCard(candidate: PlaceCandidate, state: VotingState, canVote: Boolean, onVote: () -> Unit) {
+    val context = LocalContext.current
+    val notify = LocalNotify.current
+    val openMap: () -> Unit = {
+        val query = listOf(candidate.name, candidate.address).filter { it.isNotBlank() }.joinToString(", ")
+            .ifBlank { "${candidate.lat},${candidate.lng}" }
+        val uri = Uri.parse("https://www.google.com/maps/search/").buildUpon()
+            .appendQueryParameter("api", "1")
+            .appendQueryParameter("query", query)
+            .apply {
+                if (candidate.placeId.isNotBlank()) appendQueryParameter("query_place_id", candidate.placeId)
+            }
+            .build()
+        try {
+            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+        } catch (_: ActivityNotFoundException) {
+            notify("No map app or browser is available to open this location.")
+        }
+    }
     val total = state.tally?.totalFor(candidate.placeId)
     val mine = state.myVote?.placeId == candidate.placeId
     val winner = state.meetup.winner?.placeId == candidate.placeId
@@ -421,7 +445,8 @@ private fun CandidateCard(candidate: PlaceCandidate, state: VotingState, canVote
                     color = TealPrimary,
                     modifier = Modifier
                         .testTag("candidate_map_${candidate.placeId}")
-                        .weight(1f),
+                        .weight(1f)
+                        .clickable(role = Role.Button, onClickLabel = "Open in Google Maps", onClick = openMap),
                 )
 
                 Text(
@@ -437,6 +462,7 @@ private fun CandidateCard(candidate: PlaceCandidate, state: VotingState, canVote
                     text = candidate.address,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.clickable(role = Role.Button, onClickLabel = "Open in Google Maps", onClick = openMap),
                 )
             }
 
