@@ -110,31 +110,48 @@ function isValidTrip(trip: SettlementTrip): boolean {
  * the group's average, write the ledger, then apply the changes to the balances. Called by commute
  * tracking once every trip has an actual (TRACKED) or fallback (ESTIMATED) duration. 409 if already settled.
  */
-async function settleMeetup(groupId: string, meetupId: string, trips: SettlementTrip[]) {
+async function settleMeetup(groupId: string, meetupId: string, trips: SettlementTrip[], resume = false) {
   if (!trips.every(isValidTrip)) {
     throw new BadRequest(`Trip durations must be between 0 and ${tuning.maxTripSeconds} seconds`);
   }
-  if (await FairCreditEntryModel.exists({ meetupId })) throw new Conflict('This meetup is already settled');
+  if (!resume && await FairCreditEntryModel.exists({ meetupId })) throw new Conflict('This meetup is already settled');
 
   const sources = new Map(trips.map((t): [string, CommuteSource] => [t.userId, t.source]));
   const changes = creditChanges(trips);
 
-  // The unique (meetupId, userId) index makes a concurrent second settlement fail here, before any balance moves
-  const entries = await FairCreditEntryModel.insertMany(changes.map((change) => ({
+  const rows = changes.map((change) => ({
     ...change,
     groupId,
     meetupId,
     source: sources.get(change.userId) ?? 'ESTIMATED',
-  })));
+  }));
+  if (resume) {
+    // Resume uses the persisted, immutable snapshot supplied by the settlement service.
+    for (const row of rows) {
+      try {
+        await FairCreditEntryModel.updateOne({ meetupId, userId: row.userId }, { $setOnInsert: row }, { upsert: true });
+      } catch (error) {
+        if (!(typeof error === 'object' && error !== null && 'code' in error && error.code === 11000)) throw error;
+      }
+    }
+  } else {
+    await FairCreditEntryModel.insertMany(rows);
+  }
+  const entries = await FairCreditEntryModel.find({ meetupId });
 
-  // Pipeline update so a member's first balance starts from tuning.initialFairCredit, not 0
-  await FairCreditModel.bulkWrite(changes.map((change) => ({
-    updateOne: {
-      filter: { groupId: new Types.ObjectId(groupId), userId: new Types.ObjectId(change.userId) },
-      update: [{ $set: { balance: { $add: [{ $ifNull: ['$balance', tuning.initialFairCredit] }, change.delta] } } }],
-      upsert: true,
-    },
-  })));
+  // Initialize new balances, then apply each ledger entry exactly once.
+  for (const entry of entries) {
+    const filter = { groupId: new Types.ObjectId(groupId), userId: entry.userId };
+    try {
+      await FairCreditModel.updateOne(filter, { $setOnInsert: { ...filter, balance: tuning.initialFairCredit } }, { upsert: true });
+    } catch (error) {
+      if (!(typeof error === 'object' && error !== null && 'code' in error && error.code === 11000)) throw error;
+    }
+    // The balance and deduplication marker change in the same atomic document update.
+    await FairCreditModel.updateOne({ ...filter, appliedMeetups: { $ne: new Types.ObjectId(meetupId) } }, {
+      $inc: { balance: entry.delta }, $addToSet: { appliedMeetups: new Types.ObjectId(meetupId) },
+    });
+  }
 
   return entries;
 }

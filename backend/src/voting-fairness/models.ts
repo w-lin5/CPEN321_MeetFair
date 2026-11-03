@@ -1,6 +1,6 @@
 import { type InferSchemaType, Schema, model } from 'mongoose';
 
-import { COMMUTE_SOURCES } from '../common/types';
+import { COMMUTE_SOURCES, TRAVEL_MODES } from '../common/types';
 import { jsonOptions } from '../db';
 
 // One participant's vote in a meetup; free to change until locked, then the weight is snapshotted
@@ -29,6 +29,7 @@ const fairCreditSchema = new Schema(
     groupId: { type: Schema.Types.ObjectId, ref: 'Group', required: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     balance: { type: Number, required: true },
+    appliedMeetups: { type: [Schema.Types.ObjectId], default: [], select: false },
   },
   { toJSON: jsonOptions },
 );
@@ -58,3 +59,16 @@ fairCreditEntrySchema.index({ groupId: 1, userId: 1, createdAt: -1 });
 
 export type FairCreditEntryFields = InferSchemaType<typeof fairCreditEntrySchema>;
 export const FairCreditEntryModel = model('FairCreditEntry', fairCreditEntrySchema, 'fairCreditEntries');
+
+// Immutable inputs allow interrupted settlements to resume without changing the calculation.
+const settlementSchema = new Schema({
+  meetupId: { type: Schema.Types.ObjectId, required: true, unique: true },
+  groupId: { type: Schema.Types.ObjectId, required: true },
+  trips: { type: [new Schema({
+    userId: { type: String, required: true },
+    mode: { type: String, enum: [...TRAVEL_MODES], required: true },
+    actualSeconds: { type: Number, required: true },
+    source: { type: String, enum: [...COMMUTE_SOURCES], required: true },
+  }, { _id: false })], required: true },
+});
+export const SettlementModel = model('Settlement', settlementSchema);

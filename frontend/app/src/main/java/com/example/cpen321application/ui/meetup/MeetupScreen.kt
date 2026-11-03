@@ -305,7 +305,24 @@ class MeetupViewModel(
     val deletion: StateFlow<FormState<Unit>> = _deletion.asStateFlow()
     private val _leaving = MutableStateFlow(FormState<Unit>())
     val leaving: StateFlow<FormState<Unit>> = _leaving.asStateFlow()
+    private val _settlement = MutableStateFlow(FormState<Unit>())
+    val settlement: StateFlow<FormState<Unit>> = _settlement.asStateFlow()
     private var loadJob: Job? = null
+
+    fun settle() {
+        if (_settlement.value.submitting) return
+        _settlement.value = FormState(submitting = true)
+        viewModelScope.launch {
+            when (val result = meetups.settle(meetupId)) {
+                is ApiResult.Success -> {
+                    loadJob?.cancel()
+                    _state.value = UiState.Success(result.data)
+                    _settlement.value = FormState(result = Unit)
+                }
+                is ApiResult.Failure -> _settlement.value = FormState(error = result.error.message)
+            }
+        }
+    }
 
     fun leaveMeetup() {
         if (_leaving.value.submitting || _deletion.value.submitting) return
@@ -395,6 +412,8 @@ fun MeetupScreen(
     val calendar by vm.calendar.collectAsState()
     val deletion by vm.deletion.collectAsState()
     val leaving by vm.leaving.collectAsState()
+    val settlement by vm.settlement.collectAsState()
+    var confirmSettlement by rememberSaveable { mutableStateOf(false) }
     var confirmLeave by rememberSaveable { mutableStateOf(false) }
     val notify = LocalNotify.current
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
@@ -432,6 +451,9 @@ fun MeetupScreen(
     LaunchedEffect(deletion.result) {
         if (deletion.result != null && !exited) { exited = true; notify("Meetup deleted."); onBack() }
     }
+    LaunchedEffect(settlement.result) {
+        if (settlement.result != null) notify("Fair Credit updated. View balances in the group's Fair Credit page.")
+    }
 
     Box(
         modifier = Modifier
@@ -440,6 +462,15 @@ fun MeetupScreen(
             .padding(Dimens.ScreenPadding),
     ) {
         UiStateContent(state, onRetry = vm::load, emptyMessage = "") { meetup ->
+            if (confirmSettlement) {
+                AlertDialog(
+                    onDismissRequest = { confirmSettlement = false },
+                    title = { Text("Settle Fair Credit?") },
+                    text = { Text("Finish this meetup and update everyone's Fair Credit. Completed trips use actual travel time; members who never started tracking use estimated travel time. All started trips must arrive first. This cannot be undone.") },
+                    confirmButton = { TextButton(onClick = { confirmSettlement = false; vm.settle() }) { Text("Settle") } },
+                    dismissButton = { TextButton(onClick = { confirmSettlement = false }) { Text("Cancel") } },
+                )
+            }
             if (confirmLeave) {
                 AlertDialog(
                     onDismissRequest = { confirmLeave = false },
@@ -573,6 +604,9 @@ fun MeetupScreen(
 
                 leaving.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 deletion.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                if (meetup.status == MeetupStatus.SETTLED) {
+                    Text("Fair Credit settled. View updated balances and history in the group's Fair Credit page.")
+                }
 
                 // Meetup Details Cards & Actions
                 MeetupInfoCard(
@@ -582,6 +616,17 @@ fun MeetupScreen(
                     actions = actions,
                     ownTrip = ownTrip,
                     container = container,
+                    settlementSection = {
+                        settlement.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        if (isOrganizer && meetup.status == MeetupStatus.FINALIZED &&
+                            runCatching { !now.isBefore(Instant.parse(meetup.scheduledAt)) }.getOrDefault(false)) {
+                            Button(
+                                onClick = { confirmSettlement = true },
+                                enabled = !settlement.submitting && !deletion.submitting,
+                                modifier = Modifier.fillMaxWidth().testTag("settle_fair_credit"),
+                            ) { Text(if (settlement.submitting) "Settling..." else "Settle Fair Credit") }
+                        }
+                    },
                     calendarSection = {
                         val alreadyAdded = meetup.participants.any { it.userId == userId && it.calendarEventId != null }
                         AddToCalendarButton(
@@ -614,6 +659,7 @@ private fun MeetupInfoCard(
     actions: MeetupActions,
     ownTrip: com.example.cpen321application.data.MeetupTrip?,
     container: AppContainer,
+    settlementSection: @Composable () -> Unit,
     calendarSection: @Composable () -> Unit,
 ) {
     val submitted = meetup.participants.any { it.userId == userId }
@@ -650,7 +696,7 @@ private fun MeetupInfoCard(
         }
 
         if (decided) {
-            if (submitted) {
+            if (submitted && meetup.status == MeetupStatus.FINALIZED) {
                 MeetupTripStatusSection(
                     meetupId = meetup.id,
                     ownTrip = ownTrip,
@@ -661,6 +707,7 @@ private fun MeetupInfoCard(
             MeetupFinalizedActionButtons(
                 onOpenLiveLocation = actions.onOpenLiveLocation,
                 onOpenVoting = actions.onOpenVoting,
+                settlementSection = settlementSection,
             )
         }
     }
@@ -1120,6 +1167,7 @@ private fun MeetupTripStatusSection(
 private fun MeetupFinalizedActionButtons(
     onOpenLiveLocation: () -> Unit,
     onOpenVoting: () -> Unit,
+    settlementSection: @Composable () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Button(
@@ -1150,6 +1198,8 @@ private fun MeetupFinalizedActionButtons(
                 )
             }
         }
+
+        settlementSection()
 
         OutlinedButton(
             onClick = onOpenVoting,

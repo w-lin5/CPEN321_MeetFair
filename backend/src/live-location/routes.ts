@@ -5,8 +5,13 @@ import { getUserId } from '../common/middleware/require-auth';
 import { fields, numberInRange, parseInput } from '../common/middleware/validate';
 import { meetupParams } from '../users-groups/schemas';
 import { tripService } from './trip.service';
+import { settleMeetup } from './settlement.service';
 
 export const tripRouter = Router();
+tripRouter.post('/meetups/:meetupId/settle', asyncHandler(async (req, res) => {
+  const { meetupId } = parseInput(meetupParams, req.params);
+  res.json(await settleMeetup(meetupId, getUserId(req)));
+}));
 tripRouter.get('/meetups/:meetupId/trips', asyncHandler(async (req, res) => {
   const { meetupId } = parseInput(meetupParams, req.params);
   res.json(await tripService.list(meetupId, getUserId(req)));

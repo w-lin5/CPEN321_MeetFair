@@ -5,6 +5,8 @@ import { userService } from '../users-groups/user.service';
 import { publisher } from '../realtime/publisher';
 import { meetupRoom, SERVER_EVENTS } from '../realtime/events';
 import { TripModel } from './models';
+import { SettlementModel } from '../voting-fairness/models';
+import { withMeetupLock } from './meetup-lock';
 
 function changed(meetupId: string) {
   // Invalidation only; REST rechecks membership before returning sensitive coordinates.
@@ -17,6 +19,7 @@ async function participant(meetupId: string, userId: string) {
   if (!entry) throw new Forbidden('Only members who submitted details can share a trip');
   if (meetup.status !== 'FINALIZED' || !meetup.winner) throw new Conflict('The meetup must have a finalized destination');
   if (meetup.scheduledAt.getTime() > Date.now()) throw new Conflict('You can start your trip when the meetup time arrives');
+  if (await SettlementModel.exists({ meetupId })) throw new Conflict('Fair Credit settlement has started');
   return entry;
 }
 
@@ -90,4 +93,7 @@ async function list(meetupId: string, userId: string) {
   });
 }
 
-export const tripService = { start, location, arrive, stop, list };
+export const tripService = {
+  start: (meetupId: string, userId: string) => withMeetupLock(meetupId, () => start(meetupId, userId)),
+  location, arrive, stop, list,
+};
