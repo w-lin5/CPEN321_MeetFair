@@ -3,6 +3,7 @@ package com.example.cpen321application.ui.groups
 import android.content.ClipData
 import android.content.Intent
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +35,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -237,6 +239,7 @@ fun GroupDetailScreen(
     onBack: () -> Unit,
     onNewMeetup: () -> Unit,
     onOpenMeetup: (String) -> Unit,
+    onOpenFairness: () -> Unit = {},
 ) {
     val vm: GroupDetailViewModel = screenViewModel(GroupDetailViewModel.factory(container, groupId))
     val state by vm.state.collectAsState()
@@ -286,8 +289,10 @@ fun GroupDetailScreen(
         UiStateContent(state, onRetry = vm::load, emptyMessage = "") { data ->
             GroupInfo(
                 data = data,
+                currentUserId = container.sessionStore.currentUserId(),
                 onNewMeetup = onNewMeetup,
                 onOpenMeetup = onOpenMeetup,
+                onOpenFairness = onOpenFairness,
                 canRemove = data.group.organizerId == container.sessionStore.currentUserId(),
                 removal = removal,
                 onRemove = { selectedMemberId = it.userId },
@@ -359,8 +364,10 @@ fun GroupDetailScreen(
 @Composable
 private fun GroupInfo(
     data: GroupDetailData,
+    currentUserId: String?,
     onNewMeetup: () -> Unit,
     onOpenMeetup: (String) -> Unit,
+    onOpenFairness: () -> Unit,
     canRemove: Boolean,
     removal: MemberRemovalState,
     onRemove: (GroupMember) -> Unit,
@@ -593,6 +600,22 @@ private fun GroupInfo(
                     onRemove = onRemove,
                 )
             }
+            item {
+                OutlinedButton(
+                    onClick = onOpenFairness,
+                    shape = CircleShape,
+                    border = BorderStroke(1.dp, TealPrimary),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("group_fair_credit_button"),
+                ) {
+                    Text(
+                        text = "View Group's Fair Credits",
+                        fontWeight = FontWeight.Bold,
+                        color = TealPrimary,
+                    )
+                }
+            }
 
             // Meetups Header
             item {
@@ -611,7 +634,7 @@ private fun GroupInfo(
 
             // Meetup Rows
             items(data.meetups, key = { it.id }) { meetup ->
-                MeetupRow(meetup, onOpenMeetup)
+                MeetupRow(meetup, data.group.members, currentUserId, onOpenMeetup)
             }
 
             // Bottom space for floating action button
@@ -767,9 +790,16 @@ private fun parseMeetupDateParts(iso: String): MeetupDateParts = try {
 }
 
 @Composable
-private fun MeetupRow(meetup: Meetup, onOpen: (String) -> Unit) {
+private fun MeetupRow(
+    meetup: Meetup,
+    members: List<GroupMember>,
+    currentUserId: String?,
+    onOpen: (String) -> Unit,
+) {
     val parts = parseMeetupDateParts(meetup.scheduledAt)
     val spec = getStatusSpec(meetup.status)
+    val organizer = members.find { it.userId == meetup.organizerId }
+    val organizerDisplay = if (meetup.organizerId == currentUserId) "You" else (organizer?.name ?: "Organizer")
 
     MeetFairCard(
         modifier = Modifier
@@ -824,6 +854,11 @@ private fun MeetupRow(meetup: Meetup, onOpen: (String) -> Unit) {
                     )
                     Text(
                         text = parts.time,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = "Organizer: $organizerDisplay",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

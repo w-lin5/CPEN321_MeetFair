@@ -67,6 +67,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.cpen321application.AppContainer
 import com.example.cpen321application.R
 import com.example.cpen321application.data.ApiResult
+import com.example.cpen321application.data.GroupRepository
 import com.example.cpen321application.data.MeetupEvent
 import com.example.cpen321application.data.MeetupRepository
 import com.example.cpen321application.data.VotingRepository
@@ -290,11 +291,15 @@ private fun parseFormattedDateParts(iso: String): FormattedDateParts = try {
 /** Loads one meetup for the status hub and adds it to the user's Google Calendar once finalized. */
 class MeetupViewModel(
     private val meetups: MeetupRepository,
+    private val groups: GroupRepository,
     private val voting: VotingRepository,
     private val meetupId: String,
 ) : ViewModel() {
     private val _state = MutableStateFlow<UiState<Meetup>>(UiState.Loading)
     val state: StateFlow<UiState<Meetup>> = _state.asStateFlow()
+
+    private val _organizerName = MutableStateFlow<String?>(null)
+    val organizerName: StateFlow<String?> = _organizerName.asStateFlow()
 
     private val _votes = MutableStateFlow<VotesSnapshot?>(null)
     val votes: StateFlow<VotesSnapshot?> = _votes.asStateFlow()
@@ -348,6 +353,14 @@ class MeetupViewModel(
             val result = meetups.get(meetupId)
             if (result is ApiResult.Success) {
                 _state.value = result.toUiState()
+                viewModelScope.launch {
+                    when (val groupRes = groups.detail(result.data.groupId)) {
+                        is ApiResult.Success -> {
+                            _organizerName.value = groupRes.data.members.find { it.userId == result.data.organizerId }?.name
+                        }
+                        is ApiResult.Failure -> {}
+                    }
+                }
                 if (result.data.status == MeetupStatus.VOTING) {
                     when (val v = voting.votes(meetupId)) {
                         is ApiResult.Success -> _votes.value = v.data
@@ -373,7 +386,7 @@ class MeetupViewModel(
 
     companion object {
         fun factory(c: AppContainer, meetupId: String) =
-            viewModelFactory { initializer { MeetupViewModel(c.meetupRepository, c.votingRepository, meetupId) } }
+            viewModelFactory { initializer { MeetupViewModel(c.meetupRepository, c.groupRepository, c.votingRepository, meetupId) } }
     }
 }
 
@@ -569,6 +582,16 @@ fun MeetupScreen(
                     fontWeight = FontWeight.ExtraBold,
                     color = TealPrimary,
                     modifier = Modifier.testTag(TestTags.MEETUP_TITLE_TEXT),
+                )
+
+                val organizerName by vm.organizerName.collectAsState()
+                val organizerDisplay = if (isOrganizer) "You" else (organizerName ?: "Organizer")
+                Text(
+                    text = "Meeting Organizer: $organizerDisplay",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("meetup_organizer_text"),
                 )
 
                 leaving.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
