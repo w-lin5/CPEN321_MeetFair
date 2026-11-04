@@ -212,11 +212,12 @@ class GroupDetailViewModel(
 
     private suspend fun isTrackingStage(meetupList: List<Meetup>): Boolean {
         return meetupList.any { meetup ->
-            if (meetup.status != MeetupStatus.FINALIZED) return@any false
-            val isMeetingTime = runCatching { !Instant.now().isBefore(Instant.parse(meetup.scheduledAt)) }.getOrDefault(false)
-            if (isMeetingTime) return@any true
-            val tripResult = trips.list(meetup.id)
-            tripResult is ApiResult.Success && tripResult.data.isNotEmpty()
+            meetup.status == MeetupStatus.FINALIZED && (
+                runCatching { !Instant.now().isBefore(Instant.parse(meetup.scheduledAt)) }.getOrDefault(false) ||
+                    trips.list(meetup.id).let { tripResult ->
+                        tripResult is ApiResult.Success && tripResult.data.isNotEmpty()
+                    }
+                )
         }
     }
 

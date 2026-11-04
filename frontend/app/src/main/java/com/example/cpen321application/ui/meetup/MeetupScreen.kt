@@ -340,7 +340,6 @@ class MeetupViewModel(
         _effects.send(MeetupEffect.Exit)
     }
 
-    /** Runs [call] as [kind] unless another action is running, then reports success or failure. */
     private fun <T> runAction(
         kind: MeetupAction,
         call: suspend () -> ApiResult<T>,
@@ -758,7 +757,6 @@ private fun rememberCalendarConsentLauncher(
     }
 }
 
-/** Shows "In calendar" once the event exists, otherwise an "Add" button that runs Google's auth flow. */
 @Composable
 private fun SmallCalendarButton(
     authorizer: CalendarAuthorizer,
@@ -919,7 +917,6 @@ private fun MeetupNavRow(icon: ImageVector, label: String, onClick: () -> Unit, 
 
 // Status cards
 
-/** Icon + title + subtitle card used for the setup and voting status. */
 @Composable
 private fun StatusInfoCard(icon: ImageVector, title: String, subtitle: String, titleTag: String) {
     MeetFairCard {
@@ -1125,7 +1122,6 @@ private fun MeetupVotingActionButton(onOpenVoting: () -> Unit) {
     }
 }
 
-/** Filled button once the user has arrived, outlined before that. Icon and text follow the button's content colour. */
 @Composable
 private fun SettleFairCreditButton(
     submitting: Boolean,

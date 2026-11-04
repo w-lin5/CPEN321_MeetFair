@@ -181,11 +181,12 @@ class GroupListViewModel(
         val meetupList = meetupResult.data
 
         val hasTracking = meetupList.any { meetup ->
-            if (meetup.status != MeetupStatus.FINALIZED) return@any false
-            val isMeetingTime = runCatching { !Instant.now().isBefore(Instant.parse(meetup.scheduledAt)) }.getOrDefault(false)
-            val tripList = trips.list(meetup.id)
-            val hasTripStarted = tripList is ApiResult.Success && tripList.data.isNotEmpty()
-            isMeetingTime || hasTripStarted
+            meetup.status == MeetupStatus.FINALIZED && (
+                runCatching { !Instant.now().isBefore(Instant.parse(meetup.scheduledAt)) }.getOrDefault(false) ||
+                    trips.list(meetup.id).let { tripResult ->
+                        tripResult is ApiResult.Success && tripResult.data.isNotEmpty()
+                    }
+                )
         }
         if (hasTracking) return "Tracking live"
 
