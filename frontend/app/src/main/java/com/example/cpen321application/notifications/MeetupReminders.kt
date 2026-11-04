@@ -13,6 +13,7 @@ import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.example.cpen321application.AppContainer
 import com.example.cpen321application.MainActivity
 import com.example.cpen321application.MeetFairApplication
 import com.example.cpen321application.data.ApiResult
@@ -131,34 +132,33 @@ class MeetupReminderReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val container = (context.applicationContext as MeetFairApplication).container
-                val reminders = container.meetupReminders
-                if (intent.getStringExtra(REMINDER_MEETUP_ID) == null) {
-                    reminders.restore()
-                    return@launch
-                }
-                val user = container.sessionStore.currentUserId()
-                val ids = intent.getStringExtra(REMINDER_MEETUP_ID)?.let { listOf(it) }
-                    ?: reminders.pending().keys.toList()
-                for (id in ids) {
-                    if (user == null || reminders.pending()[id] != user) { reminders.cancel(id); continue }
-                    when (val response = container.reminderMeetupRepository.get(id)) {
-                        is ApiResult.Success -> {
-                            if (container.sessionStore.currentUserId() != user || container.sessionStore.currentToken() == null) {
-                                reminders.cancel(id)
-                                continue
-                            }
-                            val at = reminderTime(response.data, user)
-                            if (at != null && at <= System.currentTimeMillis() &&
-                                System.currentTimeMillis() - at < 60 * 60 * 1000) {
-                                reminders.cancel(id)
-                                reminders.show(response.data)
-                            } else reminders.update(response.data, user)
-                        }
-                        is ApiResult.Failure -> if (response.error.httpCode == null || response.error.httpCode!! >= 500)
-                            reminders.retry(id) else reminders.cancel(id)
-                    }
-                }
+                val meetupId = intent.getStringExtra(REMINDER_MEETUP_ID)
+                if (meetupId == null) container.meetupReminders.restore() else refresh(container, listOf(meetupId))
             } finally { result.finish() }
+        }
+    }
+
+    private suspend fun refresh(container: AppContainer, ids: List<String>) {
+        val reminders = container.meetupReminders
+        val user = container.sessionStore.currentUserId()
+        for (id in ids) {
+            if (user == null || reminders.pending()[id] != user) { reminders.cancel(id); continue }
+            when (val response = container.reminderMeetupRepository.get(id)) {
+                is ApiResult.Success -> {
+                    if (container.sessionStore.currentUserId() != user || container.sessionStore.currentToken() == null) {
+                        reminders.cancel(id)
+                        continue
+                    }
+                    val at = reminderTime(response.data, user)
+                    if (at != null && at <= System.currentTimeMillis() &&
+                        System.currentTimeMillis() - at < 60 * 60 * 1000) {
+                        reminders.cancel(id)
+                        reminders.show(response.data)
+                    } else reminders.update(response.data, user)
+                }
+                is ApiResult.Failure -> if (response.error.httpCode == null || response.error.httpCode!! >= 500)
+                    reminders.retry(id) else reminders.cancel(id)
+            }
         }
     }
 }

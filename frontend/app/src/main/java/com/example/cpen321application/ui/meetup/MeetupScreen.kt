@@ -16,29 +16,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -67,8 +59,11 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.cpen321application.AppContainer
 import com.example.cpen321application.R
 import com.example.cpen321application.data.ApiResult
+import com.example.cpen321application.data.GroupRepository
 import com.example.cpen321application.data.MeetupEvent
 import com.example.cpen321application.data.MeetupRepository
+import com.example.cpen321application.data.MeetupTrip
+import com.example.cpen321application.data.TripRepository
 import com.example.cpen321application.data.VotingRepository
 import com.example.cpen321application.model.CalendarEventResult
 import com.example.cpen321application.model.Meetup
@@ -76,7 +71,6 @@ import com.example.cpen321application.model.MeetupStatus
 import com.example.cpen321application.model.MyVote
 import com.example.cpen321application.model.VoteTally
 import com.example.cpen321application.model.VotesSnapshot
-import com.example.cpen321application.ui.common.DeleteConfirmation
 import com.example.cpen321application.ui.common.FormState
 import com.example.cpen321application.ui.common.LocalNotify
 import com.example.cpen321application.ui.common.MeetFairCard
@@ -99,6 +93,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -276,6 +271,8 @@ private val FlagIcon: ImageVector
         close()
     }.build()
 
+private const val CLOCK_TICK_MS = 1000L
+
 private data class FormattedDateParts(val date: String, val time: String)
 
 private fun parseFormattedDateParts(iso: String): FormattedDateParts = try {
@@ -290,11 +287,15 @@ private fun parseFormattedDateParts(iso: String): FormattedDateParts = try {
 /** Loads one meetup for the status hub and adds it to the user's Google Calendar once finalized. */
 class MeetupViewModel(
     private val meetups: MeetupRepository,
+    private val groups: GroupRepository,
     private val voting: VotingRepository,
     private val meetupId: String,
 ) : ViewModel() {
     private val _state = MutableStateFlow<UiState<Meetup>>(UiState.Loading)
     val state: StateFlow<UiState<Meetup>> = _state.asStateFlow()
+
+    private val _organizerName = MutableStateFlow<String?>(null)
+    val organizerName: StateFlow<String?> = _organizerName.asStateFlow()
 
     private val _votes = MutableStateFlow<VotesSnapshot?>(null)
     val votes: StateFlow<VotesSnapshot?> = _votes.asStateFlow()
@@ -350,6 +351,9 @@ class MeetupViewModel(
         viewModelScope.launch { _deletion.value = meetups.delete(meetupId).toFormState() }
     }
 
+    /** True once this screen has asked to delete the meetup, so its own realtime "deleted" echo is ignored. */
+    fun isDeletingHere(): Boolean = _deletion.value.submitting || _deletion.value.result != null
+
     fun load() {
         refresh(showLoading = true)
     }
@@ -365,6 +369,14 @@ class MeetupViewModel(
             val result = meetups.get(meetupId)
             if (result is ApiResult.Success) {
                 _state.value = result.toUiState()
+                viewModelScope.launch {
+                    when (val groupRes = groups.detail(result.data.groupId)) {
+                        is ApiResult.Success -> {
+                            _organizerName.value = groupRes.data.members.find { it.userId == result.data.organizerId }?.name
+                        }
+                        is ApiResult.Failure -> {}
+                    }
+                }
                 if (result.data.status == MeetupStatus.VOTING) {
                     when (val v = voting.votes(meetupId)) {
                         is ApiResult.Success -> _votes.value = v.data
@@ -390,7 +402,7 @@ class MeetupViewModel(
 
     companion object {
         fun factory(c: AppContainer, meetupId: String) =
-            viewModelFactory { initializer { MeetupViewModel(c.meetupRepository, c.votingRepository, meetupId) } }
+            viewModelFactory { initializer { MeetupViewModel(c.meetupRepository, c.groupRepository, c.votingRepository, meetupId) } }
     }
 }
 
@@ -407,41 +419,77 @@ fun MeetupScreen(
 ) {
     val vm: MeetupViewModel = screenViewModel(MeetupViewModel.factory(container, meetupId))
     val state by vm.state.collectAsState()
-    val votes by vm.votes.collectAsState()
     MeetupStatusNotifications((state as? UiState.Success)?.data)
-    val calendar by vm.calendar.collectAsState()
-    val deletion by vm.deletion.collectAsState()
-    val leaving by vm.leaving.collectAsState()
-    val settlement by vm.settlement.collectAsState()
-    var confirmSettlement by rememberSaveable { mutableStateOf(false) }
-    var confirmLeave by rememberSaveable { mutableStateOf(false) }
-    val notify = LocalNotify.current
-    var confirmDelete by rememberSaveable { mutableStateOf(false) }
-    var exited by rememberSaveable { mutableStateOf(false) }
     val userId = container.sessionStore.currentUserId()
-    var now by remember { mutableStateOf(java.time.Instant.now()) }
-    var ownTrip by remember { mutableStateOf<com.example.cpen321application.data.MeetupTrip?>(null) }
-    val refreshTrip: suspend () -> Unit = {
-        val result = container.tripRepository.list(meetupId)
-        if (result is ApiResult.Success) ownTrip = result.data.find { it.userId == userId }
-    }
+    val trip = remember(meetupId) { OwnTripState(container.tripRepository, meetupId, userId) }
     LaunchedEffect(meetupId) {
-        refreshTrip()
-        while (true) { now = java.time.Instant.now(); kotlinx.coroutines.delay(1000) }
+        trip.refresh()
+        trip.runClock()
     }
     val actions = MeetupActions(onEnterDetails, onStartVoting, onOpenVoting, onOpenLiveLocation)
-    var showMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { vm.load() }
     BackHandler(onBack = onBack)
+    MeetupLiveUpdates(container, meetupId, vm, onTripChanged = trip::refresh, onBack = onBack)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .safeDrawingPadding()
+            .padding(Dimens.ScreenPadding),
+    ) {
+        UiStateContent(state, onRetry = vm::load, emptyMessage = "") { meetup ->
+            MeetupContent(meetup, vm, container, trip, actions, onBack)
+        }
+    }
+}
+
+/** The caller's own trip for this meetup plus a once-a-second clock for time-based actions. */
+private class OwnTripState(
+    private val trips: TripRepository,
+    private val meetupId: String,
+    private val userId: String?,
+) {
+    var ownTrip by mutableStateOf<MeetupTrip?>(null)
+        private set
+    var now by mutableStateOf(Instant.now())
+        private set
+
+    suspend fun refresh() {
+        val result = trips.list(meetupId)
+        if (result is ApiResult.Success) ownTrip = result.data.find { it.userId == userId }
+    }
+
+    suspend fun runClock() {
+        while (true) {
+            now = Instant.now()
+            delay(CLOCK_TICK_MS)
+        }
+    }
+
+    fun hasReached(iso: String): Boolean = runCatching { !now.isBefore(Instant.parse(iso)) }.getOrDefault(false)
+}
+
+// Reacts to realtime meetup events and to the outcome of this screen's delete / settle actions
+@Composable
+private fun MeetupLiveUpdates(
+    container: AppContainer,
+    meetupId: String,
+    vm: MeetupViewModel,
+    onTripChanged: suspend () -> Unit,
+    onBack: () -> Unit,
+) {
+    val notify = LocalNotify.current
+    val deletion by vm.deletion.collectAsState()
+    val settlement by vm.settlement.collectAsState()
+    var exited by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(container, meetupId) {
         container.realtimeClient.meetupEvents(meetupId).collect { event ->
             if (event is MeetupEvent.Joined || event is MeetupEvent.RecommendationsReady) vm.refreshLive()
             if (event is MeetupEvent.StatusChanged) vm.onStatusChanged(event)
-            if (event is MeetupEvent.TripUpdated || event is MeetupEvent.Joined) refreshTrip()
-            if (event is MeetupEvent.Deleted && !vm.deletion.value.submitting &&
-                vm.deletion.value.result == null && !exited) {
+            if (event is MeetupEvent.TripUpdated || event is MeetupEvent.Joined) onTripChanged()
+            if (event is MeetupEvent.Deleted && !vm.isDeletingHere() && !exited) {
                 exited = true
                 if (event.notifyParticipant) notify("This meetup has been deleted by its organizer.")
                 onBack()
@@ -454,192 +502,81 @@ fun MeetupScreen(
     LaunchedEffect(settlement.result) {
         if (settlement.result != null) notify("Fair Credit updated. View balances in the group's Fair Credit page.")
     }
+}
 
-    Box(
+@Composable
+private fun MeetupContent(
+    meetup: Meetup,
+    vm: MeetupViewModel,
+    container: AppContainer,
+    trip: OwnTripState,
+    actions: MeetupActions,
+    onBack: () -> Unit,
+) {
+    val votes by vm.votes.collectAsState()
+    var dialog by rememberSaveable { mutableStateOf(MeetupDialog.NONE) }
+    val userId = container.sessionStore.currentUserId()
+    val submitted = meetup.participants.any { it.userId == userId }
+    val isOrganizer = meetup.organizerId == userId
+    MeetupConfirmDialog(dialog, meetup, vm, onDismiss = { dialog = MeetupDialog.NONE })
+
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .safeDrawingPadding()
-            .padding(Dimens.ScreenPadding),
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        UiStateContent(state, onRetry = vm::load, emptyMessage = "") { meetup ->
-            if (confirmSettlement) {
-                AlertDialog(
-                    onDismissRequest = { confirmSettlement = false },
-                    title = { Text("Settle Fair Credit?") },
-                    text = { Text("Finish this meetup and update everyone's Fair Credit. Completed trips use actual travel time; members who never started tracking use estimated travel time. All started trips must arrive first. This cannot be undone.") },
-                    confirmButton = { TextButton(onClick = { confirmSettlement = false; vm.settle() }) { Text("Settle") } },
-                    dismissButton = { TextButton(onClick = { confirmSettlement = false }) { Text("Cancel") } },
-                )
-            }
-            if (confirmLeave) {
-                AlertDialog(
-                    onDismissRequest = { confirmLeave = false },
-                    title = { Text("Leave meetup?") },
-                    text = { Text("Your starting location and preferences for this meetup will be deleted and will no longer affect place searches. You can join again by entering your details before voting starts.") },
-                    confirmButton = { TextButton(onClick = { confirmLeave = false; vm.leaveMeetup() }) { Text("Leave") } },
-                    dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text("Cancel") } },
-                )
-            }
-            if (confirmDelete) {
-                DeleteConfirmation(
-                    title = "Delete meetup?",
-                    description = "Delete ${meetup.title}, its participation details, candidates and votes? This cannot be undone. Settled Fair Credit and external calendar events will remain.",
-                    votingWarning = if (meetup.status == MeetupStatus.VOTING)
-                        "Warning: this meetup currently has voting in progress. Deleting it will end the vote." else null,
-                    onDismiss = { confirmDelete = false },
-                    onDelete = { confirmDelete = false; vm.deleteMeetup() },
-                )
-            }
+        MeetupTopBar(
+            vm = vm,
+            canLeave = meetup.status == MeetupStatus.SETUP && submitted,
+            canDelete = isOrganizer,
+            onBack = onBack,
+            onSelect = { dialog = it },
+        )
+        MeetupHeader(meetup, vm, isOrganizer)
 
-            val submitted = meetup.participants.any { it.userId == userId }
-            val isOrganizer = meetup.organizerId == userId
-            val isSetup = meetup.status == MeetupStatus.SETUP
+        MeetupInfoCard(
+            meetup = meetup,
+            userId = userId,
+            votes = votes,
+            actions = actions,
+            ownTrip = trip.ownTrip,
+            container = container,
+            slots = MeetupSlots(
+                settlement = {
+                    val canSettle = isOrganizer && meetup.status == MeetupStatus.FINALIZED
+                    SettleFairCreditButton(
+                        vm = vm,
+                        visible = canSettle && trip.hasReached(meetup.scheduledAt),
+                        onClick = { dialog = MeetupDialog.SETTLE },
+                    )
+                },
+                calendar = {
+                    val calendar by vm.calendar.collectAsState()
+                    AddToCalendarButton(
+                        container.calendarAuthorizer,
+                        calendar,
+                        meetup.participants.any { it.userId == userId && it.calendarEventId != null },
+                        onToken = vm::addToCalendar,
+                        onError = vm::setCalendarError,
+                    )
+                },
+            ),
+        )
+    }
+}
 
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                // Top Navigation Bar
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.testTag(TestTags.BACK_BUTTON),
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = TealPrimary,
-                        )
-                    }
-
-                    if ((isSetup && submitted) || isOrganizer) {
-                        Box {
-                            IconButton(onClick = { showMenu = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.MoreVert,
-                                    contentDescription = "Options",
-                                    tint = TealPrimary,
-                                )
-                            }
-
-                            DropdownMenu(
-                                expanded = showMenu,
-                                onDismissRequest = { showMenu = false },
-                            ) {
-                                if (isSetup && submitted) {
-                                    DropdownMenuItem(
-                                        text = { Text(if (leaving.submitting) "Leaving..." else "Leave meetup") },
-                                        onClick = { showMenu = false; confirmLeave = true },
-                                        enabled = !leaving.submitting && !deletion.submitting,
-                                        modifier = Modifier.testTag("leave_meetup"),
-                                    )
-                                }
-                                if (isOrganizer) {
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                if (deletion.submitting) "Deleting..." else "Delete meetup",
-                                                color = MaterialTheme.colorScheme.error,
-                                            )
-                                        },
-                                        onClick = { showMenu = false; confirmDelete = true },
-                                        enabled = !deletion.submitting,
-                                        modifier = Modifier.testTag("delete_meetup"),
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Status Chip
-                val spec = getStatusSpec(meetup.status)
-                Surface(
-                    shape = CircleShape,
-                    color = spec.backgroundColor,
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier
-                            .padding(horizontal = 14.dp, vertical = 6.dp)
-                            .testTag(TestTags.MEETUP_STATUS_TEXT),
-                    ) {
-                        Icon(
-                            imageVector = spec.icon,
-                            contentDescription = null,
-                            tint = spec.color,
-                            modifier = Modifier.size(14.dp),
-                        )
-                        Text(
-                            text = spec.label,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = spec.color,
-                        )
-                        Text(
-                            text = "Status: ${meetup.status.name}",
-                            fontSize = 0.sp,
-                            color = Color.Transparent,
-                        )
-                    }
-                }
-
-                // Title
-                Text(
-                    text = meetup.title,
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = TealPrimary,
-                    modifier = Modifier.testTag(TestTags.MEETUP_TITLE_TEXT),
-                )
-
-                leaving.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                deletion.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                if (meetup.status == MeetupStatus.SETTLED) {
-                    Text("Fair Credit settled. View updated balances and history in the group's Fair Credit page.")
-                }
-
-                // Meetup Details Cards & Actions
-                MeetupInfoCard(
-                    meetup = meetup,
-                    userId = userId,
-                    votes = votes,
-                    actions = actions,
-                    ownTrip = ownTrip,
-                    container = container,
-                    settlementSection = {
-                        settlement.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                        if (isOrganizer && meetup.status == MeetupStatus.FINALIZED &&
-                            runCatching { !now.isBefore(Instant.parse(meetup.scheduledAt)) }.getOrDefault(false)) {
-                            Button(
-                                onClick = { confirmSettlement = true },
-                                enabled = !settlement.submitting && !deletion.submitting,
-                                modifier = Modifier.fillMaxWidth().testTag("settle_fair_credit"),
-                            ) { Text(if (settlement.submitting) "Settling..." else "Settle Fair Credit") }
-                        }
-                    },
-                    calendarSection = {
-                        val alreadyAdded = meetup.participants.any { it.userId == userId && it.calendarEventId != null }
-                        AddToCalendarButton(
-                            container.calendarAuthorizer,
-                            calendar,
-                            alreadyAdded,
-                            onToken = vm::addToCalendar,
-                            onError = vm::setCalendarError,
-                        )
-                    },
-                )
-            }
-        }
+@Composable
+private fun SettleFairCreditButton(vm: MeetupViewModel, visible: Boolean, onClick: () -> Unit) {
+    val settlement by vm.settlement.collectAsState()
+    val deletion by vm.deletion.collectAsState()
+    settlement.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    if (visible) {
+        Button(
+            onClick = onClick,
+            enabled = !settlement.submitting && !deletion.submitting,
+            modifier = Modifier.fillMaxWidth().testTag("settle_fair_credit"),
+        ) { Text(if (settlement.submitting) "Settling..." else "Settle Fair Credit") }
     }
 }
 
@@ -651,16 +588,21 @@ private data class MeetupActions(
     val onOpenLiveLocation: () -> Unit,
 )
 
+/** Status-specific sections the info card hosts but the screen owns (they need the view model). */
+private class MeetupSlots(
+    val settlement: @Composable () -> Unit,
+    val calendar: @Composable () -> Unit,
+)
+
 @Composable
 private fun MeetupInfoCard(
     meetup: Meetup,
     userId: String?,
     votes: VotesSnapshot?,
     actions: MeetupActions,
-    ownTrip: com.example.cpen321application.data.MeetupTrip?,
+    ownTrip: MeetupTrip?,
     container: AppContainer,
-    settlementSection: @Composable () -> Unit,
-    calendarSection: @Composable () -> Unit,
+    slots: MeetupSlots,
 ) {
     val submitted = meetup.participants.any { it.userId == userId }
     val setup = meetup.status == MeetupStatus.SETUP
@@ -673,7 +615,7 @@ private fun MeetupInfoCard(
             MeetupMeetingSpotCard(
                 winner = meetup.winner,
                 showCalendar = submitted,
-                calendarSection = calendarSection,
+                calendarSection = slots.calendar,
             )
         }
 
@@ -707,7 +649,7 @@ private fun MeetupInfoCard(
             MeetupFinalizedActionButtons(
                 onOpenLiveLocation = actions.onOpenLiveLocation,
                 onOpenVoting = actions.onOpenVoting,
-                settlementSection = settlementSection,
+                settlementSection = slots.settlement,
             )
         }
     }
@@ -1045,7 +987,7 @@ private fun MeetupVotingActionButton(onOpenVoting: () -> Unit) {
 }
 
 @Composable
-private fun MeetupTripArrivedCard(trip: com.example.cpen321application.data.MeetupTrip) {
+private fun MeetupTripArrivedCard(trip: MeetupTrip) {
     MeetFairCard(
         containerColor = StatusGreenLight,
         borderWidth = 0.dp,
@@ -1147,7 +1089,7 @@ private fun MeetupTripOnWayCard() {
 @Composable
 private fun MeetupTripStatusSection(
     meetupId: String,
-    ownTrip: com.example.cpen321application.data.MeetupTrip?,
+    ownTrip: MeetupTrip?,
     container: AppContainer,
     onOpenLiveLocation: () -> Unit,
 ) {

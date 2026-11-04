@@ -1,3 +1,6 @@
+import type { NextFunction, Request, Response } from 'express';
+
+import { errorHandler } from '../../src/common/middleware/error-handler';
 import {
   BadRequest,
   Conflict,
@@ -56,5 +59,23 @@ describe('Unmocked: HTTP errors', () => {
     expect(err.status).toBe(400);
     expect(err.message).toBe('Invalid request');
     expect(err.details).toEqual(['a is bad', 'b is bad']);
+  });
+});
+
+// Interface: errorHandler (common/middleware/error-handler.ts)
+describe('Unmocked: errorHandler', () => {
+  // Input: an HttpError raised after the response headers were already sent
+  // Expected behavior: no JSON error is written; the error is passed on to Express's default handler via next
+  // Expected output: next(err) called once; res.status never called
+  test('Delegates to Express once headers are sent', () => {
+    const err = new NotFound();
+    const status = jest.fn();
+    const res = { headersSent: true, status } as unknown as Response;
+    const next = jest.fn<void, [unknown]>();
+
+    errorHandler(err, {} as Request, res, next as NextFunction);
+
+    expect(next).toHaveBeenCalledWith(err);
+    expect(status).not.toHaveBeenCalled();
   });
 });

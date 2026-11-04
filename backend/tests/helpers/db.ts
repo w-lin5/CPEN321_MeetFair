@@ -20,9 +20,7 @@ export async function startDb(): Promise<void> {
 }
 
 export async function clearDb(): Promise<void> {
-  for (const collection of Object.values(mongoose.connection.collections)) {
-    await collection.deleteMany({});
-  }
+  await Promise.all(Object.values(mongoose.connection.collections).map((collection) => collection.deleteMany({})));
 }
 
 export async function stopDb(): Promise<void> {

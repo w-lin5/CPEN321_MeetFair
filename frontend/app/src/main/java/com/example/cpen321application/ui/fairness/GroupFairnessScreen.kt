@@ -101,40 +101,7 @@ private fun FairnessContent(data: GroupFairness, userId: String?) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                // Hero Balance Card
-                MeetFairCard(
-                    containerColor = TealContainer,
-                    borderWidth = 0.dp,
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            text = "YOUR FAIR CREDIT",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = TealPrimary.copy(alpha = 0.7f),
-                            letterSpacing = 1.2.sp,
-                        )
-
-                        Text(
-                            text = "Your Fair Credit: ${formatCredit(data.balanceOf(userId))}",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TealPrimary,
-                            modifier = Modifier.testTag(TestTags.FAIR_CREDIT_TEXT),
-                        )
-
-                        Text(
-                            text = "Positive credit means you travelled more than the group average. Voting uses your balance to set your vote weight; it does not spend credit.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+                FairCreditHero(balance = data.balanceOf(userId))
 
                 Text(
                     text = "Group balances",
@@ -169,6 +136,43 @@ private fun FairnessContent(data: GroupFairness, userId: String?) {
         }
 
         items(mine, key = { it.meetupId }) { FairnessRow(it) }
+    }
+}
+
+@Composable
+private fun FairCreditHero(balance: Long) {
+    MeetFairCard(
+        containerColor = TealContainer,
+        borderWidth = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "YOUR FAIR CREDIT",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = TealPrimary.copy(alpha = 0.7f),
+                letterSpacing = 1.2.sp,
+            )
+
+            Text(
+                text = "Your Fair Credit: ${formatCredit(balance)}",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = TealPrimary,
+                modifier = Modifier.testTag(TestTags.FAIR_CREDIT_TEXT),
+            )
+
+            Text(
+                text = "Positive credit means you travelled more than the group average. Voting uses your balance to set your vote weight; it does not spend credit.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -233,7 +237,6 @@ private fun MemberRow(member: MemberCredit) {
 
 @Composable
 private fun FairnessRow(entry: FairnessEntry) {
-    val source = if (entry.source == CommuteSource.TRACKED) "tracked" else "Maps estimate"
     var expanded by rememberSaveable(entry.meetupId) { mutableStateOf(false) }
 
     MeetFairCard(
@@ -248,32 +251,7 @@ private fun FairnessRow(entry: FairnessEntry) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = entry.meetupTitle ?: "Meetup",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = TealPrimary,
-                    modifier = Modifier.weight(1f),
-                )
-
-                Surface(
-                    shape = CircleShape,
-                    color = TealContainer,
-                ) {
-                    Text(
-                        text = formatCredit(entry.delta),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = TealPrimary,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    )
-                }
-            }
+            FairnessRowHeader(entry)
 
             entry.placeName?.let {
                 Text(
@@ -298,65 +276,106 @@ private fun FairnessRow(entry: FairnessEntry) {
                 color = MaterialTheme.colorScheme.onSurface,
             )
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    text = if (expanded) "Tap to hide calculation" else "Tap to see how this was calculated",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = TealPrimary,
-                )
-                Icon(
-                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = null,
-                    tint = TealPrimary,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
+            ExpandCalculationHint(expanded)
 
             AnimatedVisibility(visible = expanded) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = TealContainer,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Text(
-                            text = "Your trip: ${formatMinutes(entry.actualSeconds)} ($source)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            text = "Your adjusted travel burden: ${entry.normalizedBurden} seconds",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            text = "Group average adjusted burden: ${entry.expectedBurden} seconds",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            text = "Your burden minus the group average = ${entry.delta} seconds of Fair Credit.",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
-                            color = TealPrimary,
-                        )
-                        Text(
-                            text = "A positive change earns credit; a negative change lowers your balance. The calculation is rounded to whole seconds.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+                CalculationBreakdown(entry)
             }
+        }
+    }
+}
+
+@Composable
+private fun FairnessRowHeader(entry: FairnessEntry) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = entry.meetupTitle ?: "Meetup",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = TealPrimary,
+            modifier = Modifier.weight(1f),
+        )
+
+        Surface(
+            shape = CircleShape,
+            color = TealContainer,
+        ) {
+            Text(
+                text = formatCredit(entry.delta),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = TealPrimary,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ExpandCalculationHint(expanded: Boolean) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = if (expanded) "Tap to hide calculation" else "Tap to see how this was calculated",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = TealPrimary,
+        )
+        Icon(
+            imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+            contentDescription = null,
+            tint = TealPrimary,
+            modifier = Modifier.size(16.dp),
+        )
+    }
+}
+
+@Composable
+private fun CalculationBreakdown(entry: FairnessEntry) {
+    val source = if (entry.source == CommuteSource.TRACKED) "tracked" else "Maps estimate"
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = TealContainer,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = "Your trip: ${formatMinutes(entry.actualSeconds)} ($source)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "Your adjusted travel burden: ${entry.normalizedBurden} seconds",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "Group average adjusted burden: ${entry.expectedBurden} seconds",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "Your burden minus the group average = ${entry.delta} seconds of Fair Credit.",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold,
+                color = TealPrimary,
+            )
+            Text(
+                text = "A positive change earns credit; a negative change lowers your balance. The calculation is rounded to whole seconds.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

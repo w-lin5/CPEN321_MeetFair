@@ -20,28 +20,7 @@ import java.net.URI
 internal fun AvatarMarker(userId: String, name: String, photoUrl: String?, position: LatLng) {
     var photo by remember(photoUrl) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(photoUrl) {
-        photo = withContext(Dispatchers.IO) {
-            runCatching {
-                val uri = URI(photoUrl ?: return@runCatching null)
-                if (uri.scheme != "https") return@runCatching null
-                val connection = uri.toURL().openConnection() as HttpURLConnection
-                try {
-                    connection.connectTimeout = 5000
-                    connection.readTimeout = 5000
-                    connection.inputStream.use { stream ->
-                        val output = java.io.ByteArrayOutputStream()
-                        val buffer = ByteArray(8192)
-                        while (output.size() < 512 * 1024) {
-                            val count = stream.read(buffer, 0, minOf(buffer.size, 512 * 1024 - output.size()))
-                            if (count < 0) break
-                            output.write(buffer, 0, count)
-                        }
-                        val bytes = output.toByteArray()
-                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 2 })
-                    }
-                } finally { connection.disconnect() }
-            }.getOrNull()
-        }
+        photo = withContext(Dispatchers.IO) { downloadAvatar(photoUrl) }
     }
     val bitmap = remember(photo, name, userId) {
         Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888).apply {
@@ -69,4 +48,30 @@ internal fun AvatarMarker(userId: String, name: String, photoUrl: String?, posit
     val marker = rememberMarkerState(position = position)
     SideEffect { marker.position = position }
     Marker(state = marker, title = name, icon = BitmapDescriptorFactory.fromBitmap(bitmap), anchor = androidx.compose.ui.geometry.Offset(0.5f, 0.5f))
+}
+
+// Only https photos are fetched; any failure (bad URL, network, decode) just falls back to the initial
+private fun downloadAvatar(photoUrl: String?): Bitmap? = runCatching {
+    photoUrl?.let { URI(it) }?.takeIf { it.scheme == "https" }?.let(::readAvatar)
+}.getOrNull()
+
+private fun readAvatar(uri: URI): Bitmap? {
+    val connection = uri.toURL().openConnection() as HttpURLConnection
+    try {
+        connection.connectTimeout = 5000
+        connection.readTimeout = 5000
+        val bytes = connection.inputStream.use(::readUpTo512Kb)
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 2 })
+    } finally { connection.disconnect() }
+}
+
+private fun readUpTo512Kb(stream: java.io.InputStream): ByteArray {
+    val output = java.io.ByteArrayOutputStream()
+    val buffer = ByteArray(8192)
+    while (output.size() < 512 * 1024) {
+        val count = stream.read(buffer, 0, minOf(buffer.size, 512 * 1024 - output.size()))
+        if (count < 0) break
+        output.write(buffer, 0, count)
+    }
+    return output.toByteArray()
 }

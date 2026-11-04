@@ -105,18 +105,18 @@ const SPREAD_MINUTES = [[15, 5, 30, 30], [15, 30, 5, 30], [15, 30, 30, 5]];
 
 async function setupThreeMembers() {
   const [a, b, c] = await Promise.all([createUserN(1), createUserN(2), createUserN(3)]);
-  const group = await createGroup(a!.id);
-  await addMember(group.id, b!.id);
-  await addMember(group.id, c!.id);
-  const meetup = await createMeetup(group.id, a!.id);
+  const group = await createGroup(a.id);
+  await addMember(group.id, b.id);
+  await addMember(group.id, c.id);
+  const meetup = await createMeetup(group.id, a.id);
   await MeetupModel.updateOne({ _id: meetup.id }, { $set: { participants: [
-    { userId: a!.id, startLocation: { lat: 49.2, lng: -123.2 }, travelMode: 'WALK', preferences: ['COFFEE'] },
-    { userId: b!.id, startLocation: { lat: 49.3, lng: -123.2 }, travelMode: 'TRANSIT', preferences: ['COFFEE'] },
-    { userId: c!.id, startLocation: { lat: 49.25, lng: -123.1 }, travelMode: 'DRIVE', preferences: ['COFFEE'] },
+    { userId: a.id, startLocation: { lat: 49.2, lng: -123.2 }, travelMode: 'WALK', preferences: ['COFFEE'] },
+    { userId: b.id, startLocation: { lat: 49.3, lng: -123.2 }, travelMode: 'TRANSIT', preferences: ['COFFEE'] },
+    { userId: c.id, startLocation: { lat: 49.25, lng: -123.1 }, travelMode: 'DRIVE', preferences: ['COFFEE'] },
   ] } });
   jest.spyOn(placesClient, 'searchNearby').mockResolvedValue(SPREAD_PLACES);
   jest.spyOn(routesClient, 'travelSeconds').mockResolvedValue(SPREAD_MINUTES.map(row => row.map(m => m * 60)));
-  return { a: a!, b: b!, c: c!, group, meetup };
+  return { a: a, b: b, c: c, group, meetup };
 }
 
 // Interface POST /api/meetups/:meetupId/recommendations/from-places, GET /api/meetups/:meetupId/recommendations

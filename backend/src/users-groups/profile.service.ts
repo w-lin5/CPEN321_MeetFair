@@ -14,8 +14,8 @@ function account(user: Awaited<ReturnType<typeof userService.getById>>) {
     email: user.email,
     googleName: user.name,
     displayName: userService.displayNameOf(user),
-    hasCustomDisplayName: user.displayName !== null && user.displayName !== undefined,
-    photoUrl: user.photoUrl ?? null,
+    hasCustomDisplayName: user.displayName !== null,
+    photoUrl: user.photoUrl,
   };
 }
 

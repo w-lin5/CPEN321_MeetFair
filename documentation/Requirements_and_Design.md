@@ -5,7 +5,7 @@
 | **Change Date**   | **Modified Sections** | **Rationale** |
 | ----------------- | --------------------- | ------------- |
 | 2026-10-19 | All Sections | Initial submission for CP1 |
-| 2026-11-01 | 3.1, 3.3-3.7, 4.1, 4.3-4.7 | Document map and time pickers, membership management, deletion, refresh and in-app notifications. Align UI action labels and screen presentation with implementation. Match the implementation of features 3 and 5. Recommendations now come from Google Places and Routes through `from-places` and `places/search`, replacing manual candidate entry. Trips are a separate Live Location component that receives locations over REST and notifies members with `trip:updated`. Fair Credit settlement and automatic arrival remain planned.|
+| 2026-11-03 | 3.1-3.7, 4.1-4.7 | CP Updates: Updated requirements, use cases, APIs, and architecture to match implemented group management, meetup scheduling and participation, Places/Routes recommendations, weighted voting, Fair Credit settlement, and live-trip tracking. Clarified validation, permissions, privacy, refresh, and notification behavior so flows and edge cases are explicit. Added approximate screen mock-ups as visual references. |
 ---
 
 ## 2. Project Description
@@ -21,7 +21,7 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 2. **Groups and meetups**: Any user can create a group and invite others with its 6-character invite code. Any member can create a meetup with a title and a future time selected using a calendar followed by hour and minute wheels. Joining a group does not automatically join its meetups: a member participates by submitting their starting location, travel mode (walk, transit or drive) and preferences. Starting locations are selected on a map rather than entered as coordinates. Members can leave eligible meetups or groups; organizers can remove eligible members and delete the groups or meetups they manage, with confirmation before deletion.
 3. **Fair spot recommendation**: The back end collects candidate places (Google Places API), gets each member's travel time to each candidate (Google Routes API), then scores every candidate with our own fairness and preference algorithm and returns the top 3. Voting does not start if fewer than 3 usable places are found.
 4. **Weighted voting**: Members vote on the top 3 and lock their vote. A locked vote is weighted by the member's Fair Credit in the group (how much more than the group average they travelled in past meetups): 1 + 0.1 per 30 minutes of credit, between 1 and 1.5. Votes appear live; the organizer finalizes the vote, and each member can add the meetup at the winning place to their own Google Calendar.
-5. **Live commute tracking**: From the scheduled meetup time, participants tap "I'mm leaving" and share live location; the group sees who is on the way. The commute ends when they tap "I arrived", which records their actual commute time. *Status at CP2: tracking and sharing are implemented. Planned: ending the commute automatically when a location reaches the venue, updating Fair Credit from the actual commute time, and falling back to the Google Maps estimate for members who never start tracking.*
+5. **Live commute tracking**: From the scheduled meetup time, participants tap "I'mm leaving" and share live location; the group sees who is on the way. The commute ends when they tap "I arrived", which records their actual commute time.
 6. **Refresh and in-app notifications**: Data pages support pull-to-refresh. Participation changes update connected meetup pages automatically. Voting status changes and deletions produce temporary bottom Snackbars on the relevant subscribed pages.
 ### **3.2. Use Case Diagram**
 ![Use Case Diagram](images/Use_Case_Diagram.png)
@@ -267,11 +267,23 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 - 6b. A location update fails.
     - 6b1. The system displays "Location update failed. Retrying..." and tries again while the trip is still active.
 
-- 9a. *(Planned)* Settlement is requested more than once.
+- 9a. Settlement is requested more than once.
     - 9a1. The system prevents duplicate Fair Credit changes for the same participant and meetup.
 
 ### **3.6. Screen Mock-ups**
-No separate mock-ups are included. The UI uses Material Design 3 forms, lists, confirmation dialogs and temporary bottom Snackbars, together with an interactive map picker and a calendar followed by hour and minute wheels. These interactions are described in Section 3.4.
+The following mock-ups are visual references for selected group and meetup screens. They are similar to, but not exact representations of, the implemented UI. The current app is authoritative for appearance; Section 3.4 is authoritative for specified interactions and behavior.
+
+| Group list | Group details |
+|:---:|:---:|
+| <img src="mockups/group_list.png" alt="Group list mock-up" width="320"> | <img src="mockups/group_details.png" alt="Group details mock-up" width="320"> |
+
+| Meetup before leaving | Meetup on the way |
+|:---:|:---:|
+| <img src="mockups/meetup_before_leaving.png" alt="Meetup before leaving mock-up" width="320"> | <img src="mockups/meetup_on_the_way.png" alt="Meetup on the way mock-up" width="320"> |
+
+| Meetup arrived |
+|:---:|
+| <img src="mockups/meetup_arrived.png" alt="Meetup arrived mock-up" width="320"> |
 
 
 ### **3.7. Non-Functional Requirements**
@@ -380,8 +392,8 @@ No separate mock-ups are included. The UI uses Material Design 3 forms, lists, c
             - **Purpose**: Every member's Fair Credit in the group and the group's ledger, newest first.
         8. `double getVoteWeight(String userId, String groupId)` / `double getBalance(String userId, String groupId)` / `Map<String, double> getBalances(String groupId, List<String> userIds)`
             - **Purpose**: Members' Fair Credit in a group and the resulting vote weight; the Recommendation Engine uses the balances for fairness scoring.
-        9. *(planned)* `List<FairCreditEntry> settleMeetup(String groupId, String meetupId, List<Trip> trips)`
-            - **Purpose**: Turns each member's actual trip time into a credit change against the group average; a meetup can be settled only once. The function is implemented and tested, but nothing calls it yet, so meetups do not reach SETTLED.
+        9. `List<FairCreditEntry> settleMeetup(String groupId, String meetupId, List<Trip> trips)`
+            - **Purpose**: Turns each member's actual trip time into a credit change against the group average; a meetup can be settled only once. The Live Location component calls this during meetup settlement.
 4. **Realtime Gateway**
     - **Purpose**: The Socket.IO server on the same host and port as the REST API. It authenticates each connection with the MeetFair session token, lets only group members join a meetup's room, and delivers the other components' updates to the members of that room. We chose a persistent socket over polling (slower and more wasteful) and over Firebase push notifications, which change the phone's state rather than the app's and may not be used for major functionality. Components publish through a small publisher interface, so they do not depend on Socket.IO.
     - **Interfaces**:
@@ -414,6 +426,13 @@ No separate mock-ups are included. The UI uses Material Design 3 forms, lists, c
             - **Purpose**: Pauses sharing and clears the location; the commute timer keeps running.
         5. `GET /api/meetups/:meetupId/trips` -> `200 List<Trip>`
             - **Purpose**: Lists the meetup's trips for group members, with a location only for members who are actively sharing.
+        6. `POST /api/meetups/:meetupId/settle` -> `200 Meetup`
+            - **Purpose**: Meetup organizer only; settles Fair Credit after the finalized meetup time has arrived and all started trips have ended. Uses tracked commute durations when available and stored or calculated travel estimates otherwise, then moves the meetup to SETTLED. Repeated successful requests are harmless.
+6. **Health Check**
+    - **Purpose**: Provides a simple public check that the HTTP server is responding.
+    - **Interfaces**:
+        1. `GET /health` -> `200 { status: "ok" }`
+            - **Purpose**: Returns the server health status without requiring authentication.
 
 
 ### **4.2. Databases**

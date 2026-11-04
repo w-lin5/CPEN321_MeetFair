@@ -30,7 +30,7 @@ fun MeetFairApp(container: AppContainer, reminderMeetupId: String? = null, onRem
     if (current == null) SignInScreen(container) else AuthedApp(container, current, reminderMeetupId, onReminderOpened)
 }
 
-/** Signed in shell: owns the saveable back stack and routes system back to [Navigator.pop]. */
+// Signed in shell: owns the saveable back stack and routes system back to Navigator.pop
 @Composable
 private fun AuthedApp(container: AppContainer, token: String, reminderMeetupId: String?, onReminderOpened: () -> Unit) {
     val navigator = rememberSaveable(saver = Navigator.Saver) { Navigator.initial() }
@@ -52,7 +52,7 @@ private fun AuthedApp(container: AppContainer, token: String, reminderMeetupId: 
     }
 }
 
-/** Dispatches by feature; each feature's routes are rendered by its own function. */
+// Dispatches by feature; each feature's routes are rendered by its own function
 @Composable
 private fun RouteContent(container: AppContainer, navigator: Navigator, route: Route) {
     when (route) {
@@ -132,6 +132,7 @@ private fun GroupRoutes(container: AppContainer, navigator: Navigator, route: Ro
             onBack = navigator::pop,
             onNewMeetup = { navigator.push(Route.CreateMeetup(route.groupId)) },
             onOpenMeetup = { navigator.push(Route.Meetup(it)) },
+            onOpenFairness = { navigator.push(Route.GroupFairness(route.groupId)) },
         )
     }
 }
