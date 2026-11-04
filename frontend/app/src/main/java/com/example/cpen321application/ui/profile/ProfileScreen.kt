@@ -238,7 +238,10 @@ private fun ProfileDetailsRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             Text(
                 text = profile.displayName,
                 style = MaterialTheme.typography.titleMedium,
@@ -256,18 +259,14 @@ private fun ProfileDetailsRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                TextButton(
+                    onClick = { onSave(null) },
+                    enabled = !isSubmitting,
+                    modifier = Modifier.testTag(TestTags.RESET_DISPLAY_NAME_BUTTON),
+                ) {
+                    Text("Use Google name", color = TealPrimary)
+                }
             }
-        }
-        if (profile.hasCustomDisplayName) {
-            TextButton(
-                onClick = { onSave(null) },
-                enabled = !isSubmitting,
-                modifier = Modifier.testTag(TestTags.RESET_DISPLAY_NAME_BUTTON),
-            ) {
-                Text("Use Google name", color = TealPrimary)
-            }
-        } else {
-            Spacer(modifier = Modifier.weight(1f))
         }
 
         OutlinedButton(

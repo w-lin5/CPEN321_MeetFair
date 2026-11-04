@@ -15,7 +15,6 @@ class MeetupRepository(
 ) {
     suspend fun settle(meetupId: String): ApiResult<Meetup> =
         api.post("meetups/$meetupId/settle").parse { parseMeetup(JSONObject(it)) }
-
     suspend fun leave(meetupId: String): ApiResult<Unit> = api.delete("meetups/$meetupId/participation").parse { Unit }
         .also { if (it is ApiResult.Success) reminders?.cancel(meetupId) }
     suspend fun delete(meetupId: String): ApiResult<Unit> = api.delete("meetups/$meetupId").parse { Unit }

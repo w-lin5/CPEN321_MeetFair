@@ -48,6 +48,8 @@ import com.example.cpen321application.data.ApiResult
 import com.example.cpen321application.data.GroupEvent
 import com.example.cpen321application.data.GroupRepository
 import com.example.cpen321application.data.MeetupRepository
+import com.example.cpen321application.data.TripRepository
+import java.time.Instant
 import com.example.cpen321application.model.Group
 import com.example.cpen321application.model.GroupMember
 import com.example.cpen321application.model.GroupRole
@@ -142,6 +144,7 @@ data class GroupWithAction(
 class GroupListViewModel(
     private val groups: GroupRepository,
     private val meetups: MeetupRepository,
+    private val trips: TripRepository,
     private val currentUserId: String?,
 ) : ViewModel() {
     private val _state = MutableStateFlow<UiState<List<GroupWithAction>>>(UiState.Loading)
@@ -177,11 +180,19 @@ class GroupListViewModel(
         if (meetupResult !is ApiResult.Success) return null
         val meetupList = meetupResult.data
 
-        // 1. Check for voting required
+        val hasTracking = meetupList.any { meetup ->
+            meetup.status == MeetupStatus.FINALIZED && (
+                runCatching { !Instant.now().isBefore(Instant.parse(meetup.scheduledAt)) }.getOrDefault(false) ||
+                    trips.list(meetup.id).let { tripResult ->
+                        tripResult is ApiResult.Success && tripResult.data.isNotEmpty()
+                    }
+                )
+        }
+        if (hasTracking) return "Tracking live"
+
         val hasVoting = meetupList.any { it.status == MeetupStatus.VOTING }
         if (hasVoting) return "Vote required"
 
-        // 2. Check for setup details needed
         val needsDetails = meetupList.any { meetup ->
             meetup.status == MeetupStatus.SETUP &&
                 currentUserId != null &&
@@ -198,6 +209,7 @@ class GroupListViewModel(
                 GroupListViewModel(
                     c.groupRepository,
                     c.meetupRepository,
+                    c.tripRepository,
                     c.sessionStore.currentUserId(),
                 )
             }
