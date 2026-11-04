@@ -4,7 +4,7 @@ import { tuning } from '../config';
 import type { CandidateInput } from '../recommendation/schemas';
 
 const SEARCH = {
-  radiusMeters: 1500,
+  radiusMeters: 10000,
   maxResults: 10,
   timeoutMs: 10000,
 } as const;
@@ -37,7 +37,7 @@ function parsePlace(value: unknown): CandidateInput | undefined {
   };
 }
 
-/** Places matching any included type within 1.5 km of the supplied group center. */
+/** Places matching any included type within 10 km of the supplied group center. */
 export async function searchNearby(center: LatLng, includedTypes: readonly string[] = ['cafe']): Promise<CandidateInput[]> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) throw new Error('Missing required env var GOOGLE_PLACES_API_KEY');

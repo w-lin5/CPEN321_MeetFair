@@ -28,7 +28,7 @@ describe('Mocked: searchNearby', () => {
   // Mocked behavior: fetch returns 200 with the same place twice
   // Input: center (40.75, -73.98), default types
   // Expected behavior: one POST to places:searchNearby with the API key, the 5-field mask, includedTypes ["cafe"],
-  //   10 results within 1500 m of the center, and an abort signal
+  //   10 results within 10000 m of the center, and an abort signal
   // Expected output: the place once, as { placeId, name, address, location, types } with non-string types dropped
   test('requests only the needed fields and searches cafes around the supplied center', async () => {
     respond({ places: [place, place] });
@@ -46,7 +46,7 @@ describe('Mocked: searchNearby', () => {
     });
     expect(JSON.parse(String(options?.body))).toEqual({
       includedTypes: ['cafe'], maxResultCount: 10,
-      locationRestriction: { circle: { center: { latitude: 40.75, longitude: -73.98 }, radius: 1500 } },
+      locationRestriction: { circle: { center: { latitude: 40.75, longitude: -73.98 }, radius: 10000 } },
     });
     expect(options?.signal).toBeInstanceOf(AbortSignal);
   });
