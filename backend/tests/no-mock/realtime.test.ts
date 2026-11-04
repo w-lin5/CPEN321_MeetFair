@@ -66,7 +66,9 @@ function client(token?: string): Promise<Socket> {
   const socket = connect(url, { transports: ['websocket'], reconnection: false, ...(token ? { auth: { token } } : {}) });
   clients.push(socket);
   return new Promise((resolve, reject) => {
-    socket.once('connect', () => resolve(socket));
+    socket.once('connect', () => {
+      resolve(socket);
+    });
     socket.once('connect_error', reject);
   });
 }
@@ -78,7 +80,9 @@ async function join(socket: Socket, meetupId: unknown): Promise<Ack> {
 
 function nextEvent<T>(socket: Socket, event: string): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`No ${event} within ${EVENT_TIMEOUT_MS}ms`)), EVENT_TIMEOUT_MS);
+    const timer = setTimeout(() => {
+      reject(new Error(`No ${event} within ${EVENT_TIMEOUT_MS}ms`));
+    }, EVENT_TIMEOUT_MS);
     socket.once(event, (payload: T) => {
       clearTimeout(timer);
       resolve(payload);
@@ -133,7 +137,9 @@ describe('Unmocked: socket authentication', () => {
     });
     clients.push(socket);
     await new Promise((resolve, reject) => {
-      socket.once('connect', () => resolve(undefined));
+      socket.once('connect', () => {
+        resolve(undefined);
+      });
       socket.once('connect_error', reject);
     });
 

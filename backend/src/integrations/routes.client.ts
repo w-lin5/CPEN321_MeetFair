@@ -56,7 +56,7 @@ function planRequests(origins: RouteOrigin[], rows: (number | null)[][], destina
   return requests;
 }
 
-async function computeMatrix(apiKey: string, request: MatrixRequest, destinations: LatLng[]) {
+async function computeMatrix(apiKey: string, request: MatrixRequest, destinations: LatLng[]): Promise<unknown[]> {
   const response = await fetch('https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix', {
     method: 'POST',
     headers: {
@@ -74,7 +74,9 @@ async function computeMatrix(apiKey: string, request: MatrixRequest, destination
   if (!response.ok) throw new UpstreamError(FAILURE_MESSAGE);
   const data: unknown = await response.json();
   if (!Array.isArray(data)) throw new UpstreamError(FAILURE_MESSAGE);
-  return data;
+  // Array.isArray narrows to any[]; keep the elements unknown so callers must check them
+  const elements: unknown[] = data;
+  return elements;
 }
 
 /**

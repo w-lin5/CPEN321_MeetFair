@@ -2,22 +2,19 @@ const ENV_KEYS = ['NODE_ENV', 'PORT', 'MONGODB_URI', 'JWT_SECRET', 'GOOGLE_CLIEN
 
 type ConfigModule = typeof import('../../src/config');
 
-const savedEnv = new Map<string, string | undefined>();
+let savedEnv: NodeJS.ProcessEnv = {};
 
 // Load config.ts fresh with exactly the given environment (and without reading backend/.env)
 function loadConfig(vars: Partial<Record<(typeof ENV_KEYS)[number], string>>): ConfigModule {
   for (const key of ENV_KEYS) {
     Reflect.deleteProperty(process.env, key);
   }
-  for (const [key, value] of Object.entries(vars)) {
-    process.env[key] = value;
-  }
+  Object.assign(process.env, vars);
 
   let loaded: ConfigModule | undefined;
   jest.isolateModules(() => {
     jest.doMock('dotenv/config', () => ({}));
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    loaded = require('../../src/config') as ConfigModule;
+    loaded = jest.requireActual<ConfigModule>('../../src/config');
   });
 
   if (loaded === undefined) throw new Error('config did not load');
@@ -25,20 +22,15 @@ function loadConfig(vars: Partial<Record<(typeof ENV_KEYS)[number], string>>): C
 }
 
 beforeEach(() => {
-  for (const key of ENV_KEYS) {
-    savedEnv.set(key, process.env[key]);
-  }
+  savedEnv = { ...process.env };
 });
 
+// Drop what the test set, then put back the variables that existed before it
 afterEach(() => {
   for (const key of ENV_KEYS) {
-    const value = savedEnv.get(key);
-    if (value === undefined) {
-      Reflect.deleteProperty(process.env, key);
-    } else {
-      process.env[key] = value;
-    }
+    Reflect.deleteProperty(process.env, key);
   }
+  Object.assign(process.env, savedEnv);
   jest.dontMock('dotenv/config');
 });
 

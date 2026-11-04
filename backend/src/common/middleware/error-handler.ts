@@ -16,7 +16,12 @@ function isBodyParseError(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'type' in err && err.type === 'entity.parse.failed';
 }
 
-export const errorHandler: ErrorRequestHandler = (err: unknown, _req, res, _next) => {
+export const errorHandler: ErrorRequestHandler = (err: unknown, _req, res, next) => {
+  // A response that already started cannot get a JSON error
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
   if (err instanceof ValidationError) {
     res.status(400).json({ error: err.message, details: err.details });
     return;
