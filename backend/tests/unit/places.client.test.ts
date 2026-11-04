@@ -36,7 +36,7 @@ describe('Mocked: searchNearby', () => {
       placeId: 'cafe-1', name: 'Campus Cafe', address: 'UBC', location: { lat: 49.26, lng: -123.25 },
       types: ['cafe', 'food'],
     }]);
-    const [url, options] = fetchMock.mock.calls[0]!;
+    const [url, options] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe('https://places.googleapis.com/v1/places:searchNearby');
     expect(options?.method).toBe('POST');
     expect(options?.headers).toEqual({
@@ -67,7 +67,7 @@ describe('Mocked: searchNearby', () => {
   test('sends preference types without adding cafes to the request', async () => {
     respond({ places: [] });
     await searchNearby({ lat: 40, lng: -74 }, ['park', 'library']);
-    const options = fetchMock.mock.calls[0]![1];
+    const options = fetchMock.mock.calls[0]?.[1];
     expect(JSON.parse(String(options?.body)).includedTypes).toEqual(['park', 'library']);
   });
 

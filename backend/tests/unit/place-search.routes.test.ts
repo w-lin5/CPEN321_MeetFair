@@ -47,8 +47,8 @@ describe('Mocked: POST /api/meetups/:meetupId/places/search', () => {
     expect(res.body).toEqual({ candidates, message: null });
     expect(memberMock).toHaveBeenCalledWith(meetupId, organizerId);
     expect(searchMock).toHaveBeenCalledTimes(1);
-    expect(searchMock.mock.calls[0]![0].lat).toBeCloseTo(49.3);
-    expect(searchMock.mock.calls[0]![0].lng).toBeCloseTo(-123.2);
+    expect(searchMock.mock.calls[0]?.[0].lat).toBeCloseTo(49.3);
+    expect(searchMock.mock.calls[0]?.[0].lng).toBeCloseTo(-123.2);
     expect(meetupService.transitionStatus).not.toHaveBeenCalled();
   });
 

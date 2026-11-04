@@ -44,11 +44,11 @@ describe('recommendation ranking', () => {
       [place('p30'), place('p10'), place('p20'), place('p40')],
       [[30, 10, 20, 40].map(minutes), [30, 10, 20, 40].map(minutes)]);
     expect(ranked.map(c => c.placeId)).toEqual(['p10', 'p20', 'p30', 'p40']);
-    expect(ranked[0]!.travel).toEqual([
+    expect(ranked[0]?.travel).toEqual([
       { userId: 'a', mode: 'WALK', seconds: 600, normalizedSeconds: 600 },
       { userId: 'b', mode: 'DRIVE', seconds: 600, normalizedSeconds: 600 },
     ]);
-    expect(ranked[0]!.scores.total).toBe(15);
+    expect(ranked[0]?.scores.total).toBe(15);
   });
 
   // Input: x takes a 10 / b 30 minutes, y takes a 30 / b 10 minutes; first with equal credit, then b has 5 hours
@@ -58,11 +58,11 @@ describe('recommendation ranking', () => {
     const seconds = [[minutes(10), minutes(30)], [minutes(30), minutes(10)]];
     const equal = rankCandidates([member('a'), member('b')], places, seconds);
     expect(equal.map(c => c.placeId)).toEqual(['x', 'y']);
-    expect(equal[0]!.scores.total).toBe(equal[1]!.scores.total);
+    expect(equal[0]?.scores.total).toBe(equal[1]?.scores.total);
 
     const favoured = rankCandidates([member('a'), member('b', { fairCredit: FIVE_HOURS })], places, seconds);
     expect(favoured.map(c => c.placeId)).toEqual(['y', 'x']);
-    expect(favoured[0]!.scores.weightedTravel).toBeCloseTo(18);
+    expect(favoured[0]?.scores.weightedTravel).toBeCloseTo(18);
   });
 
   // Input: negative Fair Credit for b on the same two places
@@ -82,8 +82,8 @@ describe('recommendation ranking', () => {
       [[600, 600], [600, 600]],
     );
     expect(ranked.map(c => c.placeId)).toEqual(['restaurant', 'cafe']);
-    expect(ranked[0]!.scores.preference).toBeCloseTo(4);
-    expect(ranked[1]!.scores.preference).toBeCloseTo(6);
+    expect(ranked[0]?.scores.preference).toBeCloseTo(4);
+    expect(ranked[1]?.scores.preference).toBeCloseTo(6);
   });
 
   // Input: members with no preferences, or only the removed STUDY value
@@ -91,7 +91,7 @@ describe('recommendation ranking', () => {
   test('members without preferences are never penalized', () => {
     const ranked = rankCandidates([member('a'), member('b', { preferences: ['STUDY'] })],
       [place('park', ['park'])], [[600], [600]]);
-    expect(ranked[0]!.scores.preference).toBe(0);
+    expect(ranked[0]?.scores.preference).toBe(0);
   });
 
   // Input: three places where a has no route to the first, b a negative time to the second, and seconds is short a row

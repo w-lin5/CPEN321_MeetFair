@@ -40,7 +40,7 @@ describe('Mocked: travelSeconds', () => {
     );
     expect(result).toEqual([[600, 900], [120.5, 240], [300, null]]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    const [url, options] = fetchMock.mock.calls[0]!;
+    const [url, options] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe('https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix');
     expect(options?.method).toBe('POST');
     expect(options?.headers).toEqual({
@@ -55,7 +55,7 @@ describe('Mocked: travelSeconds', () => {
       { waypoint: { location: { latLng: { latitude: 49.28, longitude: -123.12 } } } },
     ]);
     expect(body.destinations).toHaveLength(2);
-    expect(JSON.parse(String(fetchMock.mock.calls[1]![1]?.body)).travelMode).toBe('DRIVE');
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)).travelMode).toBe('DRIVE');
   });
 
   // Mocked behavior: fetch returns [] for every request
