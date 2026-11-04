@@ -60,16 +60,18 @@ private fun readAvatar(uri: URI): Bitmap? {
     try {
         connection.connectTimeout = 5000
         connection.readTimeout = 5000
-        return connection.inputStream.use { stream ->
-            val output = java.io.ByteArrayOutputStream()
-            val buffer = ByteArray(8192)
-            while (output.size() < 512 * 1024) {
-                val count = stream.read(buffer, 0, minOf(buffer.size, 512 * 1024 - output.size()))
-                if (count < 0) break
-                output.write(buffer, 0, count)
-            }
-            val bytes = output.toByteArray()
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 2 })
-        }
+        val bytes = connection.inputStream.use(::readUpTo512Kb)
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 2 })
     } finally { connection.disconnect() }
+}
+
+private fun readUpTo512Kb(stream: java.io.InputStream): ByteArray {
+    val output = java.io.ByteArrayOutputStream()
+    val buffer = ByteArray(8192)
+    while (output.size() < 512 * 1024) {
+        val count = stream.read(buffer, 0, minOf(buffer.size, 512 * 1024 - output.size()))
+        if (count < 0) break
+        output.write(buffer, 0, count)
+    }
+    return output.toByteArray()
 }
