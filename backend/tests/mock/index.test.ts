@@ -25,8 +25,7 @@ interface Harness {
   io: FakeIo;
   attachRealtime: jest.Mock<FakeIo, [FakeServer]>;
   handlers: Map<string, Callback>;
-  exit: jest.SpyInstance;
-  consoleLog: jest.SpyInstance;
+  consoleInfo: jest.SpyInstance;
   consoleError: jest.SpyInstance;
 }
 
@@ -34,8 +33,10 @@ const PORT = 4321;
 const URI = 'mongodb://example/meetfair';
 
 // Let pending promise callbacks (the `main().catch` chain, `disconnectDb().then`) run
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setImmediate(resolve));
+function flush(): Promise<void> {
+  return new Promise((resolve) => {
+    setImmediate(resolve);
+  });
 }
 
 // Load index.ts fresh with its collaborators replaced by fakes; no certificate files unless `certs` says so
@@ -57,7 +58,7 @@ function boot(
       return Promise.resolve();
     }),
   };
-  const attachRealtime = jest.fn((_server: FakeServer): FakeIo => io);
+  const attachRealtime = jest.fn<FakeIo, [FakeServer]>(() => io);
   const app = { listen };
   // The HTTPS server listens through the same fake, so both protocols hand back `server`
   const createHttpsServer = jest.fn<{ listen: typeof listen }, [unknown, unknown]>(() => ({ listen }));
@@ -66,13 +67,12 @@ function boot(
   const connectDb = overrides.connectDb ?? jest.fn().mockResolvedValue(undefined);
   const disconnectDb = overrides.disconnectDb ?? jest.fn().mockResolvedValue(undefined);
 
-  // Capture signal handlers instead of attaching them to the real process; stub exit so tests survive it
+  // Capture signal handlers instead of attaching them to the real process
   jest.spyOn(process, 'on').mockImplementation(((event: string, handler: Callback) => {
     handlers.set(event, handler);
     return process;
   }) as never);
-  const exit = jest.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
-  const consoleLog = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+  const consoleInfo = jest.spyOn(console, 'info').mockImplementation(() => undefined);
   const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
   // isolateModules gives index.ts a fresh module registry, so its top-level bootstrap re-runs on every call
@@ -83,7 +83,7 @@ function boot(
     jest.doMock('../../src/config', () => ({ env: { port: PORT, mongoUri: URI } }));
     jest.doMock('../../src/db', () => ({ connectDb, disconnectDb }));
     jest.doMock('../../src/realtime/gateway', () => ({ attachRealtime }));
-    require('../../src/index');
+    jest.requireActual('../../src/index');
   });
 
   return {
@@ -96,13 +96,18 @@ function boot(
     io,
     attachRealtime,
     handlers,
-    exit,
-    consoleLog,
+    consoleInfo,
     consoleError,
   };
 }
 
+// index.ts reports failure through process.exitCode; reset it so it never becomes Jest's own exit code
+beforeEach(() => {
+  process.exitCode = undefined;
+});
+
 afterEach(() => {
+  process.exitCode = undefined;
   jest.restoreAllMocks();
   jest.dontMock('node:fs');
   jest.dontMock('node:https');
@@ -114,7 +119,7 @@ afterEach(() => {
 
 // Interface: server bootstrap (src/index.ts)
 describe('Mocked: index bootstrap', () => {
-  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on/exit and console are fakes; connectDb resolves; fs reports no PEM files
+  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on and console are fakes; connectDb resolves; fs reports no PEM files
   // Input: normal startup, no certificate files in backend/certs/
   // Expected behavior: DB connected with the configured URI, app listens over plain HTTP on the configured port,
   //                    Socket.IO is attached to the HTTP server, startup is logged,
@@ -127,12 +132,12 @@ describe('Mocked: index bootstrap', () => {
     expect(h.listen).toHaveBeenCalledWith(PORT, expect.any(Function));
     expect(h.createHttpsServer).not.toHaveBeenCalled();
     expect(h.attachRealtime).toHaveBeenCalledWith(h.server);
-    expect(h.consoleLog).toHaveBeenCalledWith(`Server listening on port ${PORT} (http)`);
+    expect(h.consoleInfo).toHaveBeenCalledWith(`Server listening on port ${PORT} (http)`);
     expect([...h.handlers.keys()].sort()).toEqual(['SIGINT', 'SIGTERM']);
-    expect(h.exit).not.toHaveBeenCalled();
+    expect(process.exitCode).toBeUndefined();
   });
 
-  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on/exit and console are fakes; fs reports both PEM files and returns stub contents
+  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on and console are fakes; fs reports both PEM files and returns stub contents
   // Input: startup with backend/certs/fullchain.pem and privkey.pem present
   // Expected behavior: an HTTPS server is built from the PEM files around the Express app, listens on the
   //                    configured port, gets Socket.IO attached, and startup is logged as https
@@ -146,14 +151,14 @@ describe('Mocked: index bootstrap', () => {
     );
     expect(h.listen).toHaveBeenCalledWith(PORT, expect.any(Function));
     expect(h.attachRealtime).toHaveBeenCalledWith(h.server);
-    expect(h.consoleLog).toHaveBeenCalledWith(`Server listening on port ${PORT} (https)`);
-    expect(h.exit).not.toHaveBeenCalled();
+    expect(h.consoleInfo).toHaveBeenCalledWith(`Server listening on port ${PORT} (https)`);
+    expect(process.exitCode).toBeUndefined();
   });
 
-  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on/exit and console are fakes; fs reports only one of the two PEM files
+  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on and console are fakes; fs reports only one of the two PEM files
   // Input: startup with only one of the two PEM files present (certificate only / key only)
   // Expected behavior: startup fails with a message naming both files instead of silently falling back to HTTP;
-  //                    the server never listens; exit code 1
+  //                    the server never listens; the already-open DB connection is closed; exit code 1
   test.each<[string, CertFiles]>([
     ['certificate only', { cert: true, key: false }],
     ['key only', { cert: false, key: true }],
@@ -166,10 +171,11 @@ describe('Mocked: index bootstrap', () => {
       'HTTPS needs both certs/fullchain.pem and certs/privkey.pem',
     );
     expect(h.listen).not.toHaveBeenCalled();
-    expect(h.exit).toHaveBeenCalledWith(1);
+    expect(h.disconnectDb).toHaveBeenCalledTimes(1);
+    expect(process.exitCode).toBe(1);
   });
 
-  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on/exit and console are fakes; connectDb and disconnectDb resolve; process.on captures the signal handlers
+  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on and console are fakes; connectDb and disconnectDb resolve; process.on captures the signal handlers
   // Input: SIGINT / SIGTERM after a successful startup, DB disconnects cleanly
   // Expected behavior: Socket.IO and the server are closed, DB disconnected, process exits with 0
   test.each<Signal>(['SIGINT', 'SIGTERM'])('%s shuts down gracefully', async (signal) => {
@@ -182,10 +188,10 @@ describe('Mocked: index bootstrap', () => {
     expect(h.io.close).toHaveBeenCalledTimes(1);
     expect(h.server.close).toHaveBeenCalledTimes(1);
     expect(h.disconnectDb).toHaveBeenCalledTimes(1);
-    expect(h.exit).toHaveBeenCalledWith(0);
+    expect(process.exitCode).toBe(0);
   });
 
-  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on/exit and console are fakes; disconnectDb rejects with an Error
+  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on and console are fakes; disconnectDb rejects with an Error
   // Input: shutdown signal, but the DB fails to disconnect
   // Expected behavior: process exits with 1
   test('Shutdown exits with 1 when disconnect fails', async () => {
@@ -195,11 +201,10 @@ describe('Mocked: index bootstrap', () => {
     h.handlers.get('SIGTERM')?.();
     await flush();
 
-    expect(h.exit).toHaveBeenCalledWith(1);
-    expect(h.exit).not.toHaveBeenCalledWith(0);
+    expect(process.exitCode).toBe(1);
   });
 
-  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on/exit and console are fakes; connectDb rejects with Error("no db")
+  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on and console are fakes; connectDb rejects with Error("no db")
   // Input: DB connection fails with an Error
   // Expected behavior: only the error message is logged; the server never listens; exit code 1
   test('Startup failure with an Error exits with 1', async () => {
@@ -208,10 +213,10 @@ describe('Mocked: index bootstrap', () => {
 
     expect(h.consoleError).toHaveBeenCalledWith('Fatal startup error:', 'no db');
     expect(h.listen).not.toHaveBeenCalled();
-    expect(h.exit).toHaveBeenCalledWith(1);
+    expect(process.exitCode).toBe(1);
   });
 
-  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on/exit and console are fakes; connectDb rejects with the string "weird"
+  // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on and console are fakes; connectDb rejects with the string "weird"
   // Input: DB connection fails with a non-Error value
   // Expected behavior: a generic message is logged instead of the raw value; exit code 1
   test('Startup failure with a non-Error exits with 1', async () => {
@@ -219,6 +224,6 @@ describe('Mocked: index bootstrap', () => {
     await flush();
 
     expect(h.consoleError).toHaveBeenCalledWith('Fatal startup error:', 'unknown');
-    expect(h.exit).toHaveBeenCalledWith(1);
+    expect(process.exitCode).toBe(1);
   });
 });

@@ -40,6 +40,14 @@ function safeAck(ack: unknown): Ack {
   return typeof ack === 'function' ? (ack as Ack) : () => undefined;
 }
 
+/* 
+ * Handlers report their own failures through the ack
+ * This only catches what escapes them (e.g. a throwing ack)
+ */
+function logSocketError(err: unknown): void {
+  console.error('Socket handler failed:', err instanceof Error ? err.message : 'unknown');
+}
+
 // Only members of the meetup's group may join its room. Clients reload over REST after the ack,
 // so nothing published between their first load and the join is missed
 async function handleJoin(socket: Socket, payload: unknown, ack: Ack): Promise<void> {
@@ -75,10 +83,10 @@ export function attachRealtime(httpServer: HttpServer | HttpsServer): Server {
   const io = new Server(httpServer);
 
   io.use((socket, next) => {
-    const token = handshakeToken(socket);
+    const sessionToken = handshakeToken(socket);
     try {
-      if (token === undefined) throw new Error('Missing token');
-      socket.data = { userId: verifySessionToken(token) };
+      if (sessionToken === undefined) throw new Error('Missing token');
+      socket.data = { userId: verifySessionToken(sessionToken) };
       next();
     } catch {
       next(new Error('Unauthorized'));
@@ -89,13 +97,14 @@ export function attachRealtime(httpServer: HttpServer | HttpsServer): Server {
     // Private account room: clients cannot choose or join another user's room.
     const identity: unknown = socket.data;
     if (typeof identity === 'object' && identity !== null && 'userId' in identity && typeof identity.userId === 'string') {
-      void socket.join(userRoom(identity.userId));
+      // join is synchronous with the default in-memory adapter but may return a promise with others
+      Promise.resolve(socket.join(userRoom(identity.userId))).catch(logSocketError);
     }
     socket.on(CLIENT_EVENTS.meetupJoin, (payload: unknown, ack: unknown) => {
-      void handleJoin(socket, payload, safeAck(ack));
+      handleJoin(socket, payload, safeAck(ack)).catch(logSocketError);
     });
     socket.on(CLIENT_EVENTS.meetupLeave, (payload: unknown, ack: unknown) => {
-      void handleLeave(socket, payload, safeAck(ack));
+      handleLeave(socket, payload, safeAck(ack)).catch(logSocketError);
     });
   });
 

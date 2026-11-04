@@ -1,7 +1,9 @@
 package com.example.cpen321application.ui.voting
 
 import android.app.Activity
+import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.ActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -56,90 +58,109 @@ fun AddToCalendarButton(
 
     val consentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult()
-    ) { activityResult ->
-        val intent = activityResult.data
-        if (activityResult.resultCode == Activity.RESULT_OK && intent != null) {
-            try {
-                val result = Identity.getAuthorizationClient(context).getAuthorizationResultFromIntent(intent)
-                val token = result.accessToken
-                if (token != null) onToken(token) else onError("Google Calendar did not return an access token.")
-            } catch (_: ApiException) {
-                onError("Google Calendar authorization failed. Please try again.")
+    ) { activityResult -> handleConsentResult(context, activityResult, onToken, onError) }
+
+    if (alreadyAdded || state.result != null) {
+        CalendarAddedNotice()
+        return
+    }
+
+    val requestToken: () -> Unit = {
+        scope.launch {
+            when (val auth = authorizer.requestCalendarAuthorization(context)) {
+                is CalendarAuthResult.Success -> onToken(auth.accessToken)
+                is CalendarAuthResult.NeedsConsent -> auth.result.pendingIntent?.let { pendingIntent ->
+                    consentLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+                } ?: onError("Google Calendar permission request could not be started.")
+                is CalendarAuthResult.Failure -> {
+                    val cause = auth.error.message ?: "Please grant Calendar permissions."
+                    onError("Google Calendar authorization failed: $cause")
+                }
             }
-        } else {
-            onError("Google Calendar permission request was canceled.")
         }
     }
 
-    if (alreadyAdded || state.result != null) {
+    Column(verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
+        CalendarActionButton(submitting = state.submitting, onClick = requestToken)
+        state.error?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag(TestTags.ERROR_TEXT))
+        }
+    }
+}
+
+private fun handleConsentResult(
+    context: Context,
+    activityResult: ActivityResult,
+    onToken: (String) -> Unit,
+    onError: (String) -> Unit,
+) {
+    val intent = activityResult.data
+    if (activityResult.resultCode == Activity.RESULT_OK && intent != null) {
+        try {
+            val result = Identity.getAuthorizationClient(context).getAuthorizationResultFromIntent(intent)
+            val token = result.accessToken
+            if (token != null) onToken(token) else onError("Google Calendar did not return an access token.")
+        } catch (_: ApiException) {
+            onError("Google Calendar authorization failed. Please try again.")
+        }
+    } else {
+        onError("Google Calendar permission request was canceled.")
+    }
+}
+
+@Composable
+private fun CalendarAddedNotice() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Default.CheckCircle,
+            contentDescription = null,
+            tint = TealPrimary,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            text = "Added to your Google Calendar",
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag(TestTags.CALENDAR_ADDED_TEXT),
+        )
+    }
+}
+
+@Composable
+private fun CalendarActionButton(submitting: Boolean, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        enabled = !submitting,
+        shape = CircleShape,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = TealPrimary,
+            contentColor = Color.White,
+            disabledContainerColor = TealPrimary.copy(alpha = 0.5f),
+            disabledContentColor = Color.White.copy(alpha = 0.7f),
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(54.dp)
+            .testTag(TestTags.ADD_TO_CALENDAR_BUTTON),
+    ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(
-                imageVector = Icons.Default.CheckCircle,
+                imageVector = Icons.Default.DateRange,
                 contentDescription = null,
-                tint = TealPrimary,
-                modifier = Modifier.size(20.dp),
+                tint = Color.White,
+                modifier = Modifier.size(18.dp),
             )
             Text(
-                text = "Added to your Google Calendar",
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.testTag(TestTags.CALENDAR_ADDED_TEXT),
+                text = if (submitting) "Adding..." else "Add to Google Calendar",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                color = Color.White,
             )
-        }
-        return
-    }
-
-    Column(verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
-        Button(
-            onClick = {
-                scope.launch {
-                    when (val auth = authorizer.requestCalendarAuthorization(context)) {
-                        is CalendarAuthResult.Success -> onToken(auth.accessToken)
-                        is CalendarAuthResult.NeedsConsent -> auth.result.pendingIntent?.let { pendingIntent ->
-                            consentLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
-                        } ?: onError("Google Calendar permission request could not be started.")
-                        is CalendarAuthResult.Failure -> {
-                            val cause = auth.error.message ?: "Please grant Calendar permissions."
-                            onError("Google Calendar authorization failed: $cause")
-                        }
-                    }
-                }
-            },
-            enabled = !state.submitting,
-            shape = CircleShape,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = TealPrimary,
-                contentColor = Color.White,
-                disabledContainerColor = TealPrimary.copy(alpha = 0.5f),
-                disabledContentColor = Color.White.copy(alpha = 0.7f),
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(54.dp)
-                .testTag(TestTags.ADD_TO_CALENDAR_BUTTON),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.DateRange,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp),
-                )
-                Text(
-                    text = if (state.submitting) "Adding..." else "Add to Google Calendar",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                    color = Color.White,
-                )
-            }
-        }
-        state.error?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag(TestTags.ERROR_TEXT))
         }
     }
 }

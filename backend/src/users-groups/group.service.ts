@@ -18,8 +18,8 @@ function isDuplicateKey(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && err.code === tuning.mongoDuplicateKeyCode;
 }
 
-// Create a group with the caller as organizer, retrying if a generated invite code collides
-async function create(userId: string, name: string) {
+// Insert the group with a fresh invite code, retrying on a collision; null if every attempt collided
+async function insertWithUniqueInviteCode(userId: string, name: string) {
   for (let attempt = 0; attempt < tuning.inviteCodeMaxAttempts; attempt++) {
     try {
       return await GroupModel.create({
@@ -32,7 +32,14 @@ async function create(userId: string, name: string) {
       if (!isDuplicateKey(err)) throw err;
     }
   }
-  throw new Error('Could not generate a unique invite code');
+  return null;
+}
+
+// Create a group with the caller as organizer
+async function create(userId: string, name: string) {
+  const group = await insertWithUniqueInviteCode(userId, name);
+  if (group === null) throw new Error('Could not generate a unique invite code');
+  return group;
 }
 
 async function listForUser(userId: string) {

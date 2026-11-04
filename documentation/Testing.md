@@ -44,7 +44,7 @@ The Recommendation Engine is the component specified in full for CP2. Its `from-
 
 #### 2.1.2. Commit Hash Where Tests Run
 
-`[Insert the main branch commit SHA of this submission]`
+`35dad96f42338ae21e0a7b9886a77c18c515a599`
 
 #### 2.1.3. Explanation on How to Run the Tests
 

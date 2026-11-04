@@ -39,8 +39,25 @@ class LiveLocationService : Service(), LocationListener {
         if (meetupId == id && task?.isActive == true) return START_NOT_STICKY
         if (meetupId != null && meetupId != id) { stopSelf(); return START_NOT_STICKY }
         meetupId = id
+        if (!startLocationUpdates(id)) { stopSelf(); return START_NOT_STICKY }
+        mutableStatus.value = SharingStatus(id, "Waiting for a fresh location fix...")
+        val sharingUser = container.sessionStore.currentUserId()
+        sessionTask = scope.launch {
+            container.sessionStore.token.collect { if (it == null || container.sessionStore.currentUserId() != sharingUser) stopSelf() }
+        }
+        task = scope.launch {
+            while (isActive) {
+                if (!shareOnce(id)) { stopSelf(); break }
+                delay(5000)
+            }
+        }
+        return START_NOT_STICKY
+    }
+
+    // Enters the foreground and subscribes to location providers; false (with a status message) on failure
+    private fun startLocationUpdates(id: String): Boolean {
         val notice = LiveSharingNotifications(this).ongoing(id)
-        try {
+        return try {
             val serviceType = if (android.os.Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0
             ServiceCompat.startForeground(this, SHARING_NOTIFICATION_ID, notice, serviceType)
             if (!hasLocationPermission(this)) throw SecurityException("Location permission is required")
@@ -52,47 +69,46 @@ class LiveLocationService : Service(), LocationListener {
                 }
             }
             if (!requested) throw IllegalStateException("Turn on device location and resume sharing")
+            true
         } catch (_: SecurityException) {
             mutableStatus.value = SharingStatus(message = "Location permission is required. Resume sharing to try again.")
-            stopSelf(); return START_NOT_STICKY
+            false
         } catch (error: IllegalStateException) {
             mutableStatus.value = SharingStatus(message = error.message.orEmpty())
-            stopSelf(); return START_NOT_STICKY
+            false
         }
-        mutableStatus.value = SharingStatus(id, "Waiting for a fresh location fix...")
-        val sharingUser = container.sessionStore.currentUserId()
-        sessionTask = scope.launch {
-            container.sessionStore.token.collect { if (it == null || container.sessionStore.currentUserId() != sharingUser) stopSelf() }
+    }
+
+    // One location push (or a trip check while there is no fresh fix); false means sharing must stop
+    private suspend fun shareOnce(id: String): Boolean {
+        val locationOn = hasLocationPermission(this) && androidx.core.location.LocationManagerCompat.isLocationEnabled(locations)
+        if (!locationOn) {
+            container.tripRepository.stop(id)
+            mutableStatus.value = SharingStatus(message = "Location is off. Turn it on and resume sharing.")
+            return false
         }
-        task = scope.launch {
-            while (isActive) {
-                if (!hasLocationPermission(this@LiveLocationService) || !androidx.core.location.LocationManagerCompat.isLocationEnabled(locations)) {
-                    container.tripRepository.stop(id)
-                    mutableStatus.value = SharingStatus(message = "Location is off. Turn it on and resume sharing.")
-                    stopSelf(); break
+        val point = latest?.takeIf { SystemClock.elapsedRealtimeNanos() - it.elapsedRealtimeNanos < 90_000_000_000L }
+        val response = if (point == null) container.tripRepository.list(id)
+            else container.tripRepository.location(id, point.latitude, point.longitude, point.accuracy)
+        return when (response) {
+            is ApiResult.Failure -> {
+                mutableStatus.value = SharingStatus(id, "Location update failed. Retrying...")
+                response.error.httpCode !in listOf(401, 403, 404, 409)
+            }
+            is ApiResult.Success -> {
+                val keepSharing = point != null || ownTripStillSharing(response.data)
+                if (keepSharing) {
+                    mutableStatus.value = SharingStatus(id, if (point == null) "Waiting for a fresh location fix..." else "Sharing your live location")
                 }
-                val point = latest?.takeIf { SystemClock.elapsedRealtimeNanos() - it.elapsedRealtimeNanos < 90_000_000_000L }
-                val response = if (point == null) container.tripRepository.list(id)
-                    else container.tripRepository.location(id, point.latitude, point.longitude, point.accuracy)
-                when (response) {
-                    is ApiResult.Failure -> {
-                        mutableStatus.value = SharingStatus(id, "Location update failed. Retrying...")
-                        if (response.error.httpCode in listOf(401, 403, 404, 409)) { stopSelf(); break }
-                    }
-                    is ApiResult.Success -> {
-                        if (point == null) {
-                            val rows = response.data as? List<*>
-                            val own = rows?.filterIsInstance<com.example.cpen321application.data.MeetupTrip>()
-                                ?.find { it.userId == container.sessionStore.currentUserId() }
-                            if (own == null || own.status != "ACTIVE" || !own.sharing) { stopSelf(); break }
-                        }
-                        mutableStatus.value = SharingStatus(id, if (point == null) "Waiting for a fresh location fix..." else "Sharing your live location")
-                    }
-                }
-                delay(5000)
+                keepSharing
             }
         }
-        return START_NOT_STICKY
+    }
+
+    private fun ownTripStillSharing(trips: Any?): Boolean {
+        val own = (trips as? List<*>)?.filterIsInstance<com.example.cpen321application.data.MeetupTrip>()
+            ?.find { it.userId == container.sessionStore.currentUserId() }
+        return own != null && own.status == "ACTIVE" && own.sharing
     }
 
     override fun onLocationChanged(location: Location) { latest = location }

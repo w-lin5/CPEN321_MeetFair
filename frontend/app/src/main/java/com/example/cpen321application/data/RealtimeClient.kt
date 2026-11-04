@@ -8,6 +8,7 @@ import io.socket.client.IO
 import io.socket.client.Socket
 import io.socket.engineio.client.transports.WebSocket
 import java.net.URI
+import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -53,22 +54,12 @@ class RealtimeClient(private val baseUrl: String, private val sessionStore: Sess
     /** Account-scoped updates work from the group list without joining a meetup room. */
     fun groupEvents(): Flow<GroupEvent> = callbackFlow {
         val token = sessionStore.currentToken()
-        if (token == null) { close(); return@callbackFlow }
-        val options = IO.Options.builder().setAuth(mapOf("token" to token))
-            .setTransports(arrayOf(WebSocket.NAME)).build()
-        val socket = IO.socket(URI.create(baseUrl), options)
-        socket.on(Socket.EVENT_CONNECT) { trySend(GroupEvent.Connected) }
-        socket.on("group:deleted") { args ->
-            val id = (args.firstOrNull() as? JSONObject)?.optString("groupId").orEmpty()
-            if (id.isNotBlank()) trySend(GroupEvent.Deleted(id))
+        if (token == null) {
+            close()
+        } else {
+            val socket = openGroupSocket(token)
+            awaitClose { socket.off(); socket.disconnect() }
         }
-        socket.on("group:meetup-deleted") { args ->
-            val id = (args.firstOrNull() as? JSONObject)?.optString("groupId").orEmpty()
-            val payload = args.firstOrNull() as? JSONObject
-            if (id.isNotBlank()) trySend(GroupEvent.MeetupDeleted(id, payload?.optBoolean("notifyParticipant", false) == true))
-        }
-        socket.connect()
-        awaitClose { socket.off(); socket.disconnect() }
     }
 
     /**
@@ -80,14 +71,41 @@ class RealtimeClient(private val baseUrl: String, private val sessionStore: Sess
         if (token == null) {
             trySend(MeetupEvent.Unavailable("Not signed in"))
             close()
-            return@callbackFlow
+        } else {
+            val socket = openMeetupSocket(token, meetupId)
+            awaitClose {
+                socket.off()
+                socket.disconnect()
+            }
         }
+    }
 
+    private fun socketFor(token: String): Socket {
         val options = IO.Options.builder()
             .setAuth(mapOf("token" to token))
             .setTransports(arrayOf(WebSocket.NAME))
             .build()
-        val socket = IO.socket(URI.create(baseUrl), options)
+        return IO.socket(URI.create(baseUrl), options)
+    }
+
+    private fun ProducerScope<GroupEvent>.openGroupSocket(token: String): Socket {
+        val socket = socketFor(token)
+        socket.on(Socket.EVENT_CONNECT) { trySend(GroupEvent.Connected) }
+        socket.on("group:deleted") { args ->
+            val id = (args.firstOrNull() as? JSONObject)?.optString("groupId").orEmpty()
+            if (id.isNotBlank()) trySend(GroupEvent.Deleted(id))
+        }
+        socket.on("group:meetup-deleted") { args ->
+            val id = (args.firstOrNull() as? JSONObject)?.optString("groupId").orEmpty()
+            val payload = args.firstOrNull() as? JSONObject
+            if (id.isNotBlank()) trySend(GroupEvent.MeetupDeleted(id, payload?.optBoolean("notifyParticipant", false) == true))
+        }
+        socket.connect()
+        return socket
+    }
+
+    private fun ProducerScope<MeetupEvent>.openMeetupSocket(token: String, meetupId: String): Socket {
+        val socket = socketFor(token)
         val joinPayload = JSONObject().put("meetupId", meetupId)
 
         // Join on every (re)connect: rooms are lost when the connection drops
@@ -113,11 +131,7 @@ class RealtimeClient(private val baseUrl: String, private val sessionStore: Sess
             trySend(MeetupEvent.Deleted(participant))
         }
         socket.connect()
-
-        awaitClose {
-            socket.off()
-            socket.disconnect()
-        }
+        return socket
     }
 }
 

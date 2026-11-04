@@ -53,7 +53,9 @@ function client(auth: Record<string, unknown>): Promise<Socket> {
   const socket = connect(url, { transports: ['websocket'], reconnection: false, auth });
   clients.push(socket);
   return new Promise((resolve, reject) => {
-    socket.once('connect', () => resolve(socket));
+    socket.once('connect', () => {
+      resolve(socket);
+    });
     socket.once('connect_error', reject);
   });
 }

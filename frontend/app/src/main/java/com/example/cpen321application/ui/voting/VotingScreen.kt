@@ -1,6 +1,7 @@
 package com.example.cpen321application.ui.voting
 
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
@@ -104,6 +105,9 @@ data class VotingState(
 ) {
     val isOpen: Boolean get() = meetup.status == MeetupStatus.VOTING
     val locked: Boolean get() = myVote?.locked == true
+
+    /** Voting is open and this user's vote is not locked yet, so it can still change. */
+    val canChangeVote: Boolean get() = isOpen && !locked
 }
 
 class VotingViewModel(
@@ -152,7 +156,7 @@ class VotingViewModel(
 
     fun vote(placeId: String) {
         val s = current() ?: return
-        if (!s.isOpen || s.locked || s.pendingPlaceId != null || s.myVote?.placeId == placeId) return
+        if (!s.canChangeVote || s.pendingPlaceId != null || s.myVote?.placeId == placeId) return
 
         edit { it.copy(pendingPlaceId = placeId, error = null) }
         viewModelScope.launch {
@@ -173,7 +177,7 @@ class VotingViewModel(
 
     fun lock() {
         val s = current() ?: return
-        if (!s.isOpen || s.locked || s.locking || s.myVote == null) return
+        if (!s.canChangeVote || s.locking || s.myVote == null) return
 
         edit { it.copy(locking = true, error = null) }
         viewModelScope.launch {
@@ -226,20 +230,24 @@ class VotingViewModel(
         liveJob?.cancel()
         liveJob = viewModelScope.launch {
             realtime.meetupEvents(meetupId).collect { event ->
-                if (event is MeetupEvent.Deleted) {
-                    _notifyDeletion.value = event.notifyParticipant
-                    _deleted.value = true
-                    _state.value = if (event.notifyParticipant)
-                        UiState.Error("This meetup has been deleted by its organizer.") else UiState.Empty
-                    return@collect
-                }
-                edit { applyEvent(it, event) }
-                // The tally may have changed before the room was joined
-                if (event is MeetupEvent.Joined) {
-                    refreshVotes()
-                    reloadMeetup()
-                }
+                if (event is MeetupEvent.Deleted) onMeetupDeleted(event) else onLiveEvent(event)
             }
+        }
+    }
+
+    private fun onMeetupDeleted(event: MeetupEvent.Deleted) {
+        _notifyDeletion.value = event.notifyParticipant
+        _deleted.value = true
+        _state.value = if (event.notifyParticipant)
+            UiState.Error("This meetup has been deleted by its organizer.") else UiState.Empty
+    }
+
+    private fun onLiveEvent(event: MeetupEvent) {
+        edit { applyEvent(it, event) }
+        // The tally may have changed before the room was joined
+        if (event is MeetupEvent.Joined) {
+            refreshVotes()
+            reloadMeetup()
         }
     }
 
@@ -403,26 +411,10 @@ private fun VotingHeader(state: VotingState, onRefresh: () -> Unit) {
 private fun CandidateCard(candidate: PlaceCandidate, state: VotingState, canVote: Boolean, onVote: () -> Unit) {
     val context = LocalContext.current
     val notify = LocalNotify.current
-    val openMap: () -> Unit = {
-        val query = listOf(candidate.name, candidate.address).filter { it.isNotBlank() }.joinToString(", ")
-            .ifBlank { "${candidate.lat},${candidate.lng}" }
-        val uri = Uri.parse("https://www.google.com/maps/search/").buildUpon()
-            .appendQueryParameter("api", "1")
-            .appendQueryParameter("query", query)
-            .apply {
-                if (candidate.placeId.isNotBlank()) appendQueryParameter("query_place_id", candidate.placeId)
-            }
-            .build()
-        try {
-            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-        } catch (_: ActivityNotFoundException) {
-            notify("No map app or browser is available to open this location.")
-        }
-    }
+    val openMap: () -> Unit = { openCandidateInMaps(context, candidate, notify) }
     val total = state.tally?.totalFor(candidate.placeId)
     val mine = state.myVote?.placeId == candidate.placeId
     val winner = state.meetup.winner?.placeId == candidate.placeId
-    val picks = total?.voteCount ?: 0
 
     MeetFairCard(
         modifier = Modifier.testTag(TestTags.candidateItem(candidate.placeId)),
@@ -433,38 +425,7 @@ private fun CandidateCard(candidate: PlaceCandidate, state: VotingState, canVote
             modifier = Modifier.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = candidate.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = TealPrimary,
-                    modifier = Modifier
-                        .testTag("candidate_map_${candidate.placeId}")
-                        .weight(1f)
-                        .clickable(role = Role.Button, onClickLabel = "Open in Google Maps", onClick = openMap),
-                )
-
-                Text(
-                    text = "Picks: $picks",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            if (candidate.address.isNotBlank()) {
-                Text(
-                    text = candidate.address,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.clickable(role = Role.Button, onClickLabel = "Open in Google Maps", onClick = openMap),
-                )
-            }
+            CandidateHeader(candidate, picks = total?.voteCount ?: 0, onOpenMap = openMap)
 
             if (total != null) {
                 val weight = "${formatWeight(total.weight)} (${formatShare(total.share)})"
@@ -489,48 +450,111 @@ private fun CandidateCard(candidate: PlaceCandidate, state: VotingState, canVote
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (state.isOpen && canVote && !state.locked) {
-                    Button(
-                        onClick = onVote,
-                        enabled = !mine && state.pendingPlaceId == null,
-                        shape = CircleShape,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = TealPrimary,
-                            contentColor = Color.White,
-                        ),
-                        modifier = Modifier.testTag(TestTags.voteButton(candidate.placeId)),
-                    ) {
-                        Text(
-                            text = voteLabel(state, candidate.placeId, mine),
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
+                if (canVote && state.canChangeVote) {
+                    VoteButton(state, candidate.placeId, mine, onVote)
                 } else if (mine) {
-                    Surface(
-                        shape = CircleShape,
-                        color = TealPrimary.copy(alpha = 0.15f),
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = null,
-                                tint = TealPrimary,
-                                modifier = Modifier.size(14.dp),
-                            )
-                            Text(
-                                text = if (state.locked) "Your locked vote" else "Your vote",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = TealPrimary,
-                            )
-                        }
-                    }
+                    MyVoteBadge(locked = state.locked)
                 }
             }
+        }
+    }
+}
+
+private fun openCandidateInMaps(context: Context, candidate: PlaceCandidate, notify: (String) -> Unit) {
+    val query = listOf(candidate.name, candidate.address).filter { it.isNotBlank() }.joinToString(", ")
+        .ifBlank { "${candidate.lat},${candidate.lng}" }
+    val uri = Uri.parse("https://www.google.com/maps/search/").buildUpon()
+        .appendQueryParameter("api", "1")
+        .appendQueryParameter("query", query)
+        .apply {
+            if (candidate.placeId.isNotBlank()) appendQueryParameter("query_place_id", candidate.placeId)
+        }
+        .build()
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+    } catch (_: ActivityNotFoundException) {
+        notify("No map app or browser is available to open this location.")
+    }
+}
+
+@Composable
+private fun CandidateHeader(candidate: PlaceCandidate, picks: Int, onOpenMap: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = candidate.name,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.ExtraBold,
+            color = TealPrimary,
+            modifier = Modifier
+                .testTag("candidate_map_${candidate.placeId}")
+                .weight(1f)
+                .clickable(role = Role.Button, onClickLabel = "Open in Google Maps", onClick = onOpenMap),
+        )
+
+        Text(
+            text = "Picks: $picks",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+
+    if (candidate.address.isNotBlank()) {
+        Text(
+            text = candidate.address,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.clickable(role = Role.Button, onClickLabel = "Open in Google Maps", onClick = onOpenMap),
+        )
+    }
+}
+
+@Composable
+private fun VoteButton(state: VotingState, placeId: String, mine: Boolean, onVote: () -> Unit) {
+    Button(
+        onClick = onVote,
+        enabled = !mine && state.pendingPlaceId == null,
+        shape = CircleShape,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = TealPrimary,
+            contentColor = Color.White,
+        ),
+        modifier = Modifier.testTag(TestTags.voteButton(placeId)),
+    ) {
+        Text(
+            text = voteLabel(state, placeId, mine),
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun MyVoteBadge(locked: Boolean) {
+    Surface(
+        shape = CircleShape,
+        color = TealPrimary.copy(alpha = 0.15f),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = null,
+                tint = TealPrimary,
+                modifier = Modifier.size(14.dp),
+            )
+            Text(
+                text = if (locked) "Your locked vote" else "Your vote",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = TealPrimary,
+            )
         }
     }
 }
@@ -545,33 +569,8 @@ private fun voteLabel(state: VotingState, placeId: String, mine: Boolean): Strin
 // Locking makes the vote final and snapshots its Fair Credit weight; only locked votes count
 @Composable
 private fun LockControls(state: VotingState, onLock: () -> Unit) {
-    val weight = state.myVote?.weight
     if (state.locked) {
-        val suffix = if (weight != null) " (weight ${formatWeight(weight)})" else ""
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = TealContainer,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = TealPrimary,
-                )
-                Text(
-                    text = "Your vote is locked$suffix",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = TealPrimary,
-                    modifier = Modifier.testTag(TestTags.VOTE_LOCKED_TEXT),
-                )
-            }
-        }
+        LockedVoteBanner(weight = state.myVote?.weight)
     } else if (state.myVote != null) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
@@ -612,6 +611,34 @@ private fun LockControls(state: VotingState, onLock: () -> Unit) {
     }
 }
 
+@Composable
+private fun LockedVoteBanner(weight: Double?) {
+    val suffix = if (weight != null) " (weight ${formatWeight(weight)})" else ""
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = TealContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = TealPrimary,
+            )
+            Text(
+                text = "Your vote is locked$suffix",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = TealPrimary,
+                modifier = Modifier.testTag(TestTags.VOTE_LOCKED_TEXT),
+            )
+        }
+    }
+}
 @Composable
 private fun FinalizeControls(state: VotingState, vm: VotingViewModel) {
     var confirmEarly by rememberSaveable { mutableStateOf(false) }

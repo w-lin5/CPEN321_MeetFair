@@ -26,24 +26,25 @@ function listen(onListening: (protocol: string) => void) {
 async function main(): Promise<void> {
   await connectDb(env.mongoUri);
   const server = listen((protocol) => {
-    console.log(`Server listening on port ${env.port} (${protocol})`);
+    console.info(`Server listening on port ${env.port} (${protocol})`);
   });
   const io = attachRealtime(server);
 
+  // Setting exitCode (instead of process.exit) lets Node exit on its own once the server and DB are closed
+  const fail = () => { process.exitCode = 1; };
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, () => {
       // io.close also closes the HTTP server; its callback fires once both are down
-      void io.close(() => {
-        disconnectDb().then(
-          () => process.exit(0),
-          () => process.exit(1),
-        );
-      });
+      io.close(() => {
+        disconnectDb().then(() => { process.exitCode = 0; }, fail);
+      }).catch(fail);
     });
   }
 }
 
 main().catch((err: unknown) => {
   console.error('Fatal startup error:', err instanceof Error ? err.message : 'unknown');
-  process.exit(1);
+  process.exitCode = 1;
+  // Startup can fail after the DB connected; close it so the open connection does not keep the process alive
+  disconnectDb().catch(() => undefined);
 });
