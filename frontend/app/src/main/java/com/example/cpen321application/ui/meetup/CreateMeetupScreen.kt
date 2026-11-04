@@ -149,57 +149,9 @@ fun CreateMeetupScreen(container: AppContainer, groupId: String, onBack: () -> U
                     color = TealPrimary,
                 )
 
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    placeholder = { Text("Title", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                    singleLine = true,
-                    shape = CircleShape,
-                    colors = meetFairTextFieldColors(unfocusedAlpha = 0.6f),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(TestTags.MEETUP_TITLE_INPUT),
-                )
+                MeetupTitleField(title = title, onChange = { title = it })
 
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = "Meeting date and time",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = TealPrimary,
-                    )
-
-                    OutlinedButton(
-                        onClick = { choosingTime = true },
-                        enabled = !state.submitting,
-                        shape = CircleShape,
-                        border = BorderStroke(1.5.dp, TealPrimary),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
-                            .testTag(TestTags.MEETUP_TIME_INPUT),
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.DateRange,
-                                contentDescription = null,
-                                tint = TealPrimary,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Text(
-                                text = TIME_DISPLAY_FORMAT.format(LocalDateTime.parse(time, TIME_INPUT_FORMAT)),
-                                fontWeight = FontWeight.Bold,
-                                color = TealPrimary,
-                            )
-                        }
-                    }
-                }
+                MeetingTimeField(time = time, enabled = !state.submitting, onClick = { choosingTime = true })
 
                 state.error?.let {
                     Text(
@@ -210,28 +162,94 @@ fun CreateMeetupScreen(container: AppContainer, groupId: String, onBack: () -> U
                     )
                 }
 
-                Button(
-                    onClick = { vm.submit(title, time) },
+                CreateMeetupSubmitButton(
                     enabled = !state.submitting && title.isNotBlank(),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = RosePrimary,
-                        contentColor = Color.White,
-                        disabledContainerColor = RosePrimary.copy(alpha = 0.5f),
-                        disabledContentColor = Color.White.copy(alpha = 0.7f),
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp)
-                        .testTag(TestTags.CREATE_MEETUP_SUBMIT),
-                ) {
-                    Text(
-                        text = "Create meetup →",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
+                    onClick = { vm.submit(title, time) },
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun MeetupTitleField(title: String, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = title,
+        onValueChange = onChange,
+        placeholder = { Text("Title", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+        singleLine = true,
+        shape = CircleShape,
+        colors = meetFairTextFieldColors(unfocusedAlpha = 0.6f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(TestTags.MEETUP_TITLE_INPUT),
+    )
+}
+
+@Composable
+private fun MeetingTimeField(time: String, enabled: Boolean, onClick: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = "Meeting date and time",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = TealPrimary,
+        )
+
+        OutlinedButton(
+            onClick = onClick,
+            enabled = enabled,
+            shape = CircleShape,
+            border = BorderStroke(1.5.dp, TealPrimary),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .testTag(TestTags.MEETUP_TIME_INPUT),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DateRange,
+                    contentDescription = null,
+                    tint = TealPrimary,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    text = TIME_DISPLAY_FORMAT.format(LocalDateTime.parse(time, TIME_INPUT_FORMAT)),
+                    fontWeight = FontWeight.Bold,
+                    color = TealPrimary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreateMeetupSubmitButton(enabled: Boolean, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        shape = CircleShape,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = RosePrimary,
+            contentColor = Color.White,
+            disabledContainerColor = RosePrimary.copy(alpha = 0.5f),
+            disabledContentColor = Color.White.copy(alpha = 0.7f),
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .testTag(TestTags.CREATE_MEETUP_SUBMIT),
+    ) {
+        Text(
+            text = "Create meetup →",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
