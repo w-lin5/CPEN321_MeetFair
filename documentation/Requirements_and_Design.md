@@ -5,7 +5,7 @@
 | **Change Date**   | **Modified Sections** | **Rationale** |
 | ----------------- | --------------------- | ------------- |
 | 2026-10-19 | All Sections | Initial submission for CP1 |
-| 2026-11-01 | 3.1, 3.3-3.7, 4.1, 4.3-4.7 | Document map and time pickers, membership management, deletion, refresh and in-app notifications. Align UI action labels and screen presentation with implementation. Match the implementation of features 3 and 5. Recommendations now come from Google Places and Routes through `from-places` and `places/search`, replacing manual candidate entry. Trips are a separate Live Location component that receives locations over REST and notifies members with `trip:updated`.|
+| 2026-11-03 | 3.1-3.7, 4.1-4.7 | CP Updates: Updated requirements, use cases, APIs, and architecture to match implemented group management, meetup scheduling and participation, Places/Routes recommendations, weighted voting, Fair Credit settlement, and live-trip tracking. Clarified validation, permissions, privacy, refresh, and notification behavior so flows and edge cases are explicit. Added approximate screen mock-ups as visual references. |
 ---
 
 ## 2. Project Description
@@ -271,7 +271,19 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
     - 9a1. The system prevents duplicate Fair Credit changes for the same participant and meetup.
 
 ### **3.6. Screen Mock-ups**
-No separate mock-ups are included. The UI uses Material Design 3 forms, lists, confirmation dialogs and temporary bottom Snackbars, together with an interactive map picker and a calendar followed by hour and minute wheels. These interactions are described in Section 3.4.
+The following mock-ups are visual references for selected group and meetup screens. They are similar to, but not exact representations of, the implemented UI. The current app is authoritative for appearance; Section 3.4 is authoritative for specified interactions and behavior.
+
+| Group list | Group details |
+|:---:|:---:|
+| <img src="mockups/group_list.png" alt="Group list mock-up" width="320"> | <img src="mockups/group_details.png" alt="Group details mock-up" width="320"> |
+
+| Meetup before leaving | Meetup on the way |
+|:---:|:---:|
+| <img src="mockups/meetup_before_leaving.png" alt="Meetup before leaving mock-up" width="320"> | <img src="mockups/meetup_on_the_way.png" alt="Meetup on the way mock-up" width="320"> |
+
+| Meetup arrived |
+|:---:|
+| <img src="mockups/meetup_arrived.png" alt="Meetup arrived mock-up" width="320"> |
 
 
 ### **3.7. Non-Functional Requirements**
