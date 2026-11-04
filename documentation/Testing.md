@@ -145,7 +145,7 @@ The Recommendation Engine is the component specified in full for CP2. Its `from-
 
 ### 4. Front-end Test Specification
 
-### 4.1. Location in Git of Front-end Test Suite:
+### 4.1. Location in Git of Front-end Test Suite
 
 `frontend/app/src/androidTest/java/com/example/cpen321application/e2e/`
 
@@ -163,7 +163,7 @@ The suite is run with `./scripts/run-frontend-e2e-tests.sh` (macOS/Linux) or `./
     | 1. The user selects "Create group" on the group list. | Click the button with test tag `create_group_button`. Check that the button with test tag `create_group_submit` is disabled. |
     | 2. The user enters a group name and selects "Create". | Input a unique group name in the field with test tag `group_name_input`. Check that the button with test tag `create_group_submit` is enabled, and click it. |
     | 3. The system creates the group with the user as its only member and organizer. | Wait for the node with test tag `invite_code_text`. Check that exactly one node with test tag `member_item` exists. Check that it contains "(organizer)". |
-    | 4. The system generates a unique 6-character invite code. | Check that the text of `invite_code_text` matches `Invite code: ` followed by 6 characters from the invite code alphabet. |
+    | 4. The system generates a unique 6-character invite code. | Check that the text of `invite_code_text` matches `Invite code:` followed by 6 characters from the invite code alphabet. |
     | 5. The system displays the group page with the group name, invite code and member list. | Check that the group name is displayed. Click the button with test tag `back_button`. Wait for a node with test tag `group_item` and the group name on the group list. |
     | **Create, failure 2a** (`createGroup_blankNameCannotBeSubmitted`) | |
     | 2a. The user enters only spaces as the group name. | Click the button with test tag `create_group_button`. Input "   " in the field with test tag `group_name_input`. |
