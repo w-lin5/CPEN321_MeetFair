@@ -80,8 +80,7 @@ private fun MeetupOptionsMenu(
     canDelete: Boolean,
     onSelect: (MeetupDialog) -> Unit,
 ) {
-    val leaving by vm.leaving.collectAsState()
-    val deletion by vm.deletion.collectAsState()
+    val action by vm.action.collectAsState()
     var showMenu by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { showMenu = true }) {
@@ -98,9 +97,9 @@ private fun MeetupOptionsMenu(
         ) {
             if (canLeave) {
                 DropdownMenuItem(
-                    text = { Text(if (leaving.submitting) "Leaving..." else "Leave meetup") },
+                    text = { Text(if (action.running == MeetupAction.LEAVE) "Leaving..." else "Leave meetup") },
                     onClick = { showMenu = false; onSelect(MeetupDialog.LEAVE) },
-                    enabled = !leaving.submitting && !deletion.submitting,
+                    enabled = action.running == null,
                     modifier = Modifier.testTag("leave_meetup"),
                 )
             }
@@ -108,12 +107,12 @@ private fun MeetupOptionsMenu(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            if (deletion.submitting) "Deleting..." else "Delete meetup",
+                            if (action.running == MeetupAction.DELETE) "Deleting..." else "Delete meetup",
                             color = MaterialTheme.colorScheme.error,
                         )
                     },
                     onClick = { showMenu = false; onSelect(MeetupDialog.DELETE) },
-                    enabled = !deletion.submitting,
+                    enabled = action.running == null,
                     modifier = Modifier.testTag("delete_meetup"),
                 )
             }
@@ -124,9 +123,8 @@ private fun MeetupOptionsMenu(
 /** Status chip, title, organizer line and any leave/delete errors or settlement notice. */
 @Composable
 internal fun MeetupHeader(meetup: Meetup, vm: MeetupViewModel, isOrganizer: Boolean) {
-    val organizerName by vm.organizerName.collectAsState()
-    val leaving by vm.leaving.collectAsState()
-    val deletion by vm.deletion.collectAsState()
+    val extras by vm.extras.collectAsState()
+    val action by vm.action.collectAsState()
 
     MeetupStatusChip(meetup.status)
 
@@ -138,7 +136,7 @@ internal fun MeetupHeader(meetup: Meetup, vm: MeetupViewModel, isOrganizer: Bool
         modifier = Modifier.testTag(TestTags.MEETUP_TITLE_TEXT),
     )
 
-    val organizerDisplay = if (isOrganizer) "You" else (organizerName ?: "Organizer")
+    val organizerDisplay = if (isOrganizer) "You" else (extras.organizerName ?: "Organizer")
     Text(
         text = "Meeting Organizer: $organizerDisplay",
         style = MaterialTheme.typography.titleMedium,
@@ -147,8 +145,7 @@ internal fun MeetupHeader(meetup: Meetup, vm: MeetupViewModel, isOrganizer: Bool
         modifier = Modifier.testTag("meetup_organizer_text"),
     )
 
-    leaving.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-    deletion.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    action.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     if (meetup.status == MeetupStatus.SETTLED) {
         Text("Fair Credit settled. View updated balances and history in the group's Fair Credit page.")
     }

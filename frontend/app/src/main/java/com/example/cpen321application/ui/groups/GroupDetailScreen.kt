@@ -167,7 +167,8 @@ class GroupDetailViewModel(
     val leaving: StateFlow<FormState<Unit>> = _leaving.asStateFlow()
 
     fun leaveGroup() {
-        if (_leaving.value.submitting || _leaving.value.result != null || _deletion.value.submitting || _removal.value.pending) return
+        if (_leaving.value.submitting || _leaving.value.result != null) return
+        if (_deletion.value.submitting || _removal.value.pending) return
         _leaving.value = FormState(submitting = true)
         viewModelScope.launch { _leaving.value = groups.leave(groupId).toFormState() }
     }
