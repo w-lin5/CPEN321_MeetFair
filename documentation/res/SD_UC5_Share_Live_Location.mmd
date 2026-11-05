@@ -1,10 +1,13 @@
-﻿%% Use Case 5: Share Live Location (Requirements_and_Design.md section 4.6). Fair Credit settlement is planned.
+﻿%% Use Case 5: Share Live Location (Requirements_and_Design.md section 4.6).
 sequenceDiagram
     actor M as Member
     actor O as Other members
+    actor G as Meetup organizer
     participant FE as Front-end
     participant LL as Live Location
     participant UG as Users & Groups
+    participant VF as Voting & Fairness
+    participant MAPS as Google Maps Platform
     participant RT as Realtime Gateway
     participant DB as MongoDB
 
@@ -34,4 +37,26 @@ sequenceDiagram
         LL->>RT: publish(meetup room, trip:updated)
         LL-->>FE: 200 Trip (commute duration)
         FE-->>M: stop sharing, show actual commute
+    end
+    G->>FE: tap "Settle Fair Credit", confirm "Settle"
+    FE->>LL: POST /api/meetups/:meetupId/settle
+    LL->>UG: getForMember(meetupId, userId)
+    alt not the organizer, not finalized, too early, or a trip is still active
+        LL-->>FE: 403 or 409 with the reason
+        FE-->>G: show error
+    else meetup already SETTLED
+        LL-->>FE: 200 Meetup, no duplicate Fair Credit change
+    else can settle
+        LL->>DB: read trips and stored travel estimates
+        opt a member has neither a tracked trip nor a stored estimate
+            LL->>MAPS: Routes computeRouteMatrix(origins, destination)
+            MAPS-->>LL: travel times
+        end
+        LL->>DB: save settlement snapshot
+        LL->>VF: settleMeetup(groupId, meetupId, trips)
+        VF->>DB: write ledger entries and balances
+        LL->>DB: set status to SETTLED
+        LL->>RT: publish(meetup room, meetup:status SETTLED)
+        LL-->>FE: 200 Meetup
+        FE-->>G: show settled meetup
     end

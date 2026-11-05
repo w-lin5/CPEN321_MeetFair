@@ -6,6 +6,7 @@
 | ----------------- | --------------------- | ------------- |
 | 2026-10-19 | All Sections | Initial submission for CP1 |
 | 2026-11-03 | 3.1-3.7, 4.1-4.7 | CP Updates: Updated requirements, use cases, APIs, and architecture to match implemented group management, meetup scheduling and participation, Places/Routes recommendations, weighted voting, Fair Credit settlement, and live-trip tracking. Clarified validation, permissions, privacy, refresh, and notification behavior so flows and edge cases are explicit. Added approximate screen mock-ups as visual references. |
+| 2026-11-04 | 3.1, 4.1, 4.2, 4.5, 4.6 | Match the current repository: documented the `settlements` collection, updated the dependency diagram and the Get Recommendations and Share Live Location sequence diagrams for the Live Location component and settlement, and fixed a typo in feature 5. |
 ---
 
 ## 2. Project Description
@@ -22,7 +23,7 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 2. **Groups and meetups**: Any user can create a group and invite others with its 6-character invite code. Any member can create a meetup with a title and a future time selected using a calendar followed by hour and minute wheels. Joining a group does not automatically join its meetups: a member participates by submitting their starting location, travel mode (walk, transit or drive) and preferences. Starting locations are selected on a map rather than entered as coordinates. Members can leave eligible meetups or groups; organizers can remove eligible members and delete the groups or meetups they manage, with confirmation before deletion.
 3. **Fair spot recommendation**: The back end collects candidate places (Google Places API), gets each member's travel time to each candidate (Google Routes API), then scores every candidate with our own fairness and preference algorithm and returns the top 3. Voting does not start if fewer than 3 usable places are found.
 4. **Weighted voting**: Members vote on the top 3 and lock their vote. A locked vote is weighted by the member's Fair Credit in the group (how much more than the group average they travelled in past meetups): 1 + 0.1 per 30 minutes of credit, between 1 and 1.5. Votes appear live; the organizer finalizes the vote, and each member can add the meetup at the winning place to their own Google Calendar.
-5. **Live commute tracking**: From the scheduled meetup time, participants tap "I'mm leaving" and share live location; the group sees who is on the way. The commute ends when they tap "I arrived", which records their actual commute time.
+5. **Live commute tracking**: From the scheduled meetup time, participants tap "I am leaving" and share live location; the group sees who is on the way. The commute ends when they tap "I arrived", which records their actual commute time.
 6. **Refresh and in-app notifications**: Data pages support pull-to-refresh. Participation changes update connected meetup pages automatically. Voting status changes and deletions produce temporary bottom Snackbars on the relevant subscribed pages.
 
 ### **3.2. Use Case Diagram**
@@ -384,7 +385,7 @@ The following mock-ups are visual references for selected group and meetup scree
         4. `Recommendation getByMeetupId(String meetupId)`
             - **Purpose**: Gives Voting & Fairness the candidates a vote must refer to and the data of the winning place.
 3. **Voting & Fairness**
-    - **Purpose**: Owns the `votes`, `fairCredits` and `fairCreditEntries` collections: casting, changing and locking votes, the weighted tally, finalizing, adding the meetup to Google Calendar, and Fair Credit (balances plus a ledger explaining every change). Vote weights come from Fair Credit and settlement changes Fair Credit, so keeping both in one component keeps all fairness rules in one place. The rules themselves (vote weight, tally, credit change) are pure functions.
+    - **Purpose**: Owns the `votes`, `fairCredits`, `fairCreditEntries` and `settlements` collections: casting, changing and locking votes, the weighted tally, finalizing, adding the meetup to Google Calendar, and Fair Credit (balances plus a ledger explaining every change). Vote weights come from Fair Credit and settlement changes Fair Credit, so keeping both in one component keeps all fairness rules in one place. The rules themselves (vote weight, tally, credit change) are pure functions.
     - **Interfaces**:
         1. `PUT /api/meetups/:meetupId/vote` — body `{ placeId: String }` -> `200 Vote`
             - **Purpose**: Creates or changes the caller's vote while it is unlocked and the meetup is in VOTING.
@@ -437,7 +438,7 @@ The following mock-ups are visual references for selected group and meetup scree
         5. `GET /api/meetups/:meetupId/trips` -> `200 List<Trip>`
             - **Purpose**: Lists the meetup's trips for group members, with a location only for members who are actively sharing.
         6. `POST /api/meetups/:meetupId/settle` -> `200 Meetup`
-            - **Purpose**: Meetup organizer only; settles Fair Credit after the finalized meetup time has arrived and all started trips have ended. Uses tracked commute durations when available and stored or calculated travel estimates otherwise, then moves the meetup to SETTLED. Repeated successful requests are harmless.
+            - **Purpose**: Meetup organizer only; settles Fair Credit after the finalized meetup time has arrived and all started trips have ended. Uses tracked commute durations when available and stored or calculated travel estimates otherwise, saves those durations as a settlement snapshot so a retry uses the same values, then moves the meetup to SETTLED. Repeated successful requests are harmless.
 6. **Health Check**
     - **Purpose**: Provides a simple public check that the HTTP server is responding.
     - **Interfaces**:
@@ -447,7 +448,7 @@ The following mock-ups are visual references for selected group and meetup scree
 ### **4.2. Databases**
 
 1. **MongoDB 7** (self-hosted, the `mongo` service in `docker-compose.yml`)
-    - **Purpose**: Stores users, groups, meetups (with participants and winner), recommendations, votes, Fair Credit balances, the Fair Credit ledger and trips. Unique indexes enforce one vote per member per meetup, one recommendation per meetup, unique invite codes and settling a meetup at most once. MongoDB's nested documents (members in a group, participants in a meetup, candidates in a recommendation) match our data better than relational tables, and Mongoose provides schemas and validation.
+    - **Purpose**: Stores users, groups, meetups (with participants and winner), recommendations, votes, Fair Credit balances, the Fair Credit ledger, settlement snapshots and trips. Unique indexes enforce one vote per member per meetup, one recommendation per meetup, unique invite codes and settling a meetup at most once. MongoDB's nested documents (members in a group, participants in a meetup, candidates in a recommendation) match our data better than relational tables, and Mongoose provides schemas and validation.
 
 ### **4.3. External Modules**
 
