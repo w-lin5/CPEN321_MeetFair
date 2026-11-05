@@ -1,13 +1,8 @@
 package com.example.cpen321application.ui.meetup
 
-import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.IntentSenderRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -22,38 +17,28 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -68,10 +53,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -81,7 +63,6 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.cpen321application.AppContainer
 import com.example.cpen321application.R
 import com.example.cpen321application.data.ApiResult
-import com.example.cpen321application.data.CalendarAuthResult
 import com.example.cpen321application.data.CalendarAuthorizer
 import com.example.cpen321application.data.GroupRepository
 import com.example.cpen321application.data.MeetupEvent
@@ -92,7 +73,6 @@ import com.example.cpen321application.model.Meetup
 import com.example.cpen321application.model.MeetupStatus
 import com.example.cpen321application.model.PlaceCandidate
 import com.example.cpen321application.model.VotesSnapshot
-import com.example.cpen321application.ui.common.DeleteConfirmation
 import com.example.cpen321application.ui.common.LocalNotify
 import com.example.cpen321application.ui.common.MeetFairCard
 import com.example.cpen321application.ui.common.MeetupStatusNotifications
@@ -107,12 +87,6 @@ import com.example.cpen321application.ui.theme.StatusGreen
 import com.example.cpen321application.ui.theme.StatusGreenLight
 import com.example.cpen321application.ui.theme.TealContainer
 import com.example.cpen321application.ui.theme.TealPrimary
-import com.google.android.gms.auth.api.identity.Identity
-import com.google.android.gms.common.api.ApiException
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -126,19 +100,10 @@ import androidx.core.net.toUri
 
 // Icons
 
-private fun icon(name: String, path: PathBuilder.() -> Unit): ImageVector =
+internal fun icon(name: String, path: PathBuilder.() -> Unit): ImageVector =
     ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
         .path(fill = SolidColor(Color.Black), pathBuilder = path)
         .build()
-
-private fun PathBuilder.calendarBody() {
-    moveTo(19f, 4f); horizontalLineTo(18f); verticalLineTo(2f); horizontalLineTo(16f); verticalLineTo(4f)
-    horizontalLineTo(8f); verticalLineTo(2f); horizontalLineTo(6f); verticalLineTo(4f); horizontalLineTo(5f)
-    curveTo(3.89f, 4f, 3.01f, 4.9f, 3.01f, 6f); lineTo(3f, 20f); curveTo(3f, 21.1f, 3.89f, 22f, 5f, 22f)
-    horizontalLineTo(19f); curveTo(20.1f, 22f, 21f, 21.1f, 21f, 20f); verticalLineTo(6f)
-    curveTo(21f, 4.9f, 20.1f, 4f, 19f, 4f); close()
-    moveTo(19f, 20f); horizontalLineTo(5f); verticalLineTo(10f); horizontalLineTo(19f); verticalLineTo(20f); close()
-}
 
 private val LockIcon = icon("Lock") {
     moveTo(18f, 8f); horizontalLineTo(17f); verticalLineTo(6f); curveTo(17f, 3.24f, 14.76f, 1f, 12f, 1f)
@@ -148,15 +113,6 @@ private val LockIcon = icon("Lock") {
     curveTo(20f, 8.9f, 19.1f, 8f, 18f, 8f); close()
     moveTo(9f, 6f); curveTo(9f, 4.34f, 10.34f, 3f, 12f, 3f); curveTo(13.66f, 3f, 15f, 4.34f, 15f, 6f)
     verticalLineTo(8f); horizontalLineTo(9f); verticalLineTo(6f); close()
-}
-
-private val CalendarIcon = icon("Calendar") { calendarBody() }
-
-private val CalendarAddIcon = icon("CalendarAdd") {
-    calendarBody()
-    moveTo(11f, 12f); horizontalLineTo(13f); verticalLineTo(14f); horizontalLineTo(15f); verticalLineTo(16f)
-    horizontalLineTo(13f); verticalLineTo(18f); horizontalLineTo(11f); verticalLineTo(16f); horizontalLineTo(9f)
-    verticalLineTo(14f); horizontalLineTo(11f); verticalLineTo(12f); close()
 }
 
 private val DirectionsArrowIcon = icon("DirectionsArrow") {
@@ -187,36 +143,11 @@ private val FlagIcon = icon("Flag") {
     horizontalLineTo(14.4f); close()
 }
 
-private val PersonIcon = icon("Person") {
-    moveTo(12f, 12f); curveTo(14.21f, 12f, 16f, 10.21f, 16f, 8f); curveTo(16f, 5.79f, 14.21f, 4f, 12f, 4f)
-    curveTo(9.79f, 4f, 8f, 5.79f, 8f, 8f); curveTo(8f, 10.21f, 9.79f, 12f, 12f, 12f); close()
-    moveTo(12f, 6f); curveTo(13.1f, 6f, 14f, 6.9f, 14f, 8f); curveTo(14f, 9.1f, 13.1f, 10f, 12f, 10f)
-    curveTo(10.9f, 10f, 10f, 9.1f, 10f, 8f); curveTo(10f, 6.9f, 10.9f, 6f, 12f, 6f); close()
-    moveTo(12f, 14f); curveTo(9.33f, 14f, 4f, 15.34f, 4f, 18f); verticalLineTo(20f); horizontalLineTo(20f)
-    verticalLineTo(18f); curveTo(20f, 15.34f, 14.67f, 14f, 12f, 14f); close()
-    moveTo(6f, 18f); curveTo(6.22f, 17.28f, 9.31f, 15.9f, 12f, 15.9f); curveTo(14.7f, 15.9f, 17.79f, 17.28f, 18f, 18f)
-    horizontalLineTo(6f); close()
-}
-
 private val SwapHorizontalIcon = icon("SwapHorizontal") {
     moveTo(6.99f, 11f); lineTo(3f, 15f); lineTo(6.99f, 19f); verticalLineTo(16f); horizontalLineTo(14f)
     verticalLineTo(14f); horizontalLineTo(6.99f); verticalLineTo(11f); close()
     moveTo(17.01f, 13f); lineTo(21f, 9f); lineTo(17.01f, 5f); verticalLineTo(8f); horizontalLineTo(10f)
     verticalLineTo(10f); horizontalLineTo(17.01f); verticalLineTo(13f); close()
-}
-
-// Date formatting
-
-private data class FormattedDateParts(val date: String, val time: String)
-
-private fun parseFormattedDateParts(iso: String): FormattedDateParts = try {
-    val zdt = Instant.parse(iso).atZone(ZoneId.systemDefault())
-    FormattedDateParts(
-        date = zdt.format(DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)),
-        time = zdt.format(DateTimeFormatter.ofPattern("h:mm a", Locale.US)),
-    )
-} catch (_: Exception) {
-    FormattedDateParts(date = iso, time = "Time unavailable")
 }
 
 // ViewModel
@@ -406,7 +337,7 @@ class MeetupViewModel(
 // UI model
 
 /** Everything the screen renders, with derived values defined once. */
-private data class MeetupUi(
+internal data class MeetupUi(
     val meetup: Meetup,
     val userId: String?,
     val extras: MeetupExtras,
@@ -430,7 +361,7 @@ private data class MeetupNavigation(
 )
 
 /** The confirmation dialog currently shown, if any. */
-private enum class Confirm { None, Settle, Leave, Delete }
+internal enum class Confirm { None, Settle, Leave, Delete }
 
 // Screen
 
@@ -545,270 +476,6 @@ private fun MeetupBody(
         if (isDone) MeetupNavCard(navigation.onOpenLiveLocation, navigation.onOpenVoting)
         MeetupBottomBar(ui, action.running, navigation, onSettle = { confirm = Confirm.Settle }, startTrip = startTrip)
         Spacer(modifier = Modifier.height(24.dp))
-    }
-}
-
-// Dialogs and menu
-
-@Composable
-private fun ConfirmDialog(
-    title: String,
-    text: String,
-    confirmLabel: String,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(text) },
-        confirmButton = { TextButton(onClick = onConfirm) { Text(confirmLabel) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
-}
-
-@Composable
-private fun MeetupDialogs(
-    confirm: Confirm,
-    meetup: Meetup,
-    onDismiss: () -> Unit,
-    onConfirm: (Confirm) -> Unit,
-) {
-    when (confirm) {
-        Confirm.None -> Unit
-        Confirm.Settle -> ConfirmDialog(
-            title = "Settle Fair Credit?",
-            text = "Finish this meetup and update everyone's Fair Credit. Completed trips use actual travel time; members who never started tracking use estimated travel time. All started trips must arrive first. This cannot be undone.",
-            confirmLabel = "Settle",
-            onDismiss = onDismiss,
-            onConfirm = { onConfirm(confirm) },
-        )
-        Confirm.Leave -> ConfirmDialog(
-            title = "Leave meetup?",
-            text = "Your starting location and preferences for this meetup will be deleted and will no longer affect place searches. You can join again by entering your details before voting starts.",
-            confirmLabel = "Leave",
-            onDismiss = onDismiss,
-            onConfirm = { onConfirm(confirm) },
-        )
-        Confirm.Delete -> DeleteConfirmation(
-            title = "Delete meetup?",
-            description = "Delete ${meetup.title}, its participation details, candidates and votes? This cannot be undone. Settled Fair Credit and external calendar events will remain.",
-            votingWarning = if (meetup.status == MeetupStatus.VOTING) "Warning: this meetup currently has voting in progress. Deleting it will end the vote." else null,
-            onDismiss = onDismiss,
-            onDelete = { onConfirm(confirm) },
-        )
-    }
-}
-
-@Composable
-private fun MeetupOptionsMenu(
-    expanded: Boolean,
-    ui: MeetupUi,
-    running: MeetupAction?,
-    onDismiss: () -> Unit,
-    onLeave: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        if (ui.meetup.status == MeetupStatus.SETUP && ui.submitted) {
-            DropdownMenuItem(
-                text = { Text(if (running == MeetupAction.LEAVE) "Leaving..." else "Leave meetup") },
-                onClick = onLeave,
-                enabled = running == null,
-                modifier = Modifier.testTag("leave_meetup"),
-            )
-        }
-        if (ui.isOrganizer) {
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        if (running == MeetupAction.DELETE) "Deleting..." else "Delete meetup",
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                },
-                onClick = onDelete,
-                enabled = running == null,
-                modifier = Modifier.testTag("delete_meetup"),
-            )
-        }
-    }
-}
-
-@Composable
-private fun MeetupHeader(
-    ui: MeetupUi,
-    onBack: () -> Unit,
-    onMenuClick: () -> Unit,
-    menuContent: @Composable () -> Unit,
-) {
-    val meetup = ui.meetup
-    val spec = getStatusSpec(meetup.status)
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().statusBarsPadding(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack, modifier = Modifier.testTag(TestTags.BACK_BUTTON)) {
-                Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TealPrimary)
-            }
-            if (ui.showOptionsMenu) {
-                Box {
-                    IconButton(onClick = onMenuClick) {
-                        Icon(imageVector = Icons.Default.MoreVert, contentDescription = "Options", tint = TealPrimary)
-                    }
-                    menuContent()
-                }
-            }
-        }
-        Surface(shape = CircleShape, color = spec.backgroundColor) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp).testTag(TestTags.MEETUP_STATUS_TEXT),
-            ) {
-                Icon(imageVector = spec.icon, contentDescription = null, tint = spec.color, modifier = Modifier.size(14.dp))
-                Text(text = spec.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = spec.color)
-                Text(text = "Status: ${meetup.status.name}", fontSize = 0.sp, color = Color.Transparent)
-            }
-        }
-        Text(
-            text = meetup.title,
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.ExtraBold,
-            color = TealPrimary,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.testTag(TestTags.MEETUP_TITLE_TEXT),
-        )
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Icon(
-                imageVector = PersonIcon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(16.dp),
-            )
-            Text(
-                text = "Organized by ${ui.organizerDisplay}",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.testTag("meetup_organizer_text"),
-            )
-        }
-    }
-}
-
-// Date and calendar
-
-@Composable
-private fun MeetupDateTimeCard(
-    scheduledAt: String,
-    calendarSection: @Composable () -> Unit,
-) {
-    val dateParts = parseFormattedDateParts(scheduledAt)
-    MeetFairCard {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                modifier = Modifier.weight(1f, fill = false),
-            ) {
-                Surface(shape = RoundedCornerShape(14.dp), color = TealContainer, modifier = Modifier.size(48.dp)) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(imageVector = CalendarIcon, contentDescription = null, tint = TealPrimary, modifier = Modifier.size(24.dp))
-                    }
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(text = dateParts.date, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = TealPrimary)
-                    Text(text = dateParts.time, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            calendarSection()
-        }
-    }
-}
-
-@Composable
-private fun rememberCalendarConsentLauncher(
-    onToken: (String) -> Unit,
-    onError: (String) -> Unit,
-): ActivityResultLauncher<IntentSenderRequest> {
-    val context = LocalContext.current
-    return rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartIntentSenderForResult()
-    ) { activityResult ->
-        val intent = activityResult.data
-        if (activityResult.resultCode == Activity.RESULT_OK && intent != null) {
-            try {
-                val result = Identity.getAuthorizationClient(context).getAuthorizationResultFromIntent(intent)
-                val token = result.accessToken
-                if (token != null) onToken(token) else onError("Google Calendar did not return an access token.")
-            } catch (_: ApiException) {
-                onError("Google Calendar authorization failed. Please try again.")
-            }
-        } else {
-            onError("Google Calendar permission request was canceled.")
-        }
-    }
-}
-
-@Composable
-private fun SmallCalendarButton(
-    authorizer: CalendarAuthorizer,
-    submitting: Boolean,
-    added: Boolean,
-    onToken: (String) -> Unit,
-    onError: (String) -> Unit,
-) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val consentLauncher = rememberCalendarConsentLauncher(onToken, onError)
-
-    if (added) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.testTag(TestTags.CALENDAR_ADDED_TEXT),
-        ) {
-            Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = StatusGreen, modifier = Modifier.size(16.dp))
-            Text(text = "In calendar", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = StatusGreen)
-        }
-        return
-    }
-
-    Surface(
-        onClick = {
-            scope.launch {
-                when (val auth = authorizer.requestCalendarAuthorization(context)) {
-                    is CalendarAuthResult.Success -> onToken(auth.accessToken)
-                    is CalendarAuthResult.NeedsConsent -> auth.result.pendingIntent?.let { pendingIntent ->
-                        consentLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
-                    } ?: onError("Google Calendar permission request could not be started.")
-                    is CalendarAuthResult.Failure -> {
-                        val cause = auth.error.message ?: "Please grant Calendar permissions."
-                        onError("Google Calendar authorization failed: $cause")
-                    }
-                }
-            }
-        },
-        enabled = !submitting,
-        shape = CircleShape,
-        color = TealContainer,
-        modifier = Modifier.testTag(TestTags.ADD_TO_CALENDAR_BUTTON),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.semantics { contentDescription = "Add to Google Calendar" }.padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
-            Icon(imageVector = CalendarAddIcon, contentDescription = null, tint = TealPrimary, modifier = Modifier.size(16.dp))
-            Text(text = if (submitting) "..." else "Add", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = TealPrimary)
-        }
     }
 }
 

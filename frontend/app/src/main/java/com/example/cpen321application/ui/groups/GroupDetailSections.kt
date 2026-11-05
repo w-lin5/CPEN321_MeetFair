@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
@@ -55,6 +56,8 @@ import com.example.cpen321application.ui.common.LocalNotify
 import com.example.cpen321application.ui.common.MeetFairCard
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.theme.RosePrimary
+import com.example.cpen321application.ui.theme.StatusGreen
+import com.example.cpen321application.ui.theme.StatusGreenLight
 import com.example.cpen321application.ui.theme.TealContainer
 import com.example.cpen321application.ui.theme.TealPrimary
 import kotlinx.coroutines.launch
@@ -108,10 +111,19 @@ internal data class GroupInfoActions(
     val onLeave: () -> Unit,
 )
 
+/** Navigation callbacks the group screen offers. */
+internal data class GroupDetailNavigation(
+    val onBack: () -> Unit,
+    val onNewMeetup: () -> Unit,
+    val onOpenMeetup: (String) -> Unit,
+    val onOpenFairness: () -> Unit,
+)
+
 /** Back button, options menu (delete for the organizer, leave for members), group name and action errors. */
 @Composable
 internal fun GroupHeader(
     groupName: String,
+    hasTrackingStage: Boolean,
     isOrganizer: Boolean,
     busy: GroupBusyState,
     actions: GroupInfoActions,
@@ -142,24 +154,60 @@ internal fun GroupHeader(
             GroupOptionsMenu(isOrganizer, busy, actions)
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = "GROUP",
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                letterSpacing = 1.5.sp,
-            )
-            Text(
-                text = groupName,
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.ExtraBold,
-                color = TealPrimary,
-            )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "GROUP",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    letterSpacing = 1.5.sp,
+                )
+                Text(
+                    text = groupName,
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TealPrimary,
+                )
+            }
+            if (hasTrackingStage) {
+                GroupTrackingBadge()
+            }
         }
 
         busy.leaving.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         busy.deletion.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    }
+}
+
+@Composable
+private fun GroupTrackingBadge() {
+    Surface(
+        shape = CircleShape,
+        color = StatusGreenLight,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = StatusGreen,
+                modifier = Modifier.size(14.dp),
+            )
+            Text(
+                text = "Tracking live",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = StatusGreen,
+            )
+        }
     }
 }
 
