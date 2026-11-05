@@ -6,12 +6,11 @@ Install the following before the frontend or backend setup steps:
 
 - [git](https://git-scm.com/install/)
 
-
---- 
+---
 
 ## Frontend Setup
 
-### Requirements
+### Frontend Requirements
 
 - [Android Studio](https://developer.android.com/studio) (latest version)
 - [Java 17](https://adoptium.net/temurin/releases/?version=17)
@@ -26,30 +25,33 @@ Install the following before the frontend or backend setup steps:
    - Create a new AVD (Android Virtual Device) by selecting Pixel 9 as the device and Android Baklava (API level 36) as the system image.
    - Alternatively, connect a physical Android device running Android 16 (API level 36).
 5. **Setup app config**: Copy the example file, then fill in local values:
+
    ```bash
    cp frontend/local.properties.example frontend/local.properties
    ```
+
    Set at least:
+
    - `sdk.dir`: path to your Android SDK. Android Studio usually writes this the first time you open `frontend/`. On Mac it is often `sdk.dir=/Users/<username>/Library/Android/sdk`.
    - `API_BASE_URL`: backend URL baked into the APK. Use `http://10.0.2.2:3000` for the emulator (`10.0.2.2` is the host machine). For a physical device on the same Wi-Fi, use `http://<your-lan-ip>:3000`.
-
 
 ### Build and Run
 
 - **Debug build**: Click the green play button in the toolbar, to compile the code, package a debug APK, and install it on the connected device or running emulator. Alternatively, from the project root, run `./scripts/run-frontend.sh`.
 - **Release build**: Go to Build -> Generate Signed App Bundle or APK -> APK. Follow the on-screen instructions to create a key, and select the "release" build variant. You will then have to manually install the generated APK on your device or the running emulator.
 
-
 ### Backend Configuration
 
 Ensure the backend server is running and update the base URL in the app configuration if needed.
 
 ---
+
 ## Backend Setup
 
 You can run the backend in one of two ways:
-* Locally via Node.js 
-* Via Docker Compose
+
+- Locally via Node.js
+- Via Docker Compose
 
 Both ways use the same `backend/.env` file (see below).
 
@@ -62,20 +64,22 @@ cp backend/.env.example backend/.env
 ```
 
 Set at least:
+
 - `JWT_SECRET`: a long random string used to sign auth tokens.
 - `GOOGLE_PLACES_API_KEY`: a backend API key from a Google Cloud project with Places API (New) and Routes API enabled (Routes estimates each member's travel time to every candidate place). If the key has API restrictions, allow both. Keep this key in `backend/.env`, not in the Android app.
 - `MONGODB_URI`: only needed for local development (default in `.env.example` assumes MongoDB on `localhost:27017`). Ignored when running via Docker Compose.
 - `PORT` (optional): defaults to `3000` if unset.
 
-
 ### Option 1: Run locally
 
-**Requirements:** 
+**Requirements:**
+
 - [Node.js](https://nodejs.org/en/download/) 22.x (as required by `backend/package.json`)
 - [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) 10+
 - A running MongoDB instance reachable through `MONGODB_URI` (the Docker Compose option starts MongoDB automatically).
 
-**Setup:** 
+**Setup:**
+
 1. Install dependencies:
 
    ```bash
@@ -98,11 +102,13 @@ Set at least:
 
 ### Option 2: Run with Docker Compose
 
-**Requirements:** 
+**Requirements:**
+
 - [Docker](https://docs.docker.com/desktop/setup/install) and [Docker Compose](https://docs.docker.com/desktop/setup/install) v2.24+
 - [curl](https://curl.se/download.html)
 
-**Setup**
+**Setup:**
+
 1. **Start** (from the project root):
 
    ```bash
