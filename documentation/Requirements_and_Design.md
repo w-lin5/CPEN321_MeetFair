@@ -327,8 +327,9 @@ The following mock-ups are visual references for selected group and meetup scree
 <a name="nfr3"></a>
 
 3. **Response Time**
-    - **Description**: Under normal network conditions, at least 95% of ordinary API requests, such as loading groups, meetups, and vote totals, should complete within 2 seconds. A vote update should appear on other connected members' screens within 3 seconds. Recommendation generation may take longer because it depends on external Google services; the app should show progress while the request is running.
-    - **Justification**: Members need timely feedback when planning a meetup and voting. Longer operations must remain understandable rather than appearing frozen.
+    - **Description**: Description: Under normal network conditions, ordinary API requests (loading groups, meetups, and vote totals) should complete within 1 second. After the server accepts a vote, connected members’ screens should show the update within 1 second. The app should acknowledge every user action that triggers work within 0.1 seconds. Operations that take longer, such as recommendation generation, which depends on external Google services, must show visible progress.
+    - **Justification**: Nielsen’s response-time limits, based on human perception, put instantaneous feedback at about 0.1 s, uninterrupted flow of thought at about 1 s, and sustained attention at about 10 s. Members should be able to vote and see results without breaking their flow, and longer operations must not appear frozen.
+    - Reference: Nielsen, J. (1993), "Response Times: The 3 Important Limits," Nielsen Norman Group, https://www.nngroup.com/articles/response-times-3-important-limits/
 
 <a name="nfr4"></a>
 
