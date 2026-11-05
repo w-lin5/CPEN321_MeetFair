@@ -5,8 +5,7 @@
 | **Change Date** | **Modified Sections** | **Rationale** |
 | --------------- | --------------------- | ------------- |
 | 2026-10-19 | All Sections | Initial submission for CP1 |
-| 2026-11-03 | 2.1.1, 2.1.2, 2.1.3, 4.1, 4.2 | CP2 updates: documented the current Recommendation Engine interfaces and test commands; updated Create or Join Group and Vote on a Candidate front-end test scenarios, including their automated coverage and manual multi-user cases. |
-| 2026-11-04 | 2.1.1, 2.1.2, 2.3, 2.4, 3.2, 4.2 | Match the current repository: listed what each mocked test actually mocks and removed names of models that do not exist; updated the commit hash and coverage reports; removed the leftover placeholder from 3.2; added the automated no-network Create or Join Group test to 4.2. |
+| 2026-11-04 | 2.1.1, 2.1.2, 2.1.3, 2.3, 2.4, 3.2, 4.1, 4.2 | CP2: documented Recommendation Engine interfaces and test commands; updated Create or Join Group and Vote on a Candidate scenarios, automated coverage, and manual multi-user cases; clarified mocked tests and removed references to nonexistent models; updated the commit hash and coverage reports; removed a leftover placeholder and added the automated no-network Create or Join Group test. |
 ---
 
 ## 2. Back-end Test Specification: APIs

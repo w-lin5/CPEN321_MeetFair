@@ -5,8 +5,7 @@
 | **Change Date**   | **Modified Sections** | **Rationale** |
 | ----------------- | --------------------- | ------------- |
 | 2026-10-19 | All Sections | Initial submission for CP1 |
-| 2026-11-03 | 3.1-3.7, 4.1-4.7 | CP Updates: Updated requirements, use cases, APIs, and architecture to match implemented group management, meetup scheduling and participation, Places/Routes recommendations, weighted voting, Fair Credit settlement, and live-trip tracking. Clarified validation, permissions, privacy, refresh, and notification behavior so flows and edge cases are explicit. Added approximate screen mock-ups as visual references. |
-| 2026-11-04 | 3.1, 4.1, 4.2, 4.5, 4.6 | Match the current repository: documented the `settlements` collection, updated the dependency diagram and the Get Recommendations and Share Live Location sequence diagrams for the Live Location component and settlement, and fixed a typo in feature 5. |
+| 2026-11-04 | 3.1-3.7, 4.1-4.7 | CP2: updated requirements, use cases, APIs, and architecture for group management, meetup scheduling and participation, Places/Routes recommendations, weighted voting, Fair Credit settlement, and live-trip tracking; clarified validation, permissions, privacy, refresh, notifications, and edge cases; added approximate screen mock-ups; documented the `settlements` collection; updated the dependency and sequence diagrams; and fixed a typo in feature 5. |
 ---
 
 ## 2. Project Description
