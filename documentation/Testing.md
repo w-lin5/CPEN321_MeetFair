@@ -126,7 +126,7 @@ The Recommendation Engine is the component specified in full for CP2. Its `from-
 
 | **Non-Functional Requirement** | **Existing Test Locations** | **Current Coverage** |
 | ------------------------------ | --------------------------- | -------------------- |
-| [Security and Access Control](Requirements_and_Design.md#nfr1) | `backend/tests/no-mock/auth.test.ts`; `backend/tests/no-mock/groups.test.ts`; `backend/tests/no-mock/meetups.test.ts`; `backend/tests/no-mock/voting.test.ts`; `backend/tests/no-mock/realtime.test.ts`; `backend/tests/no-mock/calendar.test.ts`; `backend/tests/mock/index.test.ts` | Tests session-token rejection, membership and organizer restrictions, Socket.IO room access, and server HTTPS startup logic. Does not test the deployed TLS configuration or prove that access tokens are absent from all stored data. |
+| [Security and Access Control](Requirements_and_Design.md#37-non-functional-requirements) | `backend/tests/no-mock/auth.test.ts`; `backend/tests/no-mock/groups.test.ts`; `backend/tests/no-mock/meetups.test.ts`; `backend/tests/no-mock/voting.test.ts`; `backend/tests/no-mock/realtime.test.ts`; `backend/tests/no-mock/calendar.test.ts`; `backend/tests/mock/index.test.ts` | Tests session-token rejection, membership and organizer restrictions, Socket.IO room access, and server HTTPS startup logic. Does not test the deployed TLS configuration or prove that access tokens are absent from all stored data. |
 
 ### 3.2. Test Verification and Logs
 

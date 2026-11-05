@@ -76,8 +76,6 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
 ### **3.5. Formal Use Case Specifications (5 Most Major Use Cases)**
 
-<a name="uc1"></a>
-
 #### Use Case 1: Vote on a Candidate
 
 **Description**: A member votes for one of the three candidate places of a meetup and may change the vote until they lock it. A locked vote counts with a weight from the member's Fair Credit, and every member sees the tally update live.
@@ -113,8 +111,6 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
 - 6a. The vote was already locked, for example from another device.
   - 6a1. The app shows "Your vote is already locked".
-
-<a name="uc2"></a>
 
 #### Use Case 2: Create or Join Group
 
@@ -159,8 +155,6 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
 - Join 3b. The user's device has no network connection.
   - 3b1. The system displays a "Network error" message and stays on the form so the user can try again when reconnected.
-
-<a name="uc3"></a>
 
 #### Use Case 3: Get Recommendations
 
@@ -216,8 +210,6 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 - 7a. Storing the recommendations fails.
   - 7a1. The system reports an error and returns the meetup from VOTING to SETUP so the organizer can retry.
 
-<a name="uc4"></a>
-
 #### Use Case 4: Finalize Meetup
 
 **Description**: The Organizer closes the voting process, allowing the system to determine the winning location from the locked, weighted votes. Each member can then add the finalized meetup at the winning location to their own Google Calendar.
@@ -255,8 +247,6 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
   - 7a1. The system displays the reason, e.g. "Google Calendar API rate limit reached. Please retry in a few minutes.", and records nothing; the member may try again.
 - 7b. The meetup is already in the member's calendar.
   - 7b1. The system displays "This meetup is already in your calendar" and does not create a second event.
-
-<a name="uc5"></a>
 
 #### Use Case 5: Share Live Location
 
@@ -300,38 +290,30 @@ The following mock-ups are visual references for selected group and meetup scree
 
 | Group list | Group details |
 |:---:|:---:|
-| <img src="mockups/group_list.png" alt="Group list mock-up" width="320"> | <img src="mockups/group_details.png" alt="Group details mock-up" width="320"> |
+| ![Group list mock-up](mockups/group_list.png) | ![Group details mock-up](mockups/group_details.png) |
 
 | Meetup before leaving | Meetup on the way |
 |:---:|:---:|
-| <img src="mockups/meetup_before_leaving.png" alt="Meetup before leaving mock-up" width="320"> | <img src="mockups/meetup_on_the_way.png" alt="Meetup on the way mock-up" width="320"> |
+| ![Meetup before leaving mock-up](mockups/meetup_before_leaving.png) | ![Meetup on the way mock-up](mockups/meetup_on_the_way.png) |
 
 | Meetup arrived |
 |:---:|
-| <img src="mockups/meetup_arrived.png" alt="Meetup arrived mock-up" width="320"> |
+| ![Meetup arrived mock-up](mockups/meetup_arrived.png) |
 
 ### **3.7. Non-Functional Requirements**
-
-<a name="nfr1"></a>
 
 1. **Security and Access Control**
     - **Description**: All requests containing user data must use HTTPS in deployment. The backend must verify the user's session token and check group or meetup membership before returning protected data or accepting changes. Only the meetup organizer may start or finalize voting. Google access tokens must not be stored in the database.
     - **Justification**: MeetFair handles account information, group membership, travel details, and potentially live locations. Unauthorized users must not be able to view or change this information.
 
-<a name="nfr2"></a>
-
 2. **Location Privacy**
     - **Description**: Live location sharing must require the user's explicit action and device permission. Only authorized members of the relevant group may receive location updates. Sharing must stop when the trip ends, and the app must make the sharing state visible to the user.
     - **Justification**: A person's current location is sensitive. Users need control over when it is shared and who can see it.
 
-<a name="nfr3"></a>
-
 3. **Response Time**
     - **Description**: Description: Under normal network conditions, ordinary API requests (loading groups, meetups, and vote totals) should complete within 1 second. After the server accepts a vote, connected members’ screens should show the update within 1 second. The app should acknowledge every user action that triggers work within 0.1 seconds. Operations that take longer, such as recommendation generation, which depends on external Google services, must show visible progress.
     - **Justification**: Nielsen’s response-time limits, based on human perception, put instantaneous feedback at about 0.1 s, uninterrupted flow of thought at about 1 s, and sustained attention at about 10 s. Members should be able to vote and see results without breaking their flow, and longer operations must not appear frozen.
-    - Reference: Nielsen, J. (1993), "Response Times: The 3 Important Limits," Nielsen Norman Group, https://www.nngroup.com/articles/response-times-3-important-limits/
-
-<a name="nfr4"></a>
+    - Reference: Nielsen, J. (1993), "Response Times: The 3 Important Limits," Nielsen Norman Group, <https://www.nngroup.com/articles/response-times-3-important-limits/>
 
 4. **Usability and Accessibility**
     - **Description**: The Android app should clearly show the current meetup status, the user's selected candidate, whether their vote is locked, and the finalized winner. Important actions and errors must be expressed in text, not only through color. Controls should remain usable with Android's font scaling and accessibility services.
@@ -531,33 +513,33 @@ The Mermaid source is [`res/Dependency_Diagram.mmd`](res/Dependency_Diagram.mmd)
 
 ### **4.6. Use Case Sequence Diagram (5 Most Major Use Cases)**
 
-1. [**Vote on a Candidate**](#uc1)\
+1. [**Vote on a Candidate**](#use-case-1-vote-on-a-candidate)\
 ![Vote on a Candidate sequence diagram](images/SD_UC1_Vote_on_a_Candidate.png)
-2. [**Create or Join Group**](#uc2)\
+2. [**Create or Join Group**](#use-case-2-create-or-join-group)\
 **Create Group**\
 ![Create Group sequence diagram](images/SD_UC2_Create_Group.png)\
 **Join Group**\
 ![Join Group sequence diagram](images/SD_UC2_Join_Group.png)
-3. [**Get Recommendations**](#uc3)\
+3. [**Get Recommendations**](#use-case-3-get-recommendations)\
 ![Get Recommendations sequence diagram](images/SD_UC3_Get_Recommendations.png)
-4. [**Finalize Meetup**](#uc4)\
+4. [**Finalize Meetup**](#use-case-4-finalize-meetup)\
 ![Finalize Meetup sequence diagram](images/SD_UC4_Finalize_Meetup.png)
-5. [**Share Live Location**](#uc5)\
+5. [**Share Live Location**](#use-case-5-share-live-location)\
 ![Share Live Location sequence diagram](images/SD_UC5_Share_Live_Location.png)
 
 The Mermaid sources of these diagrams are in [`res/`](res/).
 
 ### **4.7. Design of Non-Functional Requirements**
 
-1. [**Security and Access Control**](#nfr1)
+1. [**Security and Access Control**](#37-non-functional-requirements)
     - **Implementation**: The back end serves HTTPS (and Socket.IO over WSS) on its port when a TLS certificate and private key are installed in `backend/certs/`; for deployment, the app's `API_BASE_URL` is set to the server's `https://` address. The Android app sends the MeetFair session token with protected API requests; the backend verifies the token and checks group or meetup membership before accessing protected resources. Organizer-only operations perform an additional role check. Google Calendar access tokens are used for individual requests and are not stored in the database.
 
-2. [**Location Privacy**](#nfr2)
+2. [**Location Privacy**](#37-non-functional-requirements)
     - **Implementation**: Request Android location permission only when a participant starts sharing their commute, after a confirmation dialog explains who can see their location. Send location updates over the authenticated REST API, and check group membership for every update and read. Realtime events carry no coordinates. Show when sharing is active with a system notification, stop updates when the trip ends, and store only the latest coordinate plus the data needed to calculate travel time.
 
-3. [**Response Time**](#nfr3)
+3. [**Response Time**](#37-non-functional-requirements)
     - **Implementation**: Use Socket.IO to push vote totals and meetup status changes to connected members instead of requiring repeated requests. Run network calls outside the Android main thread and show loading or progress states. Google Places and Routes requests run on the back end, and the app shows "Generating places..." while waiting. **Planned**: measure API response times and realtime delivery against the targets in Section 3.7.
 
-4. [**Usability and Accessibility**](#nfr4)
+4. [**Usability and Accessibility**](#37-non-functional-requirements)
     - **Implementation**: Show the selected candidate, locked-vote state, current vote totals, meetup status, and winner in text. Display loading and error messages near the relevant action, and ask for confirmation before the organizer finalizes while some participants have not locked their votes. **Planned**: check the main screens with Android font scaling, screen readers, and different screen sizes.
     - **Implemented refresh and feedback**: A shared PullToRefreshBox retains the last displayed content during refresh and supports empty and error states. Participation events reload connected meetup pages. A shared Snackbar host survives navigation and dismisses transient notices automatically. Status notifications are triggered by transitions rather than initial data loading. Meetup-deletion notices are limited to participants, while nonparticipants silently leave invalid pages; group deletion notifies group members. Leaving does not produce Snackbars.
