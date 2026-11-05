@@ -16,11 +16,11 @@
 
 ### 2.2. Unfixed Issues per Codacy Category
 
-![Codacy's Category Breakdown table in Overview](images/logo.png)
+![Codacy's Category Breakdown table in Overview](images/Codacy_Category_Breakdown.PNG)
 
 ### 2.3. Unfixed Issues per Codacy Code Pattern
 
-![Codacy's Issues page](images/logo.png)
+![Codacy's Issues page](images/Codacy_Issues.PNG)
 
 ### 2.4. Justifications for Unfixed Issues
 
