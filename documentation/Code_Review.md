@@ -12,7 +12,7 @@
 
 ### 2.1. Commit Hash Where Codacy Ran
 
-`[Insert Commit SHA here]`
+`789779cac6ca121d2a434ce1f6286205c6793b98`
 
 ### 2.2. Unfixed Issues per Codacy Category
 
