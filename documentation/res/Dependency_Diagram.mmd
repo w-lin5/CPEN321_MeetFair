@@ -30,6 +30,8 @@ flowchart LR
     RT -->|getForMember| UG
     LL -->|"getForMember, requireMembership,<br/>findByIds"| UG
     LL -->|publish| RT
+    LL -->|settleMeetup| VF
+    LL -->|"computeRouteMatrix<br/>(missing estimates)"| MAPS
     UG --> DB
     REC --> DB
     VF --> DB
