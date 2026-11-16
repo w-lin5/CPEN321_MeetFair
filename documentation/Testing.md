@@ -148,7 +148,9 @@ The suite is run with `./scripts/run-frontend-e2e-tests.sh` (macOS/Linux) or `./
 
 ### 4.2. Tests
 
-- **Use Case: Create or Join Group** ([`CreateJoinGroupTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/CreateJoinGroupTest.kt))
+- **Use Cases: Create Group and Join Group** ([`CreateJoinGroupTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/CreateJoinGroupTest.kt))
+
+  Create Group is formal use case 2 in the requirements specification. Join Group is a separate use case described in Section 3.4; both workflows are tested in this shared test file. The Create and Join labels below distinguish their scenarios.
 
   - **Expected Behaviors (automated):**
 

@@ -6,6 +6,7 @@
 | ----------------- | --------------------- | ------------- |
 | 2026-10-19 | All Sections | Initial submission for CP1 |
 | 2026-11-04 | 3.1-3.7, 4.1-4.7 | CP2: updated requirements, use cases, APIs, and architecture for group management, meetup scheduling and participation, Places/Routes recommendations, weighted voting, Fair Credit settlement, and live-trip tracking; clarified validation, permissions, privacy, refresh, notifications, and edge cases; added approximate screen mock-ups; documented the `settlements` collection; updated the dependency and sequence diagrams; and fixed a typo in feature 5. |
+| 2026-11-15 | 3.1, 3.5, 4.1, 4.6 | Addressed TA feedback: kept refresh and notifications under usability design rather than the feature list, selected Create Group as formal use case 2 with its corresponding sequence diagram, and removed Health Check from the business component decomposition. |
 ---
 
 ## 2. Project Description
@@ -23,7 +24,6 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 3. **Fair spot recommendation**: The back end collects candidate places (Google Places API), gets each member's travel time to each candidate (Google Routes API), then scores every candidate with our own fairness and preference algorithm and returns the top 3. Voting does not start if fewer than 3 usable places are found.
 4. **Weighted voting**: Members vote on the top 3 and lock their vote. A locked vote is weighted by the member's Fair Credit in the group (how much more than the group average they travelled in past meetups): 1 + 0.1 per 30 minutes of credit, between 1 and 1.5. Votes appear live; the organizer finalizes the vote, and each member can add the meetup at the winning place to their own Google Calendar.
 5. **Live commute tracking**: From the scheduled meetup time, participants tap "I am leaving" and share live location; the group sees who is on the way. The commute ends when they tap "I arrived", which records their actual commute time.
-6. **Refresh and in-app notifications**: Data pages support pull-to-refresh. Participation changes update connected meetup pages automatically. Voting status changes and deletions produce temporary bottom Snackbars on the relevant subscribed pages.
 
 ### **3.2. Use Case Diagram**
 
@@ -112,13 +112,13 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 - 6a. The vote was already locked, for example from another device.
   - 6a1. The app shows "Your vote is already locked".
 
-#### Use Case 2: Create or Join Group
+#### Use Case 2: Create Group
 
-**Description**: A user creates a new group and receives an invite code to share, or joins an existing group by entering an invite code, associating their account with that group so they can participate in future meetups.
+**Description**: A signed-in user creates a new group, becomes its organizer and receives an invite code to share with other users.
 
 **Primary actor(s)**: Member
 
-**Main success scenario (Create)**:
+**Main success scenario**:
 
 1. The user selects "Create group" on the group list.
 2. The user enters a group name and selects "Create".
@@ -126,35 +126,17 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 4. The system generates a unique 6-character invite code for the group.
 5. The system displays the group page with the group name, the invite code for sharing and the member list.
 
-**Main success scenario (Join)**:
-
-1. The user selects "Join group" on the group list.
-2. The user enters the invite code shared by a group member and selects "Join".
-3. The system finds the group with this invite code in the database (letter case does not matter).
-4. The system adds the user to the group's member list.
-5. The system displays the group page with all members and the group's meetups.
-
 **Failure scenario(s)**:
 
-- Create 2a. The user enters an empty group name (or only spaces).
+- 2a. The user enters an empty group name (or only spaces).
   - 2a1. The "Create" button stays disabled until the name contains a non-space character.
 
-- Create 2b. The user enters a group name longer than 60 characters.
+- 2b. The user enters a group name longer than 60 characters.
   - 2b1. The system displays "Invalid request: name must be a non-empty string of at most 60 characters".
   - 2b2. The user shortens the name and selects "Create" again.
 
-- Create 3a. The user's device has no network connection.
+- 3a. The user's device has no network connection.
   - 3a1. The system displays a "Network error" message and stays on the form so the user can try again when reconnected.
-
-- Join 2a. The user enters an invite code that does not belong to any group.
-  - 2a1. The system displays "Invalid invite code".
-  - 2a2. The user stays on the join screen and may enter another code.
-
-- Join 3a. The user is already a member of this group.
-  - 3a1. The system displays "Already a member of this group" and the member list is unchanged.
-
-- Join 3b. The user's device has no network connection.
-  - 3b1. The system displays a "Network error" message and stays on the form so the user can try again when reconnected.
 
 #### Use Case 3: Get Recommendations
 
@@ -438,11 +420,6 @@ The following mock-ups are visual references for selected group and meetup scree
             - **Purpose**: Lists the meetup's trips for group members, with a location only for members who are actively sharing.
         6. `POST /api/meetups/:meetupId/settle` -> `200 Meetup`
             - **Purpose**: Meetup organizer only; settles Fair Credit after the finalized meetup time has arrived and all started trips have ended. Uses tracked commute durations when available and stored or calculated travel estimates otherwise, saves those durations as a settlement snapshot so a retry uses the same values, then moves the meetup to SETTLED. Repeated successful requests are harmless.
-6. **Health Check**
-    - **Purpose**: Provides a simple public check that the HTTP server is responding.
-    - **Interfaces**:
-        1. `GET /health` -> `200 { status: "ok" }`
-            - **Purpose**: Returns the server health status without requiring authentication.
 
 ### **4.2. Databases**
 
@@ -515,11 +492,8 @@ The Mermaid source is [`res/Dependency_Diagram.mmd`](res/Dependency_Diagram.mmd)
 
 1. [**Vote on a Candidate**](#use-case-1-vote-on-a-candidate)\
 ![Vote on a Candidate sequence diagram](images/SD_UC1_Vote_on_a_Candidate.png)
-2. [**Create or Join Group**](#use-case-2-create-or-join-group)\
-**Create Group**\
-![Create Group sequence diagram](images/SD_UC2_Create_Group.png)\
-**Join Group**\
-![Join Group sequence diagram](images/SD_UC2_Join_Group.png)
+2. [**Create Group**](#use-case-2-create-group)\
+![Create Group sequence diagram](images/SD_UC2_Create_Group.png)
 3. [**Get Recommendations**](#use-case-3-get-recommendations)\
 ![Get Recommendations sequence diagram](images/SD_UC3_Get_Recommendations.png)
 4. [**Finalize Meetup**](#use-case-4-finalize-meetup)\
