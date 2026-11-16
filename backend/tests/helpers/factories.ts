@@ -63,6 +63,11 @@ export const PARTICIPATION = {
 
 export const MISSING_ID = '507f1f77bcf86cd799439011';
 
+// Generate valid creation inputs when the test runs, rather than using an expiring calendar date.
+export function futureScheduledAt(): string {
+  return new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+}
+
 // Three distinct places, as a recommendation's candidates (POST /meetups/:id/recommendations body)
 export const CANDIDATES = [
   { placeId: 'place-1', name: 'Koerner Library', address: '1958 Main Mall', location: { lat: 49.2667, lng: -123.2551 } },

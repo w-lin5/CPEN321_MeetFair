@@ -88,15 +88,19 @@ describe('Mocked: fairCreditService.settleMeetup', () => {
   // Input: valid settlement
   // Expected behavior: the error propagates; the ledger rows already written still record what is owed,
   //                    and the meetup cannot be settled a second time
-  // Mocked behavior: FairCreditModel.bulkWrite rejects
+  // Mocked behavior: FairCreditModel.updateOne rejects while initializing a balance
   test('Balance write failure', async () => {
     const { group, meetup, trips } = await setup();
-    jest.spyOn(FairCreditModel, 'bulkWrite').mockRejectedValue(new Error('db down') as never);
+    const writeBalance = jest.spyOn(FairCreditModel, 'updateOne').mockRejectedValue(new Error('db down') as never);
 
     await expect(fairCreditService.settleMeetup(group.id, meetup.id, trips)).rejects.toThrow('db down');
+    expect(writeBalance).toHaveBeenCalledTimes(1);
+    expect(await FairCreditModel.countDocuments()).toBe(0);
     expect(await FairCreditEntryModel.countDocuments()).toBe(2);
     jest.restoreAllMocks();
-    await expect(fairCreditService.settleMeetup(group.id, meetup.id, trips)).rejects.toMatchObject({ status: 409 });
+    await expect(fairCreditService.settleMeetup(group.id, meetup.id, trips)).rejects.toMatchObject({
+      status: 409, message: 'This meetup is already settled',
+    });
   });
 
   // Input: valid settlement

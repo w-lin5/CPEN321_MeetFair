@@ -4,7 +4,7 @@ import { createApp } from '../../src/app';
 import { GroupModel, MeetupModel } from '../../src/users-groups/models';
 import { bearer } from '../helpers/auth';
 import { clearDb, startDb, stopDb } from '../helpers/db';
-import { PARTICIPATION, createGroup, createMeetup, createUserN } from '../helpers/factories';
+import { PARTICIPATION, createGroup, createMeetup, createUserN, futureScheduledAt } from '../helpers/factories';
 
 beforeAll(startDb);
 afterEach(async () => {
@@ -25,7 +25,7 @@ async function setup() {
   return { user, group, meetup };
 }
 
-const NEW_MEETUP = { title: 'Library', scheduledAt: '2026-11-05T22:30:00Z' };
+const newMeetup = () => ({ title: 'Library', scheduledAt: futureScheduledAt() });
 
 // Interface POST /api/groups/:groupId/meetups
 describe('Mocked: POST /api/groups/:groupId/meetups', () => {
@@ -33,15 +33,17 @@ describe('Mocked: POST /api/groups/:groupId/meetups', () => {
   // Expected status code: 500
   // Expected output: { error: "Internal Server Error" }
   // Mocked behavior: MeetupModel.create rejects
-  test('Database failure while saving', async () => {
+  test.each([0, 10 * 365 * 24 * 60 * 60 * 1000])('Database failure while saving, clock offset %i ms', async offset => {
     quietConsole();
     const { user, group } = await setup();
+    const now = Date.now();
+    jest.spyOn(Date, 'now').mockReturnValue(now + offset);
     jest.spyOn(MeetupModel, 'create').mockRejectedValue(new Error('db down') as never);
 
     const res = await request(createApp())
       .post(`/api/groups/${group.id}/meetups`)
       .set('Authorization', bearer(user.id))
-      .send(NEW_MEETUP);
+      .send(newMeetup());
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: 'Internal Server Error' });
@@ -59,9 +61,10 @@ describe('Mocked: POST /api/groups/:groupId/meetups', () => {
     const res = await request(createApp())
       .post(`/api/groups/${group.id}/meetups`)
       .set('Authorization', bearer(user.id))
-      .send(NEW_MEETUP);
+      .send(newMeetup());
 
     expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Internal Server Error' });
     expect(await MeetupModel.countDocuments()).toBe(1);
   });
 });

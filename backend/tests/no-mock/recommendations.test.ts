@@ -82,45 +82,65 @@ function rejectionTests(action: string): void {
 
   // Input: no session token; malformed meetup id; unknown meetup id
   // Expected status code: 401; 400; 404
-  // Expected output: None
+  // Expected output: specific authentication, validation and not-found error bodies
   test('rejects missing authentication and invalid or unknown meetups', async () => {
     const { organizer, meetup } = await setup();
-    expect((await post(meetup.id)).status).toBe(401);
-    expect((await post('not-an-id', organizer.id)).status).toBe(400);
-    expect((await post(MISSING_ID, organizer.id)).status).toBe(404);
+    const unauthenticated = await post(meetup.id);
+    expect(unauthenticated.status).toBe(401);
+    expect(unauthenticated.body).toEqual({ error: 'Missing bearer token' });
+
+    const invalidId = await post('not-an-id', organizer.id);
+    expect(invalidId.status).toBe(400);
+    expect(invalidId.body).toEqual({
+      error: 'Invalid request', details: ['meetupId must be a 24-hex ObjectId'],
+    });
+
+    const unknownMeetup = await post(MISSING_ID, organizer.id);
+    expect(unknownMeetup.status).toBe(404);
+    expect(unknownMeetup.body).toEqual({ error: 'Meetup not found' });
   });
 
   // Input: group member who is not the organizer; user outside the group
   // Expected status code: 403; 403
   // Expected behavior: the meetup stays in SETUP
-  // Expected output: None
+  // Expected output: organizer-only and group-membership error messages, respectively
   test('rejects non-organizers and outsiders', async () => {
     const { member, meetup } = await setup();
     const outsider = await createUserN(3);
     await addParticipants(meetup.id, [member.id]);
-    expect((await post(meetup.id, member.id)).status).toBe(403);
-    expect((await post(meetup.id, outsider.id)).status).toBe(403);
+    const nonOrganizer = await post(meetup.id, member.id);
+    expect(nonOrganizer.status).toBe(403);
+    expect(nonOrganizer.body).toEqual({ error: 'Only the meetup organizer can search for places' });
+    const nonMember = await post(meetup.id, outsider.id);
+    expect(nonMember.status).toBe(403);
+    expect(nonMember.body).toEqual({ error: 'Not a member of this group' });
     expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
   });
 
   // Input: organizer of a meetup already in VOTING
   // Expected status code: 409
-  // Expected output: None
+  // Expected output: Places can only be searched while the meetup is in SETUP
   test('rejects a meetup that is no longer in SETUP', async () => {
     const { organizer, group } = await setup();
     const meetup = await createVotingMeetup(group.id, organizer.id, [organizer.id]);
-    expect((await post(meetup.id, organizer.id)).status).toBe(409);
+    const result = await post(meetup.id, organizer.id);
+    expect(result.status).toBe(409);
+    expect(result.body).toEqual({ error: 'Places can only be searched while the meetup is in SETUP' });
   });
 
   // Input: organizer when nobody has submitted details; organizer when only another member has
   // Expected status code: 400; 400
   // Expected behavior: the meetup stays in SETUP
-  // Expected output: None
+  // Expected output: missing participant details and missing organizer details error messages
   test('requires submitted details, including the organizer\'s', async () => {
     const { organizer, member, meetup } = await setup();
-    expect((await post(meetup.id, organizer.id)).status).toBe(400);
+    const noParticipants = await post(meetup.id, organizer.id);
+    expect(noParticipants.status).toBe(400);
+    expect(noParticipants.body).toEqual({ error: 'At least one member must submit their starting location before searching for places.' });
     await addParticipants(meetup.id, [member.id]);
-    expect((await post(meetup.id, organizer.id)).status).toBe(400);
+    const missingOrganizer = await post(meetup.id, organizer.id);
+    expect(missingOrganizer.status).toBe(400);
+    expect(missingOrganizer.body).toEqual({ error: 'The organizer must submit their starting location and preferences before searching for places.' });
     expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
   });
 }

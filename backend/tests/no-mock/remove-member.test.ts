@@ -7,7 +7,7 @@ import * as placesClient from '../../src/integrations/places.client';
 import { placeSearchService } from '../../src/recommendation/place-search.service';
 import { bearer } from '../helpers/auth';
 import { clearDb, startDb, stopDb } from '../helpers/db';
-import { addMember, addParticipants, createGroup, createMeetup, createUserN, createVotingMeetup, MISSING_ID, PARTICIPATION, PLACE_1 } from '../helpers/factories';
+import { addMember, addParticipants, createGroup, createMeetup, createUserN, createVotingMeetup, futureScheduledAt, MISSING_ID, PARTICIPATION, PLACE_1 } from '../helpers/factories';
 
 beforeAll(startDb);
 afterEach(async () => { jest.restoreAllMocks(); setRevoker(null); await clearDb(); });
@@ -170,7 +170,7 @@ describe('Unmocked: DELETE /api/groups/:groupId/members/:memberId', () => {
     expect((await request(createApp()).put(`/api/meetups/${meetup.id}/participation`)
       .set('Authorization', bearer(member.id)).send(PARTICIPATION)).status).toBe(403);
     expect((await request(createApp()).post(`/api/groups/${group.id}/meetups`)
-      .set('Authorization', bearer(member.id)).send({ title: 'Test', scheduledAt: '2027-01-01T12:00:00Z' })).status).toBe(403);
+      .set('Authorization', bearer(member.id)).send({ title: 'Test', scheduledAt: futureScheduledAt() })).status).toBe(403);
     expect((await remove(group.id, member.id, organizer.id)).status).toBe(404);
   });
 
