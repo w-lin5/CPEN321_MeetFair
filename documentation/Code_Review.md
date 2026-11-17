@@ -73,26 +73,32 @@
 
 ### 3.2. Review You Received
 
-- **Reviewing group:** [WRITE_HERE]
-- **Commit SHA that was reviewed:** `[Insert Commit SHA here]`
-- **Review report received:** [`<CP#>_<YourGroupName>_Review.pdf`](#)
+- **Reviewing group:** Ledger
+- **Commit SHA that was reviewed:** `5a1db43039f4dde53e37ae97aa2f3441e6749cc9`
+- **Review report received:** `CP3_MeetFair_Review.pdf`
 
 | **Section**          | **Item**                                                                                                                                             | **Score** |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| Manual code review   | Code is maintainable, efficient, handles error cases well                                                                                               | x/10      |
-| Manual test review   | Tests are complete, errors and edge cases are thoroughly tested, correct assertions are used                                                            | x/10      |
-| Manual test review   | Test code is maintainable and well-structured                                                                                                          | x/10      |
-| Manual test review   | Test implementation matches the requirements and design                                                                                                | x/10      |
-| Manual test review   | Non-functional requirements are tested well                                                                                                            | x/10      |
-| Manual test review   | Tests achieve high coverage and cases of < 100% coverage are well-justified                                                                            | x/10      |
-| Manual test review   | All back-end tests can be run automatically                                                                                                            | x/10      |
-| Automated code review| Codacy runs with the required setup                                                                                                                    | x/10      |
-| Automated code review| All remaining Codacy issues are well-justified                                                                                                          | x/10      |
+| Manual code review   | Code is maintainable, efficient, handles error cases well                                                                                               | 7/10      |
+| Manual test review   | Tests are complete, errors and edge cases are thoroughly tested, correct assertions are used                                                            | 7/10      |
+| Manual test review   | Test code is maintainable and well-structured                                                                                                          | 8/10      |
+| Manual test review   | Test implementation matches the requirements and design                                                                                                | 8/10      |
+| Manual test review   | Non-functional requirements are tested well                                                                                                            | 6/10      |
+| Manual test review   | Tests achieve high coverage and cases of < 100% coverage are well-justified                                                                            | 6/10      |
+| Manual test review   | All back-end tests can be run automatically                                                                                                            | 4/10      |
+| Automated code review| Codacy runs with the required setup                                                                                                                    | 6/10      |
+| Automated code review| All remaining Codacy issues are well-justified                                                                                                          | 8/10      |
 
-**Major fault reported against your project**
+**Major faults reported against your project**
 
-- **Description:** ...
-- **Severity:** ...
+**Fault 1**
+- **Description:** A closed restaurant can be selected as the final meetup venue. MeetFair recommended a restaurant (in our example, Ding Tai Feng at 1132 Alberni St,vVancouver) for a meetup scheduled at 01:03 a.m. Vancouver Time, which would bevclosed at the time. Both participants were subsequently able to vote for the restaurantvand have it become the meetup venue. This is a functional expectation arising from MeetFair’s goal of recommending feasible
+meeting locations.
+- **Severity:** High (core functional requirement failure)
+
+**Fault 2**
+- **Description:** MeetFair allows members to leave a group while a meetup is FINALIZED (Section 3.4, Requirements and Design) and describes Fair Credit settlement after trips are completed (Section 4.1, Requirements and Design). In implementation, leaving the group disables location sharing but does not end the ACTIVE trip. Settlement rejects any meetup containing an ACTIVE trip, and the member cannot click “Arrival” after leaving the group.
+- **Severity:** High (blocks a core backend business process for all members)
 
 ### 3.3. Actions Taken in Response to the Review
 
