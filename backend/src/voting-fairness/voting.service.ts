@@ -105,7 +105,12 @@ async function getVotes(meetupId: string, userId: string) {
 }
 
 // Decide the winner; a manual pick is only accepted when nobody locked a vote or the tie cannot be broken
-function pickWinner(placeIds: string[], votes: Parameters<typeof decideWinner>[1], manualPick: string | undefined) {
+function pickWinner(
+  placeIds: string[],
+  votes: Parameters<typeof decideWinner>[1],
+  manualPick: string | undefined,
+  candidateNames: ReadonlyMap<string, string>,
+) {
   if (manualPick !== undefined && !placeIds.includes(manualPick)) {
     throw new BadRequest('placeId is not one of this meetup\'s candidates');
   }
@@ -122,7 +127,8 @@ function pickWinner(placeIds: string[], votes: Parameters<typeof decideWinner>[1
     return decision.placeId;
   }
   if (manualPick === undefined || !decision.placeIds.includes(manualPick)) {
-    throw new Conflict(`Tie between candidates ${decision.placeIds.join(', ')}; pick one of them as the winner`);
+    const tiedNames = decision.placeIds.map((placeId) => candidateNames.get(placeId) ?? placeId);
+    throw new Conflict(`Tie between candidates ${tiedNames.join(', ')}; pick one of them as the winner`);
   }
   return manualPick;
 }
@@ -135,9 +141,10 @@ async function finalize(meetupId: string, userId: string, manualPick: string | u
 
   const recommendation = await recommendationService.getByMeetupId(meetupId);
   const placeIds = recommendation.candidates.map((c) => c.placeId);
+  const candidateNames = new Map(recommendation.candidates.map((candidate) => [candidate.placeId, candidate.name]));
   const winnerId = pickWinner(placeIds, await VoteModel.find({
     meetupId, userId: { $in: meetup.participants.map(p => p.userId) },
-  }), manualPick);
+  }), manualPick, candidateNames);
   const winner = recommendation.candidates.find((c) => c.placeId === winnerId);
   if (!winner?.location) throw new NotFound('Winning candidate not found');
 
