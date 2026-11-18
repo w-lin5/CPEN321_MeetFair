@@ -8,7 +8,9 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -38,6 +40,75 @@ private const val UNUSED_INVITE_CODE = "000000"
  * Joining another user's group needs a second account and is a manual step (documentation/Testing.md).
  */
 class CreateJoinGroupTest : BaseE2ETest() {
+
+    // Create meetup: the creator is shown as the organizer
+    @Test
+    fun createMeetup_creatorIsOrganizer() {
+        val (groupName, meetupTitle) = createGroupAndMeetup("E2E Organizer")
+
+        compose.onNodeWithTag("meetup_organizer_text")
+            .assertIsDisplayed()
+            .assertTextContains("organized", substring = true, ignoreCase = true)
+        compose.onNodeWithTag(TestTags.MEETUP_TITLE_TEXT).assertTextContains(meetupTitle)
+        compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
+        compose.waitFor(hasTestTag(TestTags.MEETUP_ITEM) and hasText(meetupTitle))
+        compose.onNodeWithText(groupName).assertIsDisplayed()
+    }
+
+    // Participation: a member submits their meetup details
+    @Test
+    fun participation_submitDetails() {
+        val (_, meetupTitle) = createGroupAndMeetup("E2E Participation")
+        submitParticipationDetails()
+
+        compose.onNodeWithTag(TestTags.PARTICIPATION_STATUS_TEXT)
+            .assertTextContains("Your details are in")
+        compose.onNodeWithText("1 member(s) have submitted their details", substring = true).assertIsDisplayed()
+        compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
+        compose.waitFor(hasTestTag(TestTags.MEETUP_ITEM) and hasText(meetupTitle))
+    }
+
+    // Leave meetup: a submitted participant leaves while the meetup is in setup
+    @Test
+    fun leaveMeetup_leave() {
+        createGroupAndMeetup("E2E Leave Meetup")
+        submitParticipationDetails()
+
+        compose.onNodeWithContentDescription("Options").performClick()
+        compose.onNodeWithTag("leave_meetup").performClick()
+        compose.onNodeWithText("Leave").performClick()
+        compose.waitFor(hasTestTag(TestTags.MEETUP_TITLE_TEXT))
+        compose.onNodeWithTag(TestTags.PARTICIPATION_BUTTON).assertIsDisplayed()
+    }
+
+    // Delete meetup: the organizer deletes a meetup while it is in setup
+    @Test
+    fun deleteMeetup_deletesInSetup() {
+        val (_, meetupTitle) = createGroupAndMeetup("E2E Delete Meetup")
+
+        compose.onNodeWithContentDescription("Options").performClick()
+        compose.onNodeWithTag("delete_meetup").performClick()
+        compose.onNodeWithText("Delete").performClick()
+        compose.waitFor(hasTestTag(TestTags.MEETUPS_EMPTY))
+        compose.onAllNodes(hasText(meetupTitle)).assertCountEquals(0)
+    }
+    
+    // Delete group: the organizer deletes their group
+    @Test
+    fun deleteGroup_deletesGroup() {
+        val groupName = uniqueName("E2E Delete Group")
+        createdGroupNames += groupName
+        compose.onNodeWithTag(TestTags.CREATE_GROUP_BUTTON).performClick()
+        compose.onNodeWithTag(TestTags.GROUP_NAME_INPUT).performTextInput(groupName)
+        compose.onNodeWithTag(TestTags.CREATE_GROUP_SUBMIT).performClick()
+        compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
+
+        compose.onNodeWithContentDescription("Options").performClick()
+        compose.onNodeWithTag("delete_group").performClick()
+        compose.onNodeWithText("Delete").performClick()
+        compose.waitFor(hasTestTag(TestTags.CREATE_GROUP_BUTTON))
+        compose.onAllNodes(hasTestTag(TestTags.GROUP_ITEM) and hasText(groupName)).assertCountEquals(0)
+    }
 
     // Create: main success scenario, steps 1-5
     @Test
@@ -166,5 +237,32 @@ class CreateJoinGroupTest : BaseE2ETest() {
 
         val match = INVITE_CODE_TEXT.matchEntire(compose.textOf(TestTags.INVITE_CODE_TEXT))
         return checkNotNull(match) { "Group page shows no invite code" }.groupValues[1]
+    }
+
+    private fun createGroupAndMeetup(prefix: String): Pair<String, String> {
+        val groupName = uniqueName(prefix)
+        val meetupTitle = uniqueName("$prefix Meetup")
+        createdGroupNames += groupName
+        compose.onNodeWithTag(TestTags.CREATE_GROUP_BUTTON).performClick()
+        compose.onNodeWithTag(TestTags.GROUP_NAME_INPUT).performTextInput(groupName)
+        compose.onNodeWithTag(TestTags.CREATE_GROUP_SUBMIT).performClick()
+        compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
+        compose.onNodeWithTag(TestTags.NEW_MEETUP_BUTTON).performClick()
+        compose.onNodeWithTag(TestTags.MEETUP_TITLE_INPUT).performTextInput(meetupTitle)
+        compose.onNodeWithTag(TestTags.CREATE_MEETUP_SUBMIT).performClick()
+        compose.waitFor(hasTestTag(TestTags.MEETUP_TITLE_TEXT) and hasText(meetupTitle))
+        return groupName to meetupTitle
+    }
+
+    private fun submitParticipationDetails() {
+        compose.waitFor(hasTestTag(TestTags.PARTICIPATION_BUTTON))
+        compose.onNodeWithTag(TestTags.PARTICIPATION_BUTTON).performClick()
+        compose.waitFor(hasTestTag(TestTags.LOCATION_PICKER_BUTTON))
+        compose.onNodeWithTag(TestTags.LOCATION_PICKER_BUTTON).performClick()
+        compose.waitFor(hasTestTag(TestTags.LOCATION_CONFIRM))
+        compose.onNodeWithTag(TestTags.LOCATION_CONFIRM).performClick()
+        compose.waitFor(hasTestTag(TestTags.PARTICIPATION_SUBMIT) and isEnabled())
+        compose.onNodeWithTag(TestTags.PARTICIPATION_SUBMIT).performClick()
+        compose.waitFor(hasTestTag(TestTags.PARTICIPATION_STATUS_TEXT) and hasText("Your details are in"), timeoutMs = 60_000)
     }
 }
