@@ -6,6 +6,8 @@
 | --------------- | --------------------- | ------------- |
 | 2026-10-19 | All Sections | Initial submission for CP1 |
 | 2026-11-04 | 2.1.1, 2.1.2, 2.1.3, 2.3, 2.4, 3.2, 4.1, 4.2 | CP2: documented Recommendation Engine interfaces and test commands; updated Create or Join Group and Vote on a Candidate scenarios, automated coverage, and manual multi-user cases; clarified mocked tests and removed references to nonexistent models; updated the commit hash and coverage reports; removed a leftover placeholder and added the automated no-network Create or Join Group test. |
+| 2026-11-17 | 3.1, 3.2 | Added dedicated Security and Access Control NFR tests for real HTTPS/WSS, session verification, membership/organizer restrictions and Calendar token non-persistence; documented isolated execution prerequisites and separate deployment checks. |
+| 2026-11-17 | 3.1, 3.2 | Added Location Privacy backend and Android NFR tests and mapped consent, authorization, retention, coordinate-free realtime events and sharing notifications to the documented requirements; separated automated checks from full device lifecycle validation. |
 ---
 
 ## 2. Back-end Test Specification: APIs
@@ -124,17 +126,46 @@ The Recommendation Engine is the component specified in full for CP2. Its `from-
 
 ### 3.1. Test Locations in Git
 
-*As of CP2, one non-functional requirement (Security and Access Control) is tested in the backend mock and unmocked tests, but are not yet in the dedicated* `nfr` *test directory.*
+Security and Access Control and Location Privacy have dedicated suites in `backend/tests/nfr/`. Location Privacy also has Android instrumentation tests in `frontend/app/src/androidTest/java/com/example/cpen321application/nfr/`. 
 
 | **Non-Functional Requirement** | **Existing Test Locations** | **Current Coverage** |
 | ------------------------------ | --------------------------- | -------------------- |
-| [Security and Access Control](Requirements_and_Design.md#37-non-functional-requirements) | `backend/tests/no-mock/auth.test.ts`; `backend/tests/no-mock/groups.test.ts`; `backend/tests/no-mock/meetups.test.ts`; `backend/tests/no-mock/voting.test.ts`; `backend/tests/no-mock/realtime.test.ts`; `backend/tests/no-mock/calendar.test.ts`; `backend/tests/mock/index.test.ts` | Tests session-token rejection, membership and organizer restrictions, Socket.IO room access, and server HTTPS startup logic. Does not test the deployed TLS configuration or prove that access tokens are absent from all stored data. |
+| [Security and Access Control](Requirements_and_Design.md#37-non-functional-requirements) | [`security-access.test.ts`](../backend/tests/nfr/security-access.test.ts); [`security-transport.test.ts`](../backend/tests/nfr/security-transport.test.ts) | Exercises the production HTTPS bootstrap with real TLS/WSS, missing/tampered/expired sessions, protected reads and writes, membership and participant restrictions, separate group/meetup organizer roles, and raw-database checks for a Calendar access-token sentinel after successful and failed requests. Public deployment checks remain a separate manual procedure below. |
+| [Location Privacy](Requirements_and_Design.md#37-non-functional-requirements) | [`location-privacy.test.ts`](../backend/tests/nfr/location-privacy.test.ts); [`LocationPrivacyConsentTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/nfr/LocationPrivacyConsentTest.kt); [`LocationPrivacyNotificationTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/nfr/LocationPrivacyNotificationTest.kt) | Backend authorization, identity, latest-point retention, clearing on pause/arrival/leave and coordinate-free realtime payloads; Android consent/denial flow and ongoing notification content. OS permission dialogs and the full location-service lifecycle still need the device checks below. |
+
+Run all backend NFRs from `backend/`:
+
+```bash
+npm test -- --runInBand tests/nfr
+```
 
 ### 3.2. Test Verification and Logs
 
 - **Security and Access Control**
 
-  - **Verification:** The existing backend tests check that requests with missing or invalid session tokens are rejected; users outside a group cannot access its protected meetup data; non-participants cannot vote; and only the meetup organizer can finalize voting. Realtime tests check that an invalid token cannot establish a socket connection and that a user outside the group cannot join its meetup room. Calendar API tests check authentication and membership restrictions. A mocked startup test checks that the server uses HTTPS when both certificate files are present and refuses to start when only one is present.
+  | **Requirement** | **Test and procedure** | **Pass criterion** |
+  | --------------- | ---------------------- | ------------------ |
+  | SEC-1: user data uses HTTPS | `security-transport.test.ts` boots the production `index.ts` with generated PEMs, the real Express app and real Socket.IO gateway. Read the caller's account through certificate-verified HTTPS; probe the same listener with plaintext HTTP. | HTTPS with a valid session returns that user's account; HTTPS without a session returns the exact 401 error. Plaintext on the TLS port is rejected and returns no user data. WSS clients verify the certificate. |
+  | SEC-2: validate session tokens | Send missing, signature-tampered and expired tokens to representative protected read/write endpoints; try missing/invalid/expired WSS sessions. Submit a forged `userId` in a vote body with a valid session. | Every unauthorized REST request returns 401 with the expected error body; socket handshakes fail with `Unauthorized`. Denied requests leave meetups, recommendations and votes unchanged. A valid request acts only as the token's identity. |
+  | SEC-3: check membership and organizer role | Attempt group/meetup reads and changes as an outsider, vote as a non-participant member, and join a meetup room over WSS. Attempt start/finalize as an ordinary member and as the group organizer when someone else organized the meetup. Then perform the operations as the meetup organizer. | Outsiders receive the exact 403 membership error and are not subscribed to the room; non-participants cannot vote. Unauthorized start/finalize requests do not change status or call Google. The actual meetup organizer can start/finalize; authorized member reads and WSS joins succeed. |
+  | SEC-4: Google access tokens are not persisted | Submit a recognizable fake Calendar access token; mock only the Google Calendar operation to succeed or fail. Read every collection directly through the MongoDB driver after each request. | The provider receives the token for that call, but no raw stored document or API response contains it. Success records only the event ID; failure does not record an event ID. |
+
+- **Location Privacy**
+
+  | **Requirement** | **Test and procedure** | **Pass criterion** |
+  | --------------- | ---------------------- | ------------------ |
+  | LOC-1: explicit action and device permission | Android `LocationPrivacyConsentTest` renders the real start-trip button with a test permission registry and denied location permissions. Open/cancel the confirmation, then separately confirm and return denial. Backend tests read trips/send a location without starting and attempt a start as a non-participant. | No permission request before confirmation; the dialog explains group visibility. Cancel/denial never navigates or starts the local sharing service; denial shows the specified message. A list read does not start a trip; unsolicited coordinates and an ineligible start do not create a trip. |
+  | LOC-2: authorized group access on every read/update | Start a real trip and store a position. Attempt reads/updates without a session, with an invalid session and as an outsider. Send a forged userId; then have the sharing participant leave and retry reads/updates. | Exact 401/403 errors; stored coordinates remain unchanged after denied requests. A forged userId cannot update another person's trip. Leaving clears the position, revokes further access and removes the former member from other members' trip lists. Authorized group members can read the shared position. |
+  | LOC-3: stop sharing and minimize retention | Send two different points; pause, try a late point, explicitly resume and then arrive. Read both API results and raw stored documents. | The second point replaces the first in the same trip; no route history remains. Pause clears the position and rejects updates; resume preserves the timer and starts with no old position. Arrival sets ARRIVED, clears sharing/coordinates, retains timing and rejects later updates/restart. |
+  | LOC-4: realtime events carry no coordinates | Capture published events for start, position, pause, resume and arrival. | Every event is exactly `trip:updated` with `{ meetupId }` for the meetup room; none contains a coordinate. Clients must reload through the protected REST endpoint. |
+  | LOC-5: sharing state is visible | Android `LocationPrivacyNotificationTest` builds the real ongoing notification; existing `LiveSharingNotificationsTest` posts/dismisses the real notifications through NotificationManager. | The ongoing notification explicitly says live location sharing is active, points to arrival/pause, is marked ongoing, has a return action and uses private lock-screen visibility. Dismissing the short alert preserves the ongoing notification; clearing removes both. |
+
+  - **Run backend privacy checks:** From the repository root:
+
+    ```bash
+    cd backend
+    npm test -- --runInBand tests/nfr/location-privacy.test.ts
+    ```
 
 ---
 
