@@ -135,6 +135,9 @@ class LiveLocationService : Service(), LocationListener {
         fun start(context: Context, meetupId: String) {
             ContextCompat.startForegroundService(context, Intent(context, LiveLocationService::class.java).putExtra("meetupId", meetupId))
         }
-        fun stop(context: Context) { context.stopService(Intent(context, LiveLocationService::class.java)) }
+        fun stop(context: Context) {
+            context.stopService(Intent(context, LiveLocationService::class.java))
+            mutableStatus.value = SharingStatus()
+        }
     }
 }

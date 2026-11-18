@@ -38,6 +38,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -393,6 +394,21 @@ fun MeetupScreen(
             }
         }
     }
+
+    val currentMeetup = (state as? UiState.Success)?.data
+    LaunchedEffect(currentMeetup?.id, currentMeetup?.scheduledAt, currentMeetup?.status) {
+        val meetup = currentMeetup ?: return@LaunchedEffect
+        if (meetup.status == MeetupStatus.FINALIZED) {
+            val scheduledInstant = runCatching { java.time.Instant.parse(meetup.scheduledAt) }.getOrNull()
+            if (scheduledInstant != null) {
+                val delayMs = scheduledInstant.toEpochMilli() - System.currentTimeMillis()
+                if (delayMs > 0) {
+                    kotlinx.coroutines.delay(delayMs + 200)
+                    vm.load()
+                }
+            }
+        }
+    }
     BackHandler(onBack = onBack)
     MeetupStatusNotifications((state as? UiState.Success)?.data)
 
@@ -550,7 +566,7 @@ private fun MeetupMeetingSpotCard(winner: PlaceCandidate?) {
 private fun MeetupNavCard(onOpenLiveLocation: () -> Unit, onOpenVoting: () -> Unit) {
     MeetFairCard {
         Column(modifier = Modifier.fillMaxWidth()) {
-            MeetupNavRow(icon = Icons.Default.LocationOn, label = "View live locations", onClick = onOpenLiveLocation, testTag = null)
+            MeetupNavRow(icon = Icons.Default.LocationOn, label = "View live locations", onClick = onOpenLiveLocation, testTag = TestTags.VIEW_LIVE_LOCATION_BUTTON)
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f),
                 thickness = 1.dp,
@@ -662,7 +678,7 @@ private fun MeetupTripArrivedCard(trip: MeetupTrip) {
                     }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(text = "You arrived", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = StatusGreen)
+                    Text(text = "You arrived", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = StatusGreen, modifier = Modifier.testTag(TestTags.TRIP_STATUS_TEXT))
                     Text(text = "Actual commute", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -671,6 +687,7 @@ private fun MeetupTripArrivedCard(trip: MeetupTrip) {
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.ExtraBold,
                 color = StatusGreen,
+                modifier = Modifier.testTag(TestTags.COMMUTE_DURATION_TEXT),
             )
         }
     }
@@ -690,7 +707,7 @@ private fun MeetupTripOnWayCard() {
                 }
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(text = "On your way", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = TealPrimary)
+                Text(text = "On your way", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = TealPrimary, modifier = Modifier.testTag(TestTags.TRIP_STATUS_TEXT))
                 Text(text = "We're timing your commute.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -718,7 +735,16 @@ private fun MeetupBottomBar(
             )
             MeetupStatus.VOTING -> MeetupVotingActionButton(navigation.onOpenVoting)
             MeetupStatus.FINALIZED -> {
-                if (trip == null) startTrip() else MeetupTripStatusCard(trip)
+                val now by produceState(initialValue = java.time.Instant.now(), key1 = ui.meetup.scheduledAt) {
+                    while (true) {
+                        kotlinx.coroutines.delay(1000)
+                        value = java.time.Instant.now()
+                    }
+                }
+                val due = runCatching { !java.time.Instant.parse(ui.meetup.scheduledAt).isAfter(now) }.getOrDefault(true)
+                if (trip == null) {
+                    if (due) startTrip()
+                } else MeetupTripStatusCard(trip)
                 if (ui.isOrganizer) {
                     SettleFairCreditButton(
                         submitting = running == MeetupAction.SETTLE,

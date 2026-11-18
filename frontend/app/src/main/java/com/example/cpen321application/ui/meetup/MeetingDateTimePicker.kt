@@ -24,6 +24,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.cpen321application.ui.theme.Dimens
@@ -109,7 +113,17 @@ private fun TimeWheel(label: String, maximum: Int, value: Int, tag: String, onCh
     Column {
         Text(label)
         AndroidView(
-            modifier = Modifier.width(110.dp).height(160.dp).testTag(tag),
+            modifier = Modifier
+                .width(110.dp)
+                .height(160.dp)
+                .testTag(tag)
+                .semantics {
+                    progressBarRangeInfo = ProgressBarRangeInfo(value.toFloat(), 0f..maximum.toFloat())
+                    setProgress { requested ->
+                        onChange(requested.toInt().coerceIn(0, maximum))
+                        true
+                    }
+                },
             factory = { context ->
                 NumberPicker(context).apply {
                     minValue = 0

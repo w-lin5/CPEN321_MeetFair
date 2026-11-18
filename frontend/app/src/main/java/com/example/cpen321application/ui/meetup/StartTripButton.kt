@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.cpen321application.AppContainer
+import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.data.ApiResult
 import com.example.cpen321application.location.LiveLocationService
 import com.example.cpen321application.ui.theme.RosePrimary
@@ -129,8 +130,9 @@ private suspend fun executeTripStart(
     meetupId: String,
     onStarted: () -> Unit,
 ): String? {
-    if (LiveLocationService.status.value.meetupId?.let { it != meetupId } == true) {
-        return "Stop sharing your current trip before starting another one."
+    val activeSharing = LiveLocationService.status.value.meetupId
+    if (activeSharing != null && activeSharing != meetupId) {
+        LiveLocationService.stop(context)
     }
     if (!androidx.core.location.LocationManagerCompat.isLocationEnabled(
             context.getSystemService(LocationManager::class.java)
@@ -179,7 +181,7 @@ private fun StartTripActionView(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(54.dp)
-                .testTag("start_trip_button"),
+                .testTag(TestTags.LEAVING_BUTTON),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -198,7 +200,7 @@ private fun StartTripActionView(
                 )
             }
         }
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag(TestTags.ERROR_TEXT)) }
     }
 }
 
@@ -219,7 +221,7 @@ private fun StartTripConfirmationDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
+            TextButton(onClick = onConfirm, modifier = Modifier.testTag(TestTags.SHARE_TRIP_CONFIRM)) {
                 Text("Share and start trip")
             }
         },
