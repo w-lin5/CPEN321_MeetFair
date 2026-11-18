@@ -1,0 +1,39 @@
+name: Backend tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      NODE_ENV: test
+      JWT_SECRET: ci-test-secret
+      GOOGLE_CLIENT_ID: test-client-id
+      MONGODB_URI: mongodb://127.0.0.1:27017/unused
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Check TLS test prerequisite
+        run: openssl version
+      - name: Run unit, mocked and database tests
+        run: npm test -- --ci --runInBand
