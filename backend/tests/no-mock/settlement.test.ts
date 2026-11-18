@@ -1,155 +1,174 @@
-import request from 'supertest';
+import request, { type Test } from 'supertest';
+
 import { createApp } from '../../src/app';
-import { TripModel } from '../../src/live-location/models';
-import { RecommendationModel } from '../../src/recommendation/models';
+import { tuning } from '../../src/config';
 import { MeetupModel } from '../../src/users-groups/models';
-import { FairCreditEntryModel, FairCreditModel, SettlementModel } from '../../src/voting-fairness/models';
 import { fairCreditService } from '../../src/voting-fairness/fair-credit.service';
-import * as routes from '../../src/integrations/routes.client';
+import { FairCreditEntryModel, FairCreditModel, SettlementModel, TripModel } from '../../src/voting-fairness/models';
 import { bearer } from '../helpers/auth';
 import { clearDb, startDb, stopDb } from '../helpers/db';
-import { addMember, CANDIDATES, createFinalizedMeetup, createGroup, createUserN } from '../helpers/factories';
+import { addMember, createGroup, createSettleableMeetup, createUserN } from '../helpers/factories';
 
-const app = createApp();
 beforeAll(startDb);
 afterEach(clearDb);
 afterAll(stopDb);
 
+const MINUTE_MS = tuning.secondsPerMinute * tuning.msPerSecond;
+
+// A settleable meetup whose stored estimates are 30 minutes for the organizer and 10 for the member
 async function setup() {
   const organizer = await createUserN(1);
   const member = await createUserN(2);
   const outsider = await createUserN(3);
   const group = await createGroup(organizer.id);
   await addMember(group.id, member.id);
-  const meetup = await createFinalizedMeetup(group.id, organizer.id, [organizer.id, member.id]);
-  await MeetupModel.updateOne({ _id: meetup.id }, { $set: { scheduledAt: new Date(Date.now() - 60000) } });
-  await RecommendationModel.create({ meetupId: meetup.id, candidates: [{ ...CANDIDATES[0], travel: [
-    { userId: organizer.id, mode: 'TRANSIT', seconds: 1800, normalizedSeconds: 1800 },
-    { userId: member.id, mode: 'TRANSIT', seconds: 600, normalizedSeconds: 600 },
-  ] }] });
-  const settle = (id = organizer.id) => request(app).post(`/api/meetups/${meetup.id}/settle`).set('Authorization', bearer(id));
-  return { organizer, member, outsider, group, meetup, settle };
+  const meetup = await createSettleableMeetup(group.id, organizer.id, [[organizer.id, 1800], [member.id, 600]]);
+  return { organizer, member, outsider, group, meetup };
 }
 
-test('settles tracked and estimated commutes, updates history and next vote weights, and marks SETTLED', async () => {
-  const { organizer, member, group, meetup, settle } = await setup();
-  await TripModel.create({ meetupId: meetup.id, userId: organizer.id, travelMode: 'TRANSIT',
-    startedAt: new Date(Date.now() - 7800000), arrivedAt: new Date(), status: 'ARRIVED', actualSeconds: 7800 });
-  const result = await settle();
-  expect(result.status).toBe(200);
-  expect(result.body.status).toBe('SETTLED');
-  expect(await fairCreditService.getBalance(organizer.id, group.id)).toBe(3600);
-  expect(await fairCreditService.getBalance(member.id, group.id)).toBe(-3600);
-  expect(await fairCreditService.getVoteWeight(organizer.id, group.id)).toBeCloseTo(1.2);
-  const entries = await FairCreditEntryModel.find({ meetupId: meetup.id }).lean();
-  expect(entries).toEqual(expect.arrayContaining([
-    expect.objectContaining({ source: 'TRACKED', actualSeconds: 7800, delta: 3600 }),
-    expect.objectContaining({ source: 'ESTIMATED', actualSeconds: 600, delta: -3600 }),
-  ]));
-  expect((await settle()).status).toBe(200);
-  expect(await FairCreditEntryModel.countDocuments({ meetupId: meetup.id })).toBe(2);
-  expect(await fairCreditService.getBalance(organizer.id, group.id)).toBe(3600);
-  expect((await request(app).post(`/api/meetups/${meetup.id}/trip/start`).set('Authorization', bearer(member.id))).status).toBe(409);
-});
+function settle(meetupId: string, userId?: string): Test {
+  const req = request(createApp()).post(`/api/meetups/${meetupId}/settle`);
+  return userId ? req.set('Authorization', bearer(userId)) : req;
+}
 
-test('requires authentication, group membership and organizer role', async () => {
-  const { meetup, member, outsider, settle } = await setup();
-  expect((await request(app).post(`/api/meetups/${meetup.id}/settle`)).status).toBe(401);
-  expect((await settle(member.id)).status).toBe(403);
-  expect((await settle(outsider.id)).status).toBe(403);
-  expect(await FairCreditModel.countDocuments()).toBe(0);
-});
+async function createTrip(meetupId: string, userId: string, fields: Record<string, unknown>) {
+  await TripModel.create({ meetupId, userId, travelMode: 'TRANSIT', startedAt: new Date(), ...fields });
+}
 
-test('rejects future and unfinalized meetups, and active trips including paused sharing', async () => {
-  const { meetup, member, settle } = await setup();
-  await MeetupModel.updateOne({ _id: meetup.id }, { $set: { scheduledAt: new Date(Date.now() + 60000) } });
-  expect((await settle()).status).toBe(409);
-  await MeetupModel.updateOne({ _id: meetup.id }, { $set: { status: 'VOTING', scheduledAt: new Date(Date.now() - 60000) } });
-  expect((await settle()).status).toBe(409);
-  await MeetupModel.updateOne({ _id: meetup.id }, { $set: { status: 'FINALIZED' } });
-  await TripModel.create({ meetupId: meetup.id, userId: member.id, travelMode: 'TRANSIT',
-    startedAt: new Date(), status: 'ACTIVE', sharing: false });
-  expect((await settle()).status).toBe(409);
-  expect(await SettlementModel.countDocuments()).toBe(0);
-  expect(await FairCreditModel.countDocuments()).toBe(0);
-});
+// Interface POST /api/meetups/:meetupId/settle
+describe('Unmocked: POST /api/meetups/:meetupId/settle', () => {
+  // Input: organizer settles after completing a 130-minute tracked trip; the member never started one (10-minute estimate);
+  //   the organizer then settles again and the member tries to start a trip
+  // Expected status code: 200; 200; 409 for the late trip start
+  // Expected behavior: the organizer gains 60 minutes of credit and the member loses 60 (average 70 minutes); the ledger
+  //   records one TRACKED and one ESTIMATED entry; the repeat changes nothing; the organizer's vote weight becomes 1.2
+  // Expected output: the meetup with status SETTLED
+  test('settles tracked and estimated commutes, updates history and next vote weights, and marks SETTLED', async () => {
+    const { organizer, member, group, meetup } = await setup();
+    await createTrip(meetup.id, organizer.id, { arrivedAt: new Date(), status: 'ARRIVED', actualSeconds: 7800 });
 
-test('concurrent settlement requests apply each balance change once', async () => {
-  const { organizer, group, settle } = await setup();
-  const results = await Promise.all([settle(), settle(), settle()]);
-  expect(results.map(result => result.status)).toEqual([200, 200, 200]);
-  expect(await FairCreditEntryModel.countDocuments()).toBe(2);
-  expect(await fairCreditService.getBalance(organizer.id, group.id)).toBe(600);
-});
+    const result = await settle(meetup.id, organizer.id);
 
-test('rejects invalid commute durations without freezing the meetup', async () => {
-  const { organizer, meetup, settle } = await setup();
-  await TripModel.create({ meetupId: meetup.id, userId: organizer.id, travelMode: 'TRANSIT',
-    startedAt: new Date(), status: 'ARRIVED', actualSeconds: 86401 });
-  expect((await settle()).status).toBe(400);
-  expect(await SettlementModel.countDocuments()).toBe(0);
-  expect(await FairCreditModel.countDocuments()).toBe(0);
-});
+    expect(result.status).toBe(200);
+    expect(result.body.status).toBe('SETTLED');
+    expect(await fairCreditService.getBalance(organizer.id, group.id)).toBe(3600);
+    expect(await fairCreditService.getBalance(member.id, group.id)).toBe(-3600);
+    expect(await fairCreditService.getVoteWeight(organizer.id, group.id)).toBeCloseTo(1.2);
+    const entries = await FairCreditEntryModel.find({ meetupId: meetup.id }).lean();
+    expect(entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: 'TRACKED', actualSeconds: 7800, delta: 3600 }),
+      expect.objectContaining({ source: 'ESTIMATED', actualSeconds: 600, delta: -3600 }),
+    ]));
 
-test('retries after a failed final state update without applying credits again', async () => {
-  const { organizer, group, settle } = await setup();
-  const update = jest.spyOn(MeetupModel, 'findOneAndUpdate').mockRejectedValueOnce(new Error('temporary database failure'));
-  try {
-    expect((await settle()).status).toBe(500);
-  } finally {
-    update.mockRestore();
-  }
-  expect(await fairCreditService.getBalance(organizer.id, group.id)).toBe(600);
-  expect((await settle()).status).toBe(200);
-  expect(await fairCreditService.getBalance(organizer.id, group.id)).toBe(600);
-  expect(await FairCreditEntryModel.countDocuments()).toBe(2);
-});
-
-test('resumes a partial balance update without double counting the first member', async () => {
-  const { organizer, member, group, settle } = await setup();
-  const original = FairCreditModel.updateOne.bind(FairCreditModel);
-  let calls = 0;
-  const update = jest.spyOn(FairCreditModel, 'updateOne').mockImplementation((...args: Parameters<typeof original>) => {
-    calls += 1;
-    if (calls === 3) throw new Error('temporary failure before second member');
-    return original(...args);
+    expect((await settle(meetup.id, organizer.id)).status).toBe(200);
+    expect(await FairCreditEntryModel.countDocuments({ meetupId: meetup.id })).toBe(2);
+    expect(await fairCreditService.getBalance(organizer.id, group.id)).toBe(3600);
+    const lateStart = await request(createApp())
+      .post(`/api/meetups/${meetup.id}/trip/start`)
+      .set('Authorization', bearer(member.id));
+    expect(lateStart.status).toBe(409);
   });
-  try {
-    expect((await settle()).status).toBe(500);
-  } finally {
-    update.mockRestore();
-  }
-  expect(await fairCreditService.getBalance(organizer.id, group.id)).toBe(600);
-  expect(await fairCreditService.getBalance(member.id, group.id)).toBe(0);
-  expect((await settle()).status).toBe(200);
-  expect(await fairCreditService.getBalance(organizer.id, group.id)).toBe(600);
-  expect(await fairCreditService.getBalance(member.id, group.id)).toBe(-600);
-});
 
-test('older recommendations fetch missing estimates and mark them as estimated', async () => {
-  const { organizer, meetup, group, settle } = await setup();
-  await RecommendationModel.deleteMany({ meetupId: meetup.id });
-  const estimate = jest.spyOn(routes, 'travelSeconds').mockResolvedValueOnce([[2400], [1200]]);
-  try {
-    expect((await settle()).status).toBe(200);
-    expect(estimate).toHaveBeenCalledTimes(1);
-    expect(await fairCreditService.getBalance(organizer.id, group.id)).toBe(600);
-    expect(await FairCreditEntryModel.countDocuments({ source: 'ESTIMATED' })).toBe(2);
-  } finally {
-    estimate.mockRestore();
-  }
-});
+  // Input: no session token; a member who is not the organizer; a user outside the group
+  // Expected status code: 401; 403; 403
+  // Expected behavior: no Fair Credit is written and the meetup stays FINALIZED
+  // Expected output: None
+  test('requires authentication, group membership and the organizer role', async () => {
+    const { meetup, member, outsider } = await setup();
 
-test('unreachable fallback leaves the meetup finalized with no credit changes', async () => {
-  const { meetup, settle } = await setup();
-  await RecommendationModel.deleteMany({ meetupId: meetup.id });
-  const estimate = jest.spyOn(routes, 'travelSeconds').mockResolvedValueOnce([[null], [1200]]);
-  try {
-    expect((await settle()).status).toBe(409);
-    expect((await MeetupModel.findById(meetup.id))?.status).toBe('FINALIZED');
+    expect((await settle(meetup.id)).status).toBe(401);
+    expect((await settle(meetup.id, member.id)).status).toBe(403);
+    expect((await settle(meetup.id, outsider.id)).status).toBe(403);
+
     expect(await FairCreditModel.countDocuments()).toBe(0);
+    expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('FINALIZED');
+  });
+
+  // Input: organizer settles a meetup whose time is still ahead; one that is still in VOTING; one where a member's trip
+  //   is active with sharing paused
+  // Expected status code: 409 each time
+  // Expected behavior: no settlement snapshot and no Fair Credit is written
+  // Expected output: None
+  test('rejects future and unfinalized meetups, and active trips including paused sharing', async () => {
+    const { organizer, meetup, member } = await setup();
+
+    await MeetupModel.updateOne({ _id: meetup.id }, { $set: { scheduledAt: new Date(Date.now() + MINUTE_MS) } });
+    expect((await settle(meetup.id, organizer.id)).status).toBe(409);
+    await MeetupModel.updateOne(
+      { _id: meetup.id },
+      { $set: { status: 'VOTING', scheduledAt: new Date(Date.now() - MINUTE_MS) } },
+    );
+    expect((await settle(meetup.id, organizer.id)).status).toBe(409);
+    await MeetupModel.updateOne({ _id: meetup.id }, { $set: { status: 'FINALIZED' } });
+    await createTrip(meetup.id, member.id, { status: 'ACTIVE', sharing: false });
+    expect((await settle(meetup.id, organizer.id)).status).toBe(409);
+
     expect(await SettlementModel.countDocuments()).toBe(0);
-  } finally {
-    estimate.mockRestore();
-  }
+    expect(await FairCreditModel.countDocuments()).toBe(0);
+  });
+
+  // Input: organizer settles a finalized meetup that nobody entered details for
+  // Expected status code: 400
+  // Expected behavior: nothing is settled
+  // Expected output: None
+  test('rejects a meetup without participants', async () => {
+    const { organizer, meetup } = await setup();
+    await MeetupModel.updateOne({ _id: meetup.id }, { $set: { participants: [] } });
+
+    expect((await settle(meetup.id, organizer.id)).status).toBe(400);
+    expect(await SettlementModel.countDocuments()).toBe(0);
+  });
+
+  // Input: three settlement requests from the organizer at the same time (stored estimates of 30 and 10 minutes)
+  // Expected status code: 200 for each
+  // Expected behavior: the meetup is settled once: two ledger entries, and the organizer's balance is +10 minutes
+  // Expected output: None
+  test('concurrent settlement requests apply each balance change once', async () => {
+    const { organizer, group, meetup } = await setup();
+
+    const results = await Promise.all([1, 2, 3].map(() => settle(meetup.id, organizer.id)));
+
+    expect(results.map((result) => result.status)).toEqual([200, 200, 200]);
+    expect(await FairCreditEntryModel.countDocuments()).toBe(2);
+    expect(await fairCreditService.getBalance(organizer.id, group.id)).toBe(600);
+  });
+
+  // Input: the organizer's tracked trip took longer than a day (they tapped "I arrived" far too late); organizer settles
+  // Expected status code: 200
+  // Expected behavior: the unusable measurement is replaced by the stored 30-minute estimate, so the meetup can be settled
+  // Expected output: the meetup with status SETTLED; both ledger entries are ESTIMATED
+  test('a tracked commute longer than a day falls back to the estimate', async () => {
+    const { organizer, group, meetup } = await setup();
+    await createTrip(meetup.id, organizer.id, {
+      arrivedAt: new Date(),
+      status: 'ARRIVED',
+      actualSeconds: tuning.maxTripSeconds + 1,
+    });
+
+    const result = await settle(meetup.id, organizer.id);
+
+    expect(result.status).toBe(200);
+    expect(result.body.status).toBe('SETTLED');
+    expect(await FairCreditEntryModel.countDocuments({ source: 'ESTIMATED' })).toBe(2);
+    expect(await fairCreditService.getBalance(organizer.id, group.id)).toBe(600);
+  });
+
+  // Input: a participant's stored entry has no start location (written around the API); organizer settles
+  // Expected status code: 409
+  // Expected behavior: nothing is settled and the meetup stays FINALIZED
+  // Expected output: { error: "A member has an invalid starting location. Please submit it again." }
+  test('rejects a participant without a start location', async () => {
+    const { organizer, member, meetup } = await setup();
+    await MeetupModel.collection.updateOne(
+      { _id: meetup._id, 'participants.userId': member._id },
+      { $unset: { 'participants.$.startLocation': '' } },
+    );
+
+    const result = await settle(meetup.id, organizer.id);
+
+    expect(result.status).toBe(409);
+    expect(result.body).toEqual({ error: 'A member has an invalid starting location. Please submit it again.' });
+    expect(await SettlementModel.countDocuments()).toBe(0);
+    expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('FINALIZED');
+  });
 });

@@ -17,9 +17,13 @@ import org.json.JSONObject
 
 /** Something the server pushed (or failed to push) for one meetup. */
 sealed interface MeetupEvent {
+    /** The meetup was deleted; [notifyParticipant] is true if the user had entered details for it. */
     data class Deleted(val notifyParticipant: Boolean) : MeetupEvent
+
     /** The meetup room was (re)joined; reload over REST so nothing published before the join is missed. */
     data object Joined : MeetupEvent
+
+    /** Someone's trip changed; trips (with positions) are reloaded over REST, which rechecks membership. */
     data object TripUpdated : MeetupEvent
 
     /** Fresh tally: sent every time a participant votes, changes or locks a vote. */
@@ -42,10 +46,17 @@ private const val EVENT_STATUS = "meetup:status"
 private const val EVENT_RECOMMENDATIONS_READY = "recommendations:ready"
 private const val EVENT_MEETUP_UPDATED = "meetup:updated"
 private const val EVENT_MEETUP_DELETED = "meetup:deleted"
+private const val EVENT_TRIP_UPDATED = "trip:updated"
+private const val EVENT_GROUP_DELETED = "group:deleted"
+private const val EVENT_GROUP_MEETUP_DELETED = "group:meetup-deleted"
 
+/** Something the server pushed to the signed-in user about one of their groups. */
 sealed interface GroupEvent {
+    /** The socket (re)connected; reload over REST so nothing published while offline is missed. */
     data object Connected : GroupEvent
     data class Deleted(val groupId: String) : GroupEvent
+
+    /** A meetup of the group was deleted; [notifyParticipant] is true if the user had entered details for it. */
     data class MeetupDeleted(val groupId: String, val notifyParticipant: Boolean = false) : GroupEvent
 }
 
@@ -58,7 +69,10 @@ class RealtimeClient(private val baseUrl: String, private val sessionStore: Sess
             close()
         } else {
             val socket = openGroupSocket(token)
-            awaitClose { socket.off(); socket.disconnect() }
+            awaitClose {
+                socket.off()
+                socket.disconnect()
+            }
         }
     }
 
@@ -91,14 +105,12 @@ class RealtimeClient(private val baseUrl: String, private val sessionStore: Sess
     private fun ProducerScope<GroupEvent>.openGroupSocket(token: String): Socket {
         val socket = socketFor(token)
         socket.on(Socket.EVENT_CONNECT) { trySend(GroupEvent.Connected) }
-        socket.on("group:deleted") { args ->
-            val id = (args.firstOrNull() as? JSONObject)?.optString("groupId").orEmpty()
-            if (id.isNotBlank()) trySend(GroupEvent.Deleted(id))
+        socket.on(EVENT_GROUP_DELETED) { args ->
+            groupIdOf(args)?.let { trySend(GroupEvent.Deleted(it)) }
         }
-        socket.on("group:meetup-deleted") { args ->
-            val id = (args.firstOrNull() as? JSONObject)?.optString("groupId").orEmpty()
-            val payload = args.firstOrNull() as? JSONObject
-            if (id.isNotBlank()) trySend(GroupEvent.MeetupDeleted(id, payload?.optBoolean("notifyParticipant", false) == true))
+        socket.on(EVENT_GROUP_MEETUP_DELETED) { args ->
+            val notifyParticipant = (args.firstOrNull() as? JSONObject)?.optBoolean("notifyParticipant") == true
+            groupIdOf(args)?.let { trySend(GroupEvent.MeetupDeleted(it, notifyParticipant)) }
         }
         socket.connect()
         return socket
@@ -121,19 +133,20 @@ class RealtimeClient(private val baseUrl: String, private val sessionStore: Sess
         socket.on(EVENT_RECOMMENDATIONS_READY) { trySend(MeetupEvent.RecommendationsReady) }
         // Membership/participation changed; reload the meetup and tally over REST.
         socket.on(EVENT_MEETUP_UPDATED) { trySend(MeetupEvent.Joined) }
-        socket.on("trip:updated") { trySend(MeetupEvent.TripUpdated) }
+        socket.on(EVENT_TRIP_UPDATED) { trySend(MeetupEvent.TripUpdated) }
         socket.on(EVENT_MEETUP_DELETED) { args ->
-            val payload = args.firstOrNull() as? JSONObject
-            val participants = payload?.optJSONArray("participantIds")
-            val participant = participants != null && (0 until participants.length()).any {
-                participants.optString(it) == sessionStore.currentUserId()
-            }
-            trySend(MeetupEvent.Deleted(participant))
+            val participantIds = (args.firstOrNull() as? JSONObject)?.optJSONArray("participantIds")?.strings()
+            val wasParticipant = participantIds.orEmpty().contains(sessionStore.currentUserId())
+            trySend(MeetupEvent.Deleted(notifyParticipant = wasParticipant))
         }
         socket.connect()
         return socket
     }
 }
+
+// The group a group-scoped event is about, or null for a malformed payload
+private fun groupIdOf(args: Array<out Any?>): String? =
+    (args.firstOrNull() as? JSONObject)?.optString("groupId")?.ifBlank { null }
 
 // Socket.IO passes each payload as the first listener argument; malformed payloads must not crash the app
 private fun parseEvent(args: Array<out Any?>, transform: (JSONObject) -> MeetupEvent): MeetupEvent {

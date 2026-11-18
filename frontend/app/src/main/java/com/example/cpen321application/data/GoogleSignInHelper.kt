@@ -13,9 +13,12 @@ class GoogleSignInHelper(private val serverClientId: String) {
     // Needs an Activity context so Credential Manager can show its sheet
     suspend fun getIdToken(activityContext: Context): Result<String> {
         if (serverClientId.isBlank()) {
-            return Result.failure(IllegalStateException(
-                "Google sign-in is not configured. Set GOOGLE_CLIENT_ID in frontend/local.properties and rebuild the app."
-            ))
+            return Result.failure(
+                IllegalStateException(
+                    "Google sign-in is not configured. Set GOOGLE_CLIENT_ID in frontend/local.properties " +
+                        "and rebuild the app.",
+                ),
+            )
         }
 
         // Configure Google sign in to request an ID token for backend auth

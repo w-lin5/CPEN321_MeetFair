@@ -5,7 +5,9 @@ import { getUserId } from '../common/middleware/require-auth';
 import { parseInput } from '../common/middleware/validate';
 import { groupParams, meetupParams, updateProfileBody } from '../users-groups/schemas';
 import { fairCreditService } from './fair-credit.service';
-import { calendarEventBody, finalizeBody, voteBody } from './schemas';
+import { calendarEventBody, finalizeBody, tripLocationBody, voteBody } from './schemas';
+import { settlementService } from './settlement.service';
+import { tripService } from './trip.service';
 import { votingService } from './voting.service';
 
 export const votingFairnessRouter = Router();
@@ -44,6 +46,45 @@ votingFairnessRouter.post('/meetups/:meetupId/calendar-event', asyncHandler(asyn
   const { meetupId } = parseInput(meetupParams, req.params);
   const { accessToken } = parseInput(calendarEventBody, req.body);
   res.status(201).json(await votingService.addToCalendar(meetupId, getUserId(req), accessToken));
+}));
+
+// ---- Live commute tracking ----
+
+// Starts the caller's trip ("I'm leaving"), or resumes sharing on their active one
+votingFairnessRouter.post('/meetups/:meetupId/trip/start', asyncHandler(async (req, res) => {
+  const { meetupId } = parseInput(meetupParams, req.params);
+  res.json(await tripService.start(meetupId, getUserId(req)));
+}));
+
+// The caller's latest position while they share their trip
+votingFairnessRouter.put('/meetups/:meetupId/trip/location', asyncHandler(async (req, res) => {
+  const { meetupId } = parseInput(meetupParams, req.params);
+  const position = parseInput(tripLocationBody, req.body);
+  res.json(await tripService.updateLocation(meetupId, getUserId(req), position));
+}));
+
+// Ends the caller's trip; the server computes the actual commute time
+votingFairnessRouter.post('/meetups/:meetupId/trip/arrive', asyncHandler(async (req, res) => {
+  const { meetupId } = parseInput(meetupParams, req.params);
+  res.json(await tripService.arrive(meetupId, getUserId(req)));
+}));
+
+// Pauses location sharing without ending the trip
+votingFairnessRouter.post('/meetups/:meetupId/trip/stop', asyncHandler(async (req, res) => {
+  const { meetupId } = parseInput(meetupParams, req.params);
+  await tripService.stopSharing(meetupId, getUserId(req));
+  res.status(204).end();
+}));
+
+votingFairnessRouter.get('/meetups/:meetupId/trips', asyncHandler(async (req, res) => {
+  const { meetupId } = parseInput(meetupParams, req.params);
+  res.json(await tripService.list(meetupId, getUserId(req)));
+}));
+
+// Organizer turns everyone's commute into Fair Credit and the meetup moves to SETTLED
+votingFairnessRouter.post('/meetups/:meetupId/settle', asyncHandler(async (req, res) => {
+  const { meetupId } = parseInput(meetupParams, req.params);
+  res.json(await settlementService.settle(meetupId, getUserId(req)));
 }));
 
 // ---- Profile and fairness ----

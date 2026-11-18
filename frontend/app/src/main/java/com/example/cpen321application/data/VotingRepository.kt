@@ -7,9 +7,9 @@ import com.example.cpen321application.model.VotesSnapshot
 import org.json.JSONObject
 
 class VotingRepository(private val api: ApiClient) {
-    /** Uses the backend's temporary Google Places selection and starts voting. */
-    suspend fun generateFromPlaces(meetupId: String): ApiResult<Recommendation> =
-        api.post("meetups/$meetupId/recommendations/from-places").parse { parseRecommendation(JSONObject(it)) }
+    /** Organizer only: the server finds and ranks nearby places, stores the best ones and opens voting. */
+    suspend fun generateRecommendations(meetupId: String): ApiResult<Recommendation> =
+        api.post("meetups/$meetupId/recommendations").parse { parseRecommendation(JSONObject(it)) }
 
     suspend fun recommendations(meetupId: String): ApiResult<Recommendation> =
         api.get("meetups/$meetupId/recommendations").parse { parseRecommendation(JSONObject(it)) }

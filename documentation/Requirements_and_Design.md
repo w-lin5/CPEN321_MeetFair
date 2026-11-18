@@ -6,6 +6,7 @@
 | ----------------- | --------------------- | ------------- |
 | 2026-10-19 | All Sections | Initial submission for CP1 |
 | 2026-11-04 | 3.1-3.7, 4.1-4.7 | CP2: updated requirements, use cases, APIs, and architecture for group management, meetup scheduling and participation, Places/Routes recommendations, weighted voting, Fair Credit settlement, and live-trip tracking; clarified validation, permissions, privacy, refresh, notifications, and edge cases; added approximate screen mock-ups; documented the `settlements` collection; updated the dependency and sequence diagrams; and fixed a typo in feature 5. |
+| 2026-11-15 | 4.1 | Refactor: the Live Location interfaces moved into the Voting & Fairness component, because trips, settlement and Fair Credit depend on each other and now share one component (4 back-end components plus the health check). Leaving a group is now `DELETE /api/groups/:groupId/members/me` and generating recommendations is `POST /api/meetups/:meetupId/recommendations`, so both follow the REST conventions; the unused place-preview endpoint was removed. |
 ---
 
 ## 2. Project Description
@@ -364,7 +365,7 @@ The following mock-ups are visual references for selected group and meetup scree
             - **Purpose**: Account information and groups for the profile screen; a null display name returns to the Google name.
         18. `DELETE /api/groups/:groupId/members/:memberId` -> `204`
             - **Purpose**: Group organizer only; removes another member under the rules in Section 3.4. Returns 409 if the target participates in a VOTING or FINALIZED meetup.
-        19. `POST /api/groups/:groupId/leave` -> `204`
+        19. `DELETE /api/groups/:groupId/members/me` -> `204`
             - **Purpose**: Leaves the group and removes the caller's participation details from SETUP meetups. The group organizer cannot leave; participation in a VOTING meetup returns 409.
         20. `DELETE /api/meetups/:meetupId/participation` -> `204`
             - **Purpose**: Removes the caller's participation while the meetup is in SETUP; otherwise returns 409. Publishes a silent participation update.
@@ -375,16 +376,14 @@ The following mock-ups are visual references for selected group and meetup scree
 2. **Recommendation Engine**
     - **Purpose**: Owns the `recommendations` collection. It builds the meetup's candidate places from Google Places and Google Routes, scores them with our fairness algorithm, stores the top 3 and opens voting. All slow and failure-prone Google Maps calls are kept in this one component, and the scoring itself is pure functions (search area, preference mapping, scoring) that can be tested without Google.
     - **Interfaces**:
-        1. `POST /api/meetups/:meetupId/recommendations/from-places` -> `201 Recommendation`
+        1. `POST /api/meetups/:meetupId/recommendations` -> `201 Recommendation`
             - **Purpose**: Organizer only; finds places with Google Places, gets travel times with Google Routes, stores the top 3 candidates and moves the meetup from SETUP to VOTING.
-        2. `POST /api/meetups/:meetupId/places/search` -> `200 { candidates: List<Place>, message: String | null }`
-            - **Purpose**: Organizer only; previews nearby places without storing them or changing the meetup's status.
-        3. `GET /api/meetups/:meetupId/recommendations` -> `200 Recommendation`
+        2. `GET /api/meetups/:meetupId/recommendations` -> `200 Recommendation`
             - **Purpose**: Returns the meetup's candidates with their score breakdown (members only).
-        4. `Recommendation getByMeetupId(String meetupId)`
+        3. `Recommendation getByMeetupId(String meetupId)`
             - **Purpose**: Gives Voting & Fairness the candidates a vote must refer to and the data of the winning place.
 3. **Voting & Fairness**
-    - **Purpose**: Owns the `votes`, `fairCredits`, `fairCreditEntries` and `settlements` collections: casting, changing and locking votes, the weighted tally, finalizing, adding the meetup to Google Calendar, and Fair Credit (balances plus a ledger explaining every change). Vote weights come from Fair Credit and settlement changes Fair Credit, so keeping both in one component keeps all fairness rules in one place. The rules themselves (vote weight, tally, credit change) are pure functions.
+    - **Purpose**: Owns the `votes`, `fairCredits`, `fairCreditEntries`, `settlements` and `trips` collections: casting, changing and locking votes, the weighted tally, finalizing, adding the meetup to Google Calendar, live commute tracking (each participant's commute timing and latest shared location for a finalized meetup) and Fair Credit (balances plus a ledger explaining every change). Trips feed settlement and settlement changes Fair Credit, so they live in the same component. Only the latest coordinate of a trip is stored, and it is cleared when sharing stops; locations are sent over REST, so every update and every read goes through the session and membership checks. Vote weights come from Fair Credit and settlement changes Fair Credit, so keeping both in one component keeps all fairness rules in one place. The rules themselves (vote weight, tally, credit change) are pure functions.
     - **Interfaces**:
         1. `PUT /api/meetups/:meetupId/vote` — body `{ placeId: String }` -> `200 Vote`
             - **Purpose**: Creates or changes the caller's vote while it is unlocked and the meetup is in VOTING.
@@ -403,7 +402,19 @@ The following mock-ups are visual references for selected group and meetup scree
         8. `double getVoteWeight(String userId, String groupId)` / `double getBalance(String userId, String groupId)` / `Map<String, double> getBalances(String groupId, List<String> userIds)`
             - **Purpose**: Members' Fair Credit in a group and the resulting vote weight; the Recommendation Engine uses the balances for fairness scoring.
         9. `List<FairCreditEntry> settleMeetup(String groupId, String meetupId, List<Trip> trips)`
-            - **Purpose**: Turns each member's actual trip time into a credit change against the group average; a meetup can be settled only once. The Live Location component calls this during meetup settlement.
+            - **Purpose**: Turns each member's actual trip time into a credit change against the group average; a meetup is settled only once, and repeating an interrupted settlement completes it without counting anything twice. Meetup settlement (interface 15) calls this.
+        10. `POST /api/meetups/:meetupId/trip/start` -> `200 Trip`
+            - **Purpose**: Starts the caller's trip, or resumes sharing on an active one; the server sets the start time once. Allowed for participants of a FINALIZED meetup from its scheduled time.
+        11. `PUT /api/meetups/:meetupId/trip/location` — body `{ lat: Number, lng: Number, accuracyM: Number }` -> `200 Trip`
+            - **Purpose**: Saves the caller's latest position while their sharing is active.
+        12. `POST /api/meetups/:meetupId/trip/arrive` -> `200 Trip`
+            - **Purpose**: Ends the caller's trip, computes the duration on the server and clears the location; repeating it changes nothing.
+        13. `POST /api/meetups/:meetupId/trip/stop` -> `204`
+            - **Purpose**: Pauses sharing and clears the location; the commute timer keeps running.
+        14. `GET /api/meetups/:meetupId/trips` -> `200 List<Trip>`
+            - **Purpose**: Lists the meetup's trips for group members, with a location only for members who are actively sharing.
+        15. `POST /api/meetups/:meetupId/settle` -> `200 Meetup`
+            - **Purpose**: Meetup organizer only; settles Fair Credit after the finalized meetup time has arrived and all started trips have ended. Uses tracked commute durations when available and stored or calculated travel estimates otherwise, saves those durations as a settlement snapshot so a retry uses the same values, then moves the meetup to SETTLED. Repeated successful requests are harmless.
 4. **Realtime Gateway**
     - **Purpose**: The Socket.IO server on the same host and port as the REST API. It authenticates each connection with the MeetFair session token, lets only group members join a meetup's room, and delivers the other components' updates to the members of that room. We chose a persistent socket over polling (slower and more wasteful) and over Firebase push notifications, which change the phone's state rather than the app's and may not be used for major functionality. Components publish through a small publisher interface, so they do not depend on Socket.IO.
     - **Interfaces**:
@@ -423,22 +434,7 @@ The following mock-ups are visual references for selected group and meetup scree
             - **Purpose**: Updates group pages through authenticated private user rooms, which the server joins automatically. Group deletion notifies group members; meetup deletion refreshes affected lists but shows a notice only when `notifyParticipant` is true.
         8. `void revokeUser(String userId)` / `void closeRoom(String room)`
             - **Purpose**: Disconnects a departing or removed member's existing sockets, or removes subscriptions to a deleted meetup. Reconnection and later API requests must pass membership checks again.
-5. **Live Location**
-    - **Purpose**: Owns the `trips` collection: each participant's commute timing and latest shared location for a finalized meetup. It stores only the latest coordinate, which is cleared when sharing stops. Locations are sent over REST, so every update and every read goes through the session and membership checks.
-    - **Interfaces**:
-        1. `POST /api/meetups/:meetupId/trip/start` -> `200 Trip`
-            - **Purpose**: Starts the caller's trip, or resumes sharing on an active one; the server sets the start time once. Allowed for participants of a FINALIZED meetup from its scheduled time.
-        2. `PUT /api/meetups/:meetupId/trip/location` — body `{ lat: Number, lng: Number, accuracyM: Number }` -> `200 Trip`
-            - **Purpose**: Saves the caller's latest position while their sharing is active.
-        3. `POST /api/meetups/:meetupId/trip/arrive` -> `200 Trip`
-            - **Purpose**: Ends the caller's trip, computes the duration on the server and clears the location; repeating it changes nothing.
-        4. `POST /api/meetups/:meetupId/trip/stop` -> `204`
-            - **Purpose**: Pauses sharing and clears the location; the commute timer keeps running.
-        5. `GET /api/meetups/:meetupId/trips` -> `200 List<Trip>`
-            - **Purpose**: Lists the meetup's trips for group members, with a location only for members who are actively sharing.
-        6. `POST /api/meetups/:meetupId/settle` -> `200 Meetup`
-            - **Purpose**: Meetup organizer only; settles Fair Credit after the finalized meetup time has arrived and all started trips have ended. Uses tracked commute durations when available and stored or calculated travel estimates otherwise, saves those durations as a settlement snapshot so a retry uses the same values, then moves the meetup to SETTLED. Repeated successful requests are harmless.
-6. **Health Check**
+5. **Health Check**
     - **Purpose**: Provides a simple public check that the HTTP server is responding.
     - **Interfaces**:
         1. `GET /health` -> `200 { status: "ok" }`

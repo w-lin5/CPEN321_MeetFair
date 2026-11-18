@@ -1,11 +1,9 @@
-import type { LatLng, TravelMode } from '../common/types';
 import { UpstreamError } from '../common/errors';
+import type { LatLng, TravelMode } from '../common/types';
+import { env, tuning } from '../config';
 
-const MATRIX = {
-  // Google's per-request element limit for TRANSIT (the strictest of our modes)
-  maxElements: 100,
-  timeoutMs: 10000,
-} as const;
+const MATRIX_URL = 'https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix';
+const FIELD_MASK = 'originIndex,destinationIndex,duration,condition';
 const FAILURE_MESSAGE = 'Unable to estimate travel times. Please try again later.';
 
 export interface RouteOrigin {
@@ -13,10 +11,13 @@ export interface RouteOrigin {
   mode: TravelMode;
 }
 
+// Travel times of one origin to every destination; null where Google finds no route
+type TravelRow = (number | null)[];
+
 interface MatrixRequest {
   mode: TravelMode;
   // This request's origins, each with the result row its travel times go into
-  origins: { location: LatLng; row: (number | null)[] }[];
+  origins: { location: LatLng; row: TravelRow }[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -41,37 +42,39 @@ function parseIndex(value: unknown, length: number): number | null {
 }
 
 // One request per travel mode, split so that origins x destinations stays within Google's limit
-function planRequests(origins: RouteOrigin[], rows: (number | null)[][], destinationCount: number): MatrixRequest[] {
-  const perRequest = Math.max(1, Math.floor(MATRIX.maxElements / destinationCount));
+function planRequests(origins: RouteOrigin[], rows: TravelRow[], destinationCount: number): MatrixRequest[] {
+  const originsPerRequest = Math.max(1, Math.floor(tuning.routeMatrixMaxElements / destinationCount));
   const byMode = new Map<TravelMode, MatrixRequest['origins']>();
   origins.forEach(({ location, mode }, index) => {
     byMode.set(mode, [...(byMode.get(mode) ?? []), { location, row: rows.at(index) ?? [] }]);
   });
+
   const requests: MatrixRequest[] = [];
   for (const [mode, modeOrigins] of byMode) {
-    for (let start = 0; start < modeOrigins.length; start += perRequest) {
-      requests.push({ mode, origins: modeOrigins.slice(start, start + perRequest) });
+    for (let start = 0; start < modeOrigins.length; start += originsPerRequest) {
+      requests.push({ mode, origins: modeOrigins.slice(start, start + originsPerRequest) });
     }
   }
   return requests;
 }
 
-async function computeMatrix(apiKey: string, request: MatrixRequest, destinations: LatLng[]): Promise<unknown[]> {
-  const response = await fetch('https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix', {
+async function computeMatrix(request: MatrixRequest, destinations: LatLng[]): Promise<unknown[]> {
+  const response = await fetch(MATRIX_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': 'originIndex,destinationIndex,duration,condition',
+      'X-Goog-Api-Key': env.googleMapsApiKey,
+      'X-Goog-FieldMask': FIELD_MASK,
     },
     body: JSON.stringify({
-      origins: request.origins.map(origin => waypoint(origin.location)),
+      origins: request.origins.map((origin) => waypoint(origin.location)),
       destinations: destinations.map(waypoint),
       travelMode: request.mode,
     }),
-    signal: AbortSignal.timeout(MATRIX.timeoutMs),
+    signal: AbortSignal.timeout(tuning.googleRequestTimeoutMs),
   });
   if (!response.ok) throw new UpstreamError(FAILURE_MESSAGE);
+
   const data: unknown = await response.json();
   if (!Array.isArray(data)) throw new UpstreamError(FAILURE_MESSAGE);
   // Array.isArray narrows to any[]; keep the elements unknown so callers must check them
@@ -79,35 +82,40 @@ async function computeMatrix(apiKey: string, request: MatrixRequest, destination
   return elements;
 }
 
+// Writes one matrix element's travel time into its origin's row; unusable elements are skipped
+function storeElement(element: unknown, request: MatrixRequest, destinationCount: number): void {
+  if (!isRecord(element) || element.condition !== 'ROUTE_EXISTS') return;
+  const originIndex = parseIndex(element.originIndex, request.origins.length);
+  const origin = originIndex === null ? undefined : request.origins.at(originIndex);
+  const destinationIndex = parseIndex(element.destinationIndex, destinationCount);
+  const seconds = parseDuration(element.duration);
+  if (origin && destinationIndex !== null && seconds !== null) {
+    origin.row.splice(destinationIndex, 1, seconds);
+  }
+}
+
 /**
  * Travel time in seconds from each origin (in its own travel mode) to each destination:
- * result[origin][destination], or null where Google finds no route.
+ * result[origin][destination], or null where Google finds no route (Routes API computeRouteMatrix).
  */
-export async function travelSeconds(origins: RouteOrigin[], destinations: LatLng[]): Promise<(number | null)[][]> {
-  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
-  if (!apiKey) {
-    throw new Error('Missing required env var GOOGLE_PLACES_API_KEY');
-  }
+async function travelSeconds(origins: RouteOrigin[], destinations: LatLng[]): Promise<TravelRow[]> {
   const result = origins.map(() => destinations.map((): number | null => null));
   if (origins.length === 0 || destinations.length === 0) return result;
 
   try {
     const requests = planRequests(origins, result, destinations.length);
-    const responses = await Promise.all(requests.map(request => computeMatrix(apiKey, request, destinations)));
+    const responses = await Promise.all(requests.map((request) => computeMatrix(request, destinations)));
     requests.forEach((request, requestIndex) => {
       for (const element of responses.at(requestIndex) ?? []) {
-        if (!isRecord(element) || element.condition !== 'ROUTE_EXISTS') continue;
-        const originIndex = parseIndex(element.originIndex, request.origins.length);
-        const origin = originIndex === null ? undefined : request.origins.at(originIndex);
-        const destinationIndex = parseIndex(element.destinationIndex, destinations.length);
-        const seconds = parseDuration(element.duration);
-        if (!origin || destinationIndex === null || seconds === null) continue;
-        origin.row.splice(destinationIndex, 1, seconds);
+        storeElement(element, request, destinations.length);
       }
     });
     return result;
   } catch {
-    // Never expose Google's response, request headers, or the original exception.
+    // Never expose Google's response, request headers, or the original exception
     throw new UpstreamError(FAILURE_MESSAGE);
   }
 }
+
+// Exported as an object so tests can jest.spyOn(routesClient, 'travelSeconds')
+export const routesClient = { travelSeconds };

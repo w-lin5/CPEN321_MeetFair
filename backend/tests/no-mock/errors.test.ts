@@ -71,7 +71,7 @@ describe('Unmocked: errorHandler', () => {
     const err = new NotFound();
     const status = jest.fn();
     const res = { headersSent: true, status } as unknown as Response;
-    const next = jest.fn<void, [unknown]>();
+    const next = jest.fn();
 
     errorHandler(err, {} as Request, res, next as NextFunction);
 

@@ -1,7 +1,6 @@
 package com.example.cpen321application.ui.groups
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,16 +12,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,38 +33,16 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.cpen321application.AppContainer
-import com.example.cpen321application.data.ApiResult
 import com.example.cpen321application.data.GroupEvent
-import com.example.cpen321application.data.GroupRepository
-import com.example.cpen321application.data.MeetupRepository
-import com.example.cpen321application.data.TripRepository
-import java.time.Instant
-import com.example.cpen321application.model.Group
-import com.example.cpen321application.model.GroupMember
-import com.example.cpen321application.model.GroupRole
-import com.example.cpen321application.model.MeetupStatus
 import com.example.cpen321application.ui.common.LocalNotify
-import com.example.cpen321application.ui.common.MeetFairCard
 import com.example.cpen321application.ui.common.MeetFairHeader
 import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.common.UiState
 import com.example.cpen321application.ui.common.UiStateContent
 import com.example.cpen321application.ui.screenViewModel
 import com.example.cpen321application.ui.theme.Dimens
-import com.example.cpen321application.ui.theme.RosePrimary
-import com.example.cpen321application.ui.theme.TealContainer
 import com.example.cpen321application.ui.theme.TealPrimary
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 private val PlusIcon: ImageVector
     get() = ImageVector.Builder(
@@ -135,88 +108,6 @@ private val LinkIcon: ImageVector
         close()
     }.build()
 
-data class GroupWithAction(
-    val group: Group,
-    val actionNeeded: String? = null,
-)
-
-/** Loads the groups the signed-in user belongs to along with any required action indicators. */
-class GroupListViewModel(
-    private val groups: GroupRepository,
-    private val meetups: MeetupRepository,
-    private val trips: TripRepository,
-    private val currentUserId: String?,
-) : ViewModel() {
-    private val _state = MutableStateFlow<UiState<List<GroupWithAction>>>(UiState.Loading)
-    val state: StateFlow<UiState<List<GroupWithAction>>> = _state.asStateFlow()
-    private var loadJob: Job? = null
-
-    fun onGroupEvent(event: GroupEvent) {
-        if (event is GroupEvent.Connected || event is GroupEvent.Deleted) load()
-    }
-
-    fun load() {
-        loadJob?.cancel()
-        loadJob = viewModelScope.launch {
-            _state.value = UiState.Loading
-            when (val result = groups.list()) {
-                is ApiResult.Success -> {
-                    val groupList = result.data
-                    val items = groupList.map { group ->
-                        val action = determineGroupAction(group.id)
-                        GroupWithAction(group, action)
-                    }
-                    _state.value = UiState.Success(items)
-                }
-                is ApiResult.Failure -> {
-                    _state.value = UiState.Error(result.error.message)
-                }
-            }
-        }
-    }
-
-    private suspend fun determineGroupAction(groupId: String): String? {
-        val meetupResult = meetups.listForGroup(groupId)
-        if (meetupResult !is ApiResult.Success) return null
-        val meetupList = meetupResult.data
-
-        val hasTracking = meetupList.any { meetup ->
-            meetup.status == MeetupStatus.FINALIZED && (
-                runCatching { !Instant.now().isBefore(Instant.parse(meetup.scheduledAt)) }.getOrDefault(false) ||
-                    trips.list(meetup.id).let { tripResult ->
-                        tripResult is ApiResult.Success && tripResult.data.isNotEmpty()
-                    }
-                )
-        }
-        if (hasTracking) return "Tracking live"
-
-        val hasVoting = meetupList.any { it.status == MeetupStatus.VOTING }
-        if (hasVoting) return "Vote required"
-
-        val needsDetails = meetupList.any { meetup ->
-            meetup.status == MeetupStatus.SETUP &&
-                currentUserId != null &&
-                meetup.participants.none { it.userId == currentUserId }
-        }
-        if (needsDetails) return "Enter details"
-
-        return null
-    }
-
-    companion object {
-        fun factory(c: AppContainer) = viewModelFactory {
-            initializer {
-                GroupListViewModel(
-                    c.groupRepository,
-                    c.meetupRepository,
-                    c.tripRepository,
-                    c.sessionStore.currentUserId(),
-                )
-            }
-        }
-    }
-}
-
 @Composable
 fun GroupListScreen(
     container: AppContainer,
@@ -274,7 +165,11 @@ fun GroupListContent(
         GroupActionButtons(onCreate = onCreate, onJoin = onJoin)
 
         Box(modifier = Modifier.weight(1f)) {
-            UiStateContent(state, onRetry = onRetry, emptyMessage = "No groups yet. Create one or join with a code.") { groups ->
+            UiStateContent(
+                state,
+                onRetry = onRetry,
+                emptyMessage = "No groups yet. Create one or join with a code.",
+            ) { groups ->
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -347,172 +242,3 @@ private fun GroupActionButtons(
         }
     }
 }
-
-@Composable
-private fun GroupSections(groups: List<GroupWithAction>, onOpen: (String) -> Unit) {
-    val needsYouGroups = groups.filter { it.actionNeeded != null }
-    val caughtUpGroups = groups.filter { it.actionNeeded == null }
-
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if (needsYouGroups.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        text = "NEEDS YOU",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = RosePrimary,
-                        letterSpacing = 1.2.sp,
-                    )
-
-                    Surface(
-                        shape = CircleShape,
-                        color = RosePrimary,
-                        modifier = Modifier.size(20.dp),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = needsYouGroups.size.toString(),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                            )
-                        }
-                    }
-                }
-
-                needsYouGroups.forEach { item ->
-                    GroupCard(item, onOpen)
-                }
-            }
-        }
-
-        if (caughtUpGroups.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = "ALL CAUGHT UP",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    letterSpacing = 1.2.sp,
-                )
-
-                caughtUpGroups.forEach { item ->
-                    GroupCard(item, onOpen)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun GroupCard(item: GroupWithAction, onOpen: (String) -> Unit) {
-    val group = item.group
-    val memberCountText = if (group.members.size == 1) "1 member" else "${group.members.size} members"
-
-    MeetFairCard(
-        modifier = Modifier
-            .clickable { onOpen(group.id) }
-            .testTag(TestTags.GROUP_ITEM),
-        shape = RoundedCornerShape(20.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            GroupIdentityRow(
-                groupName = group.name,
-                memberCountText = memberCountText,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-
-            if (item.actionNeeded != null) {
-                GroupActionBadge(action = item.actionNeeded)
-            } else {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = TealPrimary,
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun GroupIdentityRow(
-    groupName: String,
-    memberCountText: String,
-    modifier: Modifier = Modifier,
-) {
-    val initial = groupName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "G"
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        modifier = modifier,
-    ) {
-        Surface(
-            shape = CircleShape,
-            color = TealContainer,
-            modifier = Modifier.size(44.dp),
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = initial,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = TealPrimary,
-                )
-            }
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = groupName,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = TealPrimary,
-            )
-            Text(
-                text = memberCountText,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun GroupActionBadge(action: String) {
-    Surface(
-        shape = CircleShape,
-        color = RosePrimary.copy(alpha = 0.15f),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-        ) {
-            Text(
-                text = action,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = RosePrimary,
-            )
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = RosePrimary,
-                modifier = Modifier.size(16.dp),
-            )
-        }
-    }
-}
-

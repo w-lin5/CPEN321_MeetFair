@@ -29,10 +29,10 @@ class PullToRefreshTest {
                 }
             }
         }
-        compose.onNodeWithTag("pull_to_refresh").performTouchInput { swipeDown() }
+        compose.onNodeWithTag(TestTags.PULL_TO_REFRESH).performTouchInput { swipeDown() }
         compose.runOnIdle { assertEquals(1, requests) }
         compose.onNodeWithText("Original group").assertIsDisplayed()
-        compose.onNodeWithTag("pull_to_refresh").performTouchInput { swipeDown() }
+        compose.onNodeWithTag(TestTags.PULL_TO_REFRESH).performTouchInput { swipeDown() }
         compose.runOnIdle {
             assertEquals(1, requests)
             state.value = UiState.Success("New member joined")
@@ -47,7 +47,7 @@ class PullToRefreshTest {
                 UiStateContent<String>(UiState.Empty, onRetry = { requests++ }, emptyMessage = "No groups yet") { Text(it) }
             }
         }
-        compose.onNodeWithTag("pull_to_refresh").performTouchInput { swipeDown() }
+        compose.onNodeWithTag(TestTags.PULL_TO_REFRESH).performTouchInput { swipeDown() }
         compose.runOnIdle { assertEquals(1, requests) }
     }
 
@@ -58,7 +58,7 @@ class PullToRefreshTest {
                 UiStateContent<String>(UiState.Error("Offline"), onRetry = { requests++ }, emptyMessage = "") { Text(it) }
             }
         }
-        compose.onNodeWithTag("pull_to_refresh").performTouchInput { swipeDown() }
+        compose.onNodeWithTag(TestTags.PULL_TO_REFRESH).performTouchInput { swipeDown() }
         compose.runOnIdle { assertEquals(1, requests) }
     }
 }

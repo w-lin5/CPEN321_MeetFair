@@ -1,10 +1,14 @@
 package com.example.cpen321application.data
 
+import com.example.cpen321application.model.TripStatus
 import com.example.cpen321application.ui.Route
 import com.example.cpen321application.ui.decodeRoute
 import com.example.cpen321application.ui.encode
 import org.json.JSONObject
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TripParsersTest {
@@ -16,6 +20,8 @@ class TripParsersTest {
             "location":{"lat":49.2,"lng":-123.2,"accuracyM":10,"updatedAt":"2030-01-01T12:01:00Z"}
         }"""))
         assertEquals("Ada", trip.name)
+        assertEquals(TripStatus.ACTIVE, trip.status)
+        assertTrue(trip.isActive)
         assertEquals("https://example.com/avatar.png", trip.photoUrl)
         assertEquals(49.2, trip.location!!.lat, 0.0001)
         assertNull(trip.actualSeconds)
@@ -28,6 +34,8 @@ class TripParsersTest {
             "actualSeconds":125, "location":null
         }"""))
         assertEquals(125L, trip.actualSeconds)
+        assertTrue(trip.hasArrived)
+        assertEquals("Member", trip.name)
         assertNull(trip.location)
         assertFalse(trip.sharing)
     }

@@ -99,16 +99,3 @@ export function objectId(f: Fields, key: string): string {
 
   return value;
 }
-
-// An array of exactly `exactItems` objects, each returned as Fields for further parsing
-export function objectList(f: Fields, key: string, exactItems: number): Fields[] {
-  const value = f.get(key);
-
-  if (!Array.isArray(value) || value.length !== exactItems) {
-    return fail(`${key} must contain exactly ${exactItems} items`);
-  }
-
-  const items: unknown[] = value;
-
-  return items.map((item, i) => fields(item, `${key}[${i}]`));
-}

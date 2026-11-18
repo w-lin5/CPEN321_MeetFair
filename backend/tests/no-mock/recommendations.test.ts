@@ -33,7 +33,7 @@ async function setup() {
   return { organizer, member, group, meetup };
 }
 
-// Interface recommendationService.generate
+// Interface recommendationService.save
 // Exercise internal persistence without calling Google or exposing manual HTTP input.
 describe('Unmocked: server-selected recommendation persistence', () => {
   // Input: organizer generates recommendations from 3 candidates for a SETUP meetup
@@ -44,7 +44,7 @@ describe('Unmocked: server-selected recommendation persistence', () => {
     const { organizer, meetup } = await setup();
     const published: { room: string; event: string; payload: unknown }[] = [];
     setTransport((room, event, payload) => published.push({ room, event, payload }));
-    const result = await recommendationService.generate(meetup.id, organizer.id, CANDIDATES);
+    const result = await recommendationService.save(meetup.id, organizer.id, CANDIDATES);
     expect(result.candidates.map(c => c.placeId)).toEqual(CANDIDATES.map(c => c.placeId));
     expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('VOTING');
     expect(published).toEqual([
@@ -58,8 +58,8 @@ describe('Unmocked: server-selected recommendation persistence', () => {
   // Expected output: None
   test('rejects non-organizers and missing meetups', async () => {
     const { member, meetup } = await setup();
-    await expect(recommendationService.generate(meetup.id, member.id, CANDIDATES)).rejects.toMatchObject({ status: 403 });
-    await expect(recommendationService.generate(MISSING_ID, member.id, CANDIDATES)).rejects.toMatchObject({ status: 404 });
+    await expect(recommendationService.save(meetup.id, member.id, CANDIDATES)).rejects.toMatchObject({ status: 403 });
+    await expect(recommendationService.save(MISSING_ID, member.id, CANDIDATES)).rejects.toMatchObject({ status: 404 });
     expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
   });
 
@@ -68,8 +68,8 @@ describe('Unmocked: server-selected recommendation persistence', () => {
   // Expected output: None
   test('rejects a second generation', async () => {
     const { organizer, meetup } = await setup();
-    await recommendationService.generate(meetup.id, organizer.id, CANDIDATES);
-    await expect(recommendationService.generate(meetup.id, organizer.id, CANDIDATES)).rejects.toMatchObject({ status: 409 });
+    await recommendationService.save(meetup.id, organizer.id, CANDIDATES);
+    await expect(recommendationService.save(meetup.id, organizer.id, CANDIDATES)).rejects.toMatchObject({ status: 409 });
   });
 });
 
@@ -125,14 +125,9 @@ function rejectionTests(action: string): void {
   });
 }
 
-// Interface POST /api/meetups/:meetupId/recommendations/from-places
-describe('Unmocked: POST /api/meetups/:meetupId/recommendations/from-places', () => {
-  rejectionTests('recommendations/from-places');
-});
-
-// Interface POST /api/meetups/:meetupId/places/search
-describe('Unmocked: POST /api/meetups/:meetupId/places/search', () => {
-  rejectionTests('places/search');
+// Interface POST /api/meetups/:meetupId/recommendations
+describe('Unmocked: POST /api/meetups/:meetupId/recommendations', () => {
+  rejectionTests('recommendations');
 });
 
 // Interface recommendationService.getByMeetupId

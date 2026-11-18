@@ -1,11 +1,34 @@
-import type { TravelMode } from '../common/types';
+import type { Place, TravelMode } from '../common/types';
 import { tuning } from '../config';
 import { normalizedBurden } from '../voting-fairness/fair-credit';
 import { voteWeight } from '../voting-fairness/vote-weight';
 import { preferenceMismatch } from './preference-types';
-import type { CandidateInput, CandidateScores, ScoredCandidate } from './schemas';
 
 // Pure recommendation scoring (no DB or Google access); see documentation/Recommendation_Algorithm_Plan.md
+
+// Score components in minutes of mode-normalized travel; lower is better
+export interface CandidateScores {
+  weightedTravel: number;
+  maxTravel: number;
+  imbalance: number;
+  preference: number;
+  total: number;
+}
+
+// One member's expected trip to a candidate
+export interface CandidateTravel {
+  userId: string;
+  mode: TravelMode;
+  seconds: number;
+  normalizedSeconds: number;
+}
+
+// A place every member can reach, with its score breakdown and each member's trip
+export interface ScoredCandidate extends Place {
+  types: string[];
+  scores: CandidateScores;
+  travel: CandidateTravel[];
+}
 
 export interface ScoringMember {
   userId: string;
@@ -61,7 +84,7 @@ function isValidSeconds(value: number | null | undefined): value is number {
  */
 export function rankCandidates(
   members: ScoringMember[],
-  places: CandidateInput[],
+  places: Place[],
   seconds: (number | null)[][],
 ): ScoredCandidate[] {
   if (members.length === 0) return [];

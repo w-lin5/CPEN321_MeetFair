@@ -1,5 +1,6 @@
 import type { Types } from 'mongoose';
 
+import { tuning } from '../../src/config';
 import { RecommendationModel } from '../../src/recommendation/models';
 import { GroupModel, MeetupModel } from '../../src/users-groups/models';
 import { type CreatedDoc, createUser } from './auth';
@@ -63,6 +64,10 @@ export const PARTICIPATION = {
 
 export const MISSING_ID = '507f1f77bcf86cd799439011';
 
+const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+// A valid scheduledAt for POST /groups/:id/meetups, which only accepts times in the future
+export const FUTURE_TIME = new Date(Date.now() + ONE_WEEK_MS).toISOString();
+
 // Three distinct places, as a recommendation's candidates (POST /meetups/:id/recommendations body)
 export const CANDIDATES = [
   { placeId: 'place-1', name: 'Koerner Library', address: '1958 Main Mall', location: { lat: 49.2667, lng: -123.2551 } },
@@ -104,4 +109,21 @@ export async function createFinalizedMeetup(
   await MeetupModel.updateOne({ _id: meetup._id }, { $set: { winner: CANDIDATES[0], finalizedAt: new Date() } });
   const finalized: CreatedMeetup = await MeetupModel.findById(meetup._id).orFail();
   return finalized;
+}
+
+// A FINALIZED meetup at CANDIDATES[0] that can be settled: its time has passed and the recommendation stores
+// each participant's estimated TRANSIT trip to the winner as [userId, seconds]
+export async function createSettleableMeetup(
+  groupId: string,
+  organizerId: string,
+  estimates: [userId: string, seconds: number][],
+): Promise<CreatedMeetup> {
+  const meetup = await createFinalizedMeetup(groupId, organizerId, estimates.map(([userId]) => userId));
+  await MeetupModel.updateOne(
+    { _id: meetup._id },
+    { $set: { scheduledAt: new Date(Date.now() - tuning.secondsPerMinute * tuning.msPerSecond) } },
+  );
+  const travel = estimates.map(([userId, seconds]) => ({ userId, mode: 'TRANSIT', seconds, normalizedSeconds: seconds }));
+  await RecommendationModel.create({ meetupId: meetup.id, candidates: [{ ...CANDIDATES[0], travel }] });
+  return meetup;
 }

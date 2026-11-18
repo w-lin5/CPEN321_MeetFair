@@ -67,8 +67,8 @@ fun ComposeTestRule.cleanupCreatedGroups(names: Iterable<String>) {
             onNode(group).performClick()
             waitUntil(5_000) { exists(hasContentDescription("Options")) }
             onNodeWithContentDescription("Options").performClick()
-            waitUntil(5_000) { exists(hasTestTag("delete_group")) }
-            onNodeWithTag("delete_group").performClick()
+            waitUntil(5_000) { exists(hasTestTag(TestTags.DELETE_GROUP_BUTTON)) }
+            onNodeWithTag(TestTags.DELETE_GROUP_BUTTON).performClick()
             onNodeWithText("Delete").performClick()
             waitUntil(NETWORK_TIMEOUT_MS) { !exists(group) && exists(groupList) }
         }

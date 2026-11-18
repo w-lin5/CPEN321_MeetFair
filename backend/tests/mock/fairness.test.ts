@@ -2,7 +2,6 @@ import request from 'supertest';
 
 import { createApp } from '../../src/app';
 import { userService } from '../../src/users-groups/user.service';
-import * as fairCreditRule from '../../src/voting-fairness/fair-credit';
 import { fairCreditService } from '../../src/voting-fairness/fair-credit.service';
 import { FairCreditEntryModel, FairCreditModel } from '../../src/voting-fairness/models';
 import { bearer } from '../helpers/auth';
@@ -71,47 +70,42 @@ describe('Mocked: fairCreditService.settleMeetup', () => {
       actualSeconds: (i + 1) * 600,
       source: 'TRACKED' as const,
     }));
-    return { group, meetup, trips };
+    return { ada, grace, group, meetup, trips };
   }
 
-  // Input: valid settlement
-  // Expected behavior: rejects and no balance moves when the ledger cannot be written
-  // Mocked behavior: FairCreditEntryModel.insertMany rejects
+  // Mocked behavior: FairCreditEntryModel.bulkWrite rejects
+  // Input: valid settlement of two trips
+  // Expected behavior: the error propagates; neither a ledger entry nor a balance is written
+  // Expected output: None
   test('Ledger write failure leaves balances untouched', async () => {
     const { group, meetup, trips } = await setup();
-    jest.spyOn(FairCreditEntryModel, 'insertMany').mockRejectedValue(new Error('db down') as never);
+    const write = jest.spyOn(FairCreditEntryModel, 'bulkWrite').mockRejectedValue(new Error('db down') as never);
 
     await expect(fairCreditService.settleMeetup(group.id, meetup.id, trips)).rejects.toThrow('db down');
+
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(await FairCreditEntryModel.countDocuments()).toBe(0);
     expect(await FairCreditModel.countDocuments()).toBe(0);
   });
 
-  // Input: valid settlement
-  // Expected behavior: the error propagates; the ledger rows already written still record what is owed,
-  //                    and the meetup cannot be settled a second time
-  // Mocked behavior: FairCreditModel.bulkWrite rejects
-  test('Balance write failure', async () => {
-    const { group, meetup, trips } = await setup();
-    jest.spyOn(FairCreditModel, 'bulkWrite').mockRejectedValue(new Error('db down') as never);
+  // Mocked behavior: FairCreditModel.bulkWrite rejects once
+  // Input: valid settlement of a 10 and a 20 minute trip, then the same settlement again without the failure
+  // Expected behavior: the error propagates with the ledger already written; settling again completes it, and
+  //   every balance changes exactly once (-5 and +5 minutes)
+  // Expected output: None
+  test('Balance write failure is repaired by settling again', async () => {
+    const { ada, grace, group, meetup, trips } = await setup();
+    jest.spyOn(FairCreditModel, 'bulkWrite').mockRejectedValueOnce(new Error('db down') as never);
 
     await expect(fairCreditService.settleMeetup(group.id, meetup.id, trips)).rejects.toThrow('db down');
     expect(await FairCreditEntryModel.countDocuments()).toBe(2);
-    jest.restoreAllMocks();
-    await expect(fairCreditService.settleMeetup(group.id, meetup.id, trips)).rejects.toMatchObject({ status: 409 });
-  });
-
-  // Input: valid settlement
-  // Expected behavior: a credit change for a member without a submitted trip is recorded as ESTIMATED
-  // Mocked behavior: creditChanges returns a change for a member who is not in the trips
-  test('Change without a matching trip defaults to ESTIMATED', async () => {
-    const { group, meetup, trips } = await setup();
-    const extra = await createUserN(3);
-    jest.spyOn(fairCreditRule, 'creditChanges').mockReturnValue([
-      { userId: extra.id, actualSeconds: 600, normalizedBurden: 600, expectedBurden: 600, delta: 0 },
-    ]);
+    expect(await FairCreditModel.countDocuments()).toBe(0);
 
     await fairCreditService.settleMeetup(group.id, meetup.id, trips);
+    await fairCreditService.settleMeetup(group.id, meetup.id, trips);
 
-    expect(await FairCreditEntryModel.findOne({ userId: extra.id }).orFail()).toMatchObject({ source: 'ESTIMATED' });
+    expect(await FairCreditEntryModel.countDocuments()).toBe(2);
+    expect(await fairCreditService.getBalance(ada.id, group.id)).toBe(-300);
+    expect(await fairCreditService.getBalance(grace.id, group.id)).toBe(300);
   });
 });
-

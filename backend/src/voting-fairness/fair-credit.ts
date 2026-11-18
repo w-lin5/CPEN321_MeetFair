@@ -1,16 +1,20 @@
-import type { TravelMode } from '../common/types';
+import type { CommuteSource, TravelMode } from '../common/types';
 import { tuning } from '../config';
 
 // Pure Fair Credit settlement rule (no DB access)
 
+// One member's commute to a meetup that is being settled
 export interface SettledTrip {
   userId: string;
   mode: TravelMode;
   actualSeconds: number;
+  // Whether actualSeconds was measured by live tracking or estimated by Google
+  source: CommuteSource;
 }
 
 export interface CreditChange {
   userId: string;
+  source: CommuteSource;
   actualSeconds: number;
   // actualSeconds x the mode's multiplier
   normalizedBurden: number;
@@ -31,6 +35,11 @@ function modeMultiplier(mode: TravelMode): number {
   }
 }
 
+// A commute duration we accept for settlement; anything longer than a day is a broken measurement
+export function isValidTripSeconds(seconds: number): boolean {
+  return Number.isFinite(seconds) && seconds >= 0 && seconds <= tuning.maxTripSeconds;
+}
+
 export function normalizedBurden(actualSeconds: number, mode: TravelMode): number {
   return actualSeconds * modeMultiplier(mode);
 }
@@ -48,6 +57,7 @@ export function creditChanges(trips: SettledTrip[]): CreditChange[] {
 
   return burdens.map(({ trip, burden }) => ({
     userId: trip.userId,
+    source: trip.source,
     actualSeconds: Math.round(trip.actualSeconds),
     normalizedBurden: Math.round(burden),
     expectedBurden: Math.round(expected),

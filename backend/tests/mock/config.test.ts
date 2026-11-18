@@ -1,8 +1,8 @@
-const ENV_KEYS = ['NODE_ENV', 'PORT', 'MONGODB_URI', 'JWT_SECRET', 'GOOGLE_CLIENT_ID'] as const;
+const ENV_KEYS = ['NODE_ENV', 'PORT', 'MONGODB_URI', 'JWT_SECRET', 'GOOGLE_CLIENT_ID', 'GOOGLE_PLACES_API_KEY'] as const;
 
 type ConfigModule = typeof import('../../src/config');
 
-let savedEnv: NodeJS.ProcessEnv = {};
+let savedEnv: typeof process.env = {};
 
 // Load config.ts fresh with exactly the given environment (and without reading backend/.env)
 function loadConfig(vars: Partial<Record<(typeof ENV_KEYS)[number], string>>): ConfigModule {
@@ -48,6 +48,7 @@ describe('Mocked: config', () => {
       mongoUri: 'mongodb://localhost:27017/test',
       jwtSecret: 'test-secret',
       googleClientId: 'test-client-id',
+      googleMapsApiKey: 'test-maps-key',
     });
   });
 
@@ -77,6 +78,7 @@ describe('Mocked: config', () => {
       MONGODB_URI: 'mongodb://db:27017/meetfair',
       JWT_SECRET: 'prod-secret',
       GOOGLE_CLIENT_ID: 'prod-client',
+      GOOGLE_PLACES_API_KEY: 'prod-maps-key',
     });
 
     expect(env).toEqual({
@@ -84,18 +86,22 @@ describe('Mocked: config', () => {
       mongoUri: 'mongodb://db:27017/meetfair',
       jwtSecret: 'prod-secret',
       googleClientId: 'prod-client',
+      googleMapsApiKey: 'prod-maps-key',
     });
   });
 
   // Mocked behavior: dotenv/config is replaced with an empty module, so backend/.env is not read
   // Input: outside the test environment, a required variable is missing
   // Expected behavior: loading the config throws, naming the variable
-  test.each([['MONGODB_URI'], ['JWT_SECRET'], ['GOOGLE_CLIENT_ID']])('Missing %s is fatal in production', (missing) => {
+  test.each([
+    ['MONGODB_URI'], ['JWT_SECRET'], ['GOOGLE_CLIENT_ID'], ['GOOGLE_PLACES_API_KEY'],
+  ])('Missing %s is fatal in production', (missing) => {
     const vars = {
       NODE_ENV: 'production',
       MONGODB_URI: 'mongodb://db:27017/meetfair',
       JWT_SECRET: 'prod-secret',
       GOOGLE_CLIENT_ID: 'prod-client',
+      GOOGLE_PLACES_API_KEY: 'prod-maps-key',
     };
     Reflect.deleteProperty(vars, missing);
 

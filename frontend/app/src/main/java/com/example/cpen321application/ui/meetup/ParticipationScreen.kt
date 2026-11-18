@@ -143,14 +143,14 @@ fun ParticipationContent(
     LaunchedEffect(lat, lng, needsAddress) {
         if (needsAddress && lat.isNotBlank() && lng.isNotBlank()) {
             resolvingAddress = true
-            try {
-                selectedLocationName = locationAddress(context, lat.toDouble(), lng.toDouble()).orEmpty()
-            } catch (_: Exception) {
-                // Ignore reverse geocoding errors
-            } finally {
-                needsAddress = false
-                resolvingAddress = false
+            val latitude = lat.toDoubleOrNull()
+            val longitude = lng.toDoubleOrNull()
+            // The address is a convenience; without one the picked coordinates are still used
+            if (latitude != null && longitude != null) {
+                selectedLocationName = locationAddress(context, latitude, longitude).orEmpty()
             }
+            needsAddress = false
+            resolvingAddress = false
         }
     }
 
@@ -168,7 +168,16 @@ fun ParticipationContent(
             },
         )
     } else {
-        val draft = ParticipationDraft(lat, lng, label, selectedLocationName, resolvingAddress, needsAddress, mode, preferences)
+        val draft = ParticipationDraft(
+            lat,
+            lng,
+            label,
+            selectedLocationName,
+            resolvingAddress,
+            needsAddress,
+            mode,
+            preferences,
+        )
         val actions = ParticipationActions(
             onLabelChange = { label = it },
             onModeChange = { mode = it },
@@ -262,7 +271,7 @@ private fun StartingLocationCard(
 
             Text(
                 text = displayText,
-                style = if (hasCoordinates) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.run { if (hasCoordinates) titleMedium else bodySmall },
                 fontWeight = if (hasCoordinates) FontWeight.Bold else FontWeight.Normal,
                 color = if (hasCoordinates) TealPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
             )

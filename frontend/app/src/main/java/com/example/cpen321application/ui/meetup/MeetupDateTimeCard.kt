@@ -43,6 +43,7 @@ import com.google.android.gms.common.api.ApiException
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
 import java.util.Locale
 import kotlinx.coroutines.launch
 
@@ -76,7 +77,7 @@ private fun parseFormattedDateParts(iso: String): FormattedDateParts = try {
         date = zdt.format(DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)),
         time = zdt.format(DateTimeFormatter.ofPattern("h:mm a", Locale.US)),
     )
-} catch (_: Exception) {
+} catch (_: DateTimeParseException) {
     FormattedDateParts(date = iso, time = "Time unavailable")
 }
 
@@ -101,12 +102,26 @@ internal fun MeetupDateTimeCard(
             ) {
                 Surface(shape = RoundedCornerShape(14.dp), color = TealContainer, modifier = Modifier.size(48.dp)) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(imageVector = CalendarIcon, contentDescription = null, tint = TealPrimary, modifier = Modifier.size(24.dp))
+                        Icon(
+                            imageVector = CalendarIcon,
+                            contentDescription = null,
+                            tint = TealPrimary,
+                            modifier = Modifier.size(24.dp),
+                        )
                     }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(text = dateParts.date, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = TealPrimary)
-                    Text(text = dateParts.time, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = dateParts.date,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = TealPrimary,
+                    )
+                    Text(
+                        text = dateParts.time,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
             calendarSection()
@@ -156,8 +171,18 @@ internal fun SmallCalendarButton(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             modifier = Modifier.testTag(TestTags.CALENDAR_ADDED_TEXT),
         ) {
-            Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = StatusGreen, modifier = Modifier.size(16.dp))
-            Text(text = "In calendar", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = StatusGreen)
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = StatusGreen,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                text = "In calendar",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = StatusGreen,
+            )
         }
         return
     }
@@ -185,10 +210,22 @@ internal fun SmallCalendarButton(
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.semantics { contentDescription = "Add to Google Calendar" }.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier
+                .semantics { contentDescription = "Add to Google Calendar" }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
-            Icon(imageVector = CalendarAddIcon, contentDescription = null, tint = TealPrimary, modifier = Modifier.size(16.dp))
-            Text(text = if (submitting) "..." else "Add", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = TealPrimary)
+            Icon(
+                imageVector = CalendarAddIcon,
+                contentDescription = null,
+                tint = TealPrimary,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                text = if (submitting) "..." else "Add",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = TealPrimary,
+            )
         }
     }
 }

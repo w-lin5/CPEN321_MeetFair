@@ -137,6 +137,38 @@ data class GroupFairness(val groupId: String, val members: List<MemberCredit>, v
     fun entriesFor(userId: String?): List<FairnessEntry> = ledger.filter { it.userId == userId }
 }
 
+enum class TripStatus {
+    ACTIVE,
+    ARRIVED,
+    ;
+
+    companion object {
+        fun fromWire(value: String?): TripStatus = entries.firstOrNull { it.name == value } ?: ACTIVE
+    }
+}
+
+// Where a member last reported to be while sharing their trip; updatedAt is an ISO-8601 instant
+data class SharedPosition(val lat: Double, val lng: Double, val accuracyM: Double, val updatedAt: String)
+
+// One member's commute to a finalized meetup, timed by the server from "I'm leaving" to "I arrived"
+data class MeetupTrip(
+    val userId: String,
+    val name: String,
+    val photoUrl: String?,
+    val status: TripStatus,
+    // False while the member paused location sharing; the commute timer keeps running
+    val sharing: Boolean,
+    val startedAt: String,
+    val arrivedAt: String?,
+    // Set by the server on arrival
+    val actualSeconds: Long?,
+    // Only present while the member shares an active trip
+    val location: SharedPosition?,
+) {
+    val hasArrived: Boolean get() = status == TripStatus.ARRIVED
+    val isActive: Boolean get() = status == TripStatus.ACTIVE
+}
+
 // One recommended place; votes refer to it by [placeId] (its Google Places id)
 data class PlaceCandidate(
     val placeId: String,

@@ -21,9 +21,11 @@ export const env = {
   mongoUri: requireValue('MONGODB_URI', process.env.MONGODB_URI, 'mongodb://localhost:27017/test'),
   jwtSecret: requireValue('JWT_SECRET', process.env.JWT_SECRET, 'test-secret'),
   googleClientId: requireValue('GOOGLE_CLIENT_ID', process.env.GOOGLE_CLIENT_ID, 'test-client-id'),
+  // One Google Maps Platform key with the Places API (New) and the Routes API enabled
+  googleMapsApiKey: requireValue('GOOGLE_PLACES_API_KEY', process.env.GOOGLE_PLACES_API_KEY, 'test-maps-key'),
 } as const;
 
-// Every tunable number lives here (no magic numbers elsewhere) 
+// Every tunable number lives here (no magic numbers elsewhere)
 export const tuning = {
   jwtTtlSeconds: 7 * 24 * 60 * 60,
   msPerSecond: 1000,
@@ -34,6 +36,7 @@ export const tuning = {
   inviteCodeAlphabet: 'ABCDEFGHJKMNPQRSTUVWXYZ23456789',
   inviteCodeMaxAttempts: 5,
   inviteCodeInputMaxLength: 16,
+  // MongoDB's error code for a write that violates a unique index
   mongoDuplicateKeyCode: 11000,
 
   // Input limits
@@ -61,6 +64,16 @@ export const tuning = {
   minVoteWeight: 1,
   maxVoteWeight: 1.5,
   fairCreditWeightIntervalSeconds: 30 * 60,
+
+  // Live commute tracking: GPS accuracy radius a device may report, in metres
+  maxLocationAccuracyMeters: 100_000,
+
+  // Google Maps Platform
+  googleRequestTimeoutMs: 10_000,
+  placesSearchRadiusMeters: 10_000,
+  placesMaxResults: 10,
+  // Google's per-request element limit for TRANSIT (the strictest of our modes)
+  routeMatrixMaxElements: 100,
 
   // Recommendation: the top candidates the group votes on
   recommendationCount: 3,

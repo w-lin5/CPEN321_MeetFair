@@ -293,7 +293,7 @@ fun <T> UiStateContent(
     PullToRefreshBox(
         isRefreshing = state is UiState.Loading && lastDisplayedState !is UiState.Loading,
         onRefresh = { if (state !is UiState.Loading) onRetry() },
-        modifier = modifier.fillMaxSize().testTag("pull_to_refresh"),
+        modifier = modifier.fillMaxSize().testTag(TestTags.PULL_TO_REFRESH),
     ) {
         when (displayedState) {
             UiState.Loading -> LoadingView()

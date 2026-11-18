@@ -2,7 +2,8 @@ package com.example.cpen321application.ui.meetup
 
 import android.Manifest
 import android.content.Context
-import android.location.LocationManager
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -35,11 +36,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.cpen321application.AppContainer
-import com.example.cpen321application.data.ApiResult
 import com.example.cpen321application.location.LiveLocationService
+import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.theme.RosePrimary
 import kotlinx.coroutines.launch
 
@@ -64,6 +66,19 @@ private val ArrowRightIcon: ImageVector
         close()
     }.build()
 
+private val LOCATION_PERMISSIONS =
+    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+
+// Before Android 13 notifications need no runtime permission
+private fun needsNotificationPermission(context: Context): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+        PackageManager.PERMISSION_GRANTED
+
+/**
+ * "I'm leaving" / "Resume sharing": asks for consent and the permissions it needs (notifications first,
+ * so the sharing notice can be shown, then location), and then starts sharing the user's trip.
+ */
 @Composable
 internal fun StartTripButton(
     container: AppContainer,
@@ -75,85 +90,56 @@ internal fun StartTripButton(
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val scope = rememberCoroutineScope()
-    var confirm by remember { mutableStateOf(false) }
+    var confirming by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    val start = {
-        if (!busy) scope.launch {
-            busy = true
-            error = null
-            error = executeTripStart(context, lifecycle, container, meetupId, onStarted)
-            busy = false
-        }
-        Unit
-    }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
-        if (LiveLocationService.hasLocationPermission(context)) start()
-        else error = "Location permission is required to share your trip. No trip was started."
-    }
-    val requestLocation = {
-        if (LiveLocationService.hasLocationPermission(context)) start()
-        else permission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-    }
-    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { _ ->
-        requestLocation()
-    }
-
-    StartTripActionView(
-        busy = busy,
-        label = label,
-        error = error,
-        modifier = modifier,
-        onClick = { confirm = true },
-    )
-
-    if (confirm) {
-        StartTripConfirmationDialog(
-            onConfirm = {
-                confirm = false
-                if (android.os.Build.VERSION.SDK_INT >= 33 && androidx.core.content.ContextCompat.checkSelfPermission(
-                        context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                } else requestLocation()
-            },
-            onDismiss = { confirm = false },
-        )
-    }
-}
-
-private suspend fun executeTripStart(
-    context: Context,
-    lifecycle: Lifecycle,
-    container: AppContainer,
-    meetupId: String,
-    onStarted: () -> Unit,
-): String? {
-    if (LiveLocationService.status.value.meetupId?.let { it != meetupId } == true) {
-        return "Stop sharing your current trip before starting another one."
-    }
-    if (!androidx.core.location.LocationManagerCompat.isLocationEnabled(
-            context.getSystemService(LocationManager::class.java)
-        )
-    ) {
-        return "Turn on Location in Android settings, then try again."
-    }
-    return when (val result = container.tripRepository.start(meetupId)) {
-        is ApiResult.Failure -> result.error.message
-        is ApiResult.Success -> {
-            try {
-                check(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
-                LiveLocationService.start(context, meetupId)
-                onStarted()
-                null
-            } catch (_: IllegalStateException) {
-                container.tripRepository.stop(meetupId)
-                "Keep the app open and try resuming location sharing."
-            } catch (_: SecurityException) {
-                container.tripRepository.stop(meetupId)
-                "Allow location access while using the app, then try again."
+    val start: () -> Unit = {
+        if (!busy) {
+            scope.launch {
+                busy = true
+                error = container.tripStarter.start(
+                    meetupId,
+                    appInForeground = { lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) },
+                )
+                busy = false
+                if (error == null) onStarted()
             }
         }
+    }
+    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        if (LiveLocationService.hasLocationPermission(context)) {
+            start()
+        } else {
+            error = "Location permission is required to share your trip. No trip was started."
+        }
+    }
+    val startWithLocation = {
+        if (LiveLocationService.hasLocationPermission(context)) {
+            start()
+        } else {
+            locationPermission.launch(LOCATION_PERMISSIONS)
+        }
+    }
+    // Sharing works without notifications too, so the answer does not matter here
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        startWithLocation()
+    }
+
+    StartTripActionView(busy = busy, label = label, error = error, modifier = modifier, onClick = { confirming = true })
+
+    if (confirming) {
+        StartTripConfirmationDialog(
+            onConfirm = {
+                confirming = false
+                if (needsNotificationPermission(context)) {
+                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    startWithLocation()
+                }
+            },
+            onDismiss = { confirming = false },
+        )
     }
 }
 
@@ -179,7 +165,7 @@ private fun StartTripActionView(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(54.dp)
-                .testTag("start_trip_button"),
+                .testTag(TestTags.START_TRIP_BUTTON),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -213,9 +199,9 @@ private fun StartTripConfirmationDialog(
         text = {
             Text(
                 "Members of this group can see your latest location and profile picture during this trip. " +
-                "Sharing continues with a system notification when the app is in the background. " +
-                "Tap I arrived to stop sharing and save your commute duration. Pause sharing stops location " +
-                "updates but keeps your commute timer running until you tap I arrived."
+                    "Sharing continues with a system notification when the app is in the background. " +
+                    "Tap I arrived to stop sharing and save your commute duration. Pause sharing stops location " +
+                    "updates but keeps your commute timer running until you tap I arrived.",
             )
         },
         confirmButton = {

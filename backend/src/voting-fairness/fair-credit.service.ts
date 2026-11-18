@@ -1,13 +1,12 @@
 import { Types } from 'mongoose';
 
-import { BadRequest, Conflict } from '../common/errors';
-import type { CommuteSource } from '../common/types';
+import { BadRequest } from '../common/errors';
 import { tuning } from '../config';
 import { groupService } from '../users-groups/group.service';
-import { MeetupModel } from '../users-groups/models';
+import { meetupService } from '../users-groups/meetup.service';
 import { profileService } from '../users-groups/profile.service';
 import { userService } from '../users-groups/user.service';
-import { type SettledTrip, creditChanges } from './fair-credit';
+import { type SettledTrip, creditChanges, isValidTripSeconds } from './fair-credit';
 import { FairCreditEntryModel, FairCreditModel } from './models';
 import { voteWeight } from './vote-weight';
 
@@ -16,10 +15,6 @@ import { voteWeight } from './vote-weight';
  * settled meetups). Balances live in fairCredits; every change is explained by a fairCreditEntries row.
  * Other features read and write Fair Credit through this service instead of the models directly.
  */
-
-export interface SettlementTrip extends SettledTrip {
-  source: CommuteSource;
-}
 
 // Balances for one user across groups; groups without a balance yet are absent (initial credit)
 async function balancesForUser(userId: string, groupIds: string[]): Promise<Map<string, number>> {
@@ -32,11 +27,10 @@ async function getBalance(userId: string, groupId: string): Promise<number> {
   return row?.balance ?? tuning.initialFairCredit;
 }
 
-// Balances of several members in one group; members without a balance yet get the initial credit
+// Balances of several members in one group; members without a balance yet are absent (initial credit)
 async function getBalances(groupId: string, userIds: string[]): Promise<Map<string, number>> {
   const rows = await FairCreditModel.find({ groupId, userId: { $in: userIds } });
-  const balances = new Map(rows.map((r): [string, number] => [String(r.userId), r.balance]));
-  return new Map(userIds.map((id): [string, number] => [id, balances.get(id) ?? tuning.initialFairCredit]));
+  return new Map(rows.map((r): [string, number] => [String(r.userId), r.balance]));
 }
 
 // Vote weight from the member's Fair Credit in the meetup's group, snapshotted when a vote is locked
@@ -79,8 +73,8 @@ async function getGroupFairness(groupId: string, userId: string) {
   ]);
   const names = new Map(users.map((u): [string, string] => [String(u.id), userService.displayNameOf(u)]));
   const balances = new Map(credits.map((c): [string, number] => [String(c.userId), c.balance]));
-  const meetupIds = [...new Set(ledger.map((entry) => String(entry.meetupId)))];
-  const meetups = meetupIds.length ? await MeetupModel.find({ _id: { $in: meetupIds }, groupId }) : [];
+  // Ledger rows show which meetup they came from; a deleted meetup leaves its rows without a title
+  const meetups = await meetupService.findByIds([...new Set(ledger.map((entry) => String(entry.meetupId)))]);
   const meetupDetails = new Map(meetups.map((meetup) => [String(meetup.id), meetup]));
 
   return {
@@ -101,59 +95,53 @@ async function getGroupFairness(groupId: string, userId: string) {
   };
 }
 
-function isValidTrip(trip: SettlementTrip): boolean {
-  return Number.isFinite(trip.actualSeconds) && trip.actualSeconds >= 0 && trip.actualSeconds <= tuning.maxTripSeconds;
-}
-
 /**
  * Settle one meetup: turn each member's (mode-normalized) actual travel into a credit change against
- * the group's average, write the ledger, then apply the changes to the balances. Called by commute
- * tracking once every trip has an actual (TRACKED) or fallback (ESTIMATED) duration. 409 if already settled.
+ * the group's average, write the ledger, then apply the changes to the balances.
+ * Safe to repeat: the ledger keeps the first entry per (meetup, member) and every balance remembers
+ * which meetups it already includes, so a settlement that failed halfway is completed by running it again.
  */
-async function settleMeetup(groupId: string, meetupId: string, trips: SettlementTrip[], resume = false) {
-  if (!trips.every(isValidTrip)) {
+async function settleMeetup(groupId: string, meetupId: string, trips: SettledTrip[]) {
+  if (!trips.every((trip) => isValidTripSeconds(trip.actualSeconds))) {
     throw new BadRequest(`Trip durations must be between 0 and ${tuning.maxTripSeconds} seconds`);
   }
-  if (!resume && await FairCreditEntryModel.exists({ meetupId })) throw new Conflict('This meetup is already settled');
+  if (trips.length === 0) return [];
 
-  const sources = new Map(trips.map((t): [string, CommuteSource] => [t.userId, t.source]));
-  const changes = creditChanges(trips);
+  const group = new Types.ObjectId(groupId);
+  const meetup = new Types.ObjectId(meetupId);
 
-  const rows = changes.map((change) => ({
-    ...change,
-    groupId,
-    meetupId,
-    source: sources.get(change.userId) ?? 'ESTIMATED',
-  }));
-  if (resume) {
-    // Resume uses the persisted, immutable snapshot supplied by the settlement service.
-    for (const row of rows) {
-      try {
-        await FairCreditEntryModel.updateOne({ meetupId, userId: row.userId }, { $setOnInsert: row }, { upsert: true });
-      } catch (error) {
-        if (!(typeof error === 'object' && error !== null && 'code' in error && error.code === 11000)) throw error;
-      }
-    }
-  } else {
-    await FairCreditEntryModel.insertMany(rows);
-  }
+  await FairCreditEntryModel.bulkWrite(creditChanges(trips).map((change) => ({
+    updateOne: {
+      filter: { meetupId: meetup, userId: new Types.ObjectId(change.userId) },
+      update: { $setOnInsert: { ...change, groupId: group } },
+      upsert: true,
+    },
+  })));
   const entries = await FairCreditEntryModel.find({ meetupId });
 
-  // Initialize new balances, then apply each ledger entry exactly once.
-  for (const entry of entries) {
-    const filter = { groupId: new Types.ObjectId(groupId), userId: entry.userId };
-    try {
-      await FairCreditModel.updateOne(filter, { $setOnInsert: { ...filter, balance: tuning.initialFairCredit } }, { upsert: true });
-    } catch (error) {
-      if (!(typeof error === 'object' && error !== null && 'code' in error && error.code === 11000)) throw error;
-    }
-    // The balance and deduplication marker change in the same atomic document update.
-    await FairCreditModel.updateOne({ ...filter, appliedMeetups: { $ne: new Types.ObjectId(meetupId) } }, {
-      $inc: { balance: entry.delta }, $addToSet: { appliedMeetups: new Types.ObjectId(meetupId) },
-    });
-  }
+  // Make sure every member has a balance, then add each ledger entry to it exactly once
+  await FairCreditModel.bulkWrite(entries.map((entry) => ({
+    updateOne: {
+      filter: { groupId: group, userId: entry.userId },
+      update: { $setOnInsert: { balance: tuning.initialFairCredit } },
+      upsert: true,
+    },
+  })));
+  await FairCreditModel.bulkWrite(entries.map((entry) => ({
+    updateOne: {
+      // The balance and its "already applied" marker change in the same atomic update
+      filter: { groupId: group, userId: entry.userId, appliedMeetups: { $ne: meetup } },
+      update: { $inc: { balance: entry.delta }, $addToSet: { appliedMeetups: meetup } },
+    },
+  })));
 
   return entries;
+}
+
+// Registered as dependent data of users-groups (app.ts): Fair Credit dies with its group
+async function deleteForGroup(groupId: string) {
+  await FairCreditEntryModel.deleteMany({ groupId });
+  await FairCreditModel.deleteMany({ groupId });
 }
 
 export const fairCreditService = {
@@ -164,4 +152,5 @@ export const fairCreditService = {
   updateProfile,
   getGroupFairness,
   settleMeetup,
+  deleteForGroup,
 };

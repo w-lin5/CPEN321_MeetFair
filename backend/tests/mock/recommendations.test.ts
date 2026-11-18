@@ -1,8 +1,9 @@
 import request, { type Test } from 'supertest';
-import * as placesClient from '../../src/integrations/places.client';
-import * as routesClient from '../../src/integrations/routes.client';
+import { placesClient } from '../../src/integrations/places.client';
+import { routesClient } from '../../src/integrations/routes.client';
 
 import { createApp } from '../../src/app';
+import { UpstreamError } from '../../src/common/errors';
 import { setTransport } from '../../src/realtime/publisher';
 import { RecommendationModel } from '../../src/recommendation/models';
 import { MeetupModel } from '../../src/users-groups/models';
@@ -15,8 +16,8 @@ beforeAll(startDb);
 beforeEach(() => {
   jest.spyOn(placesClient, 'searchNearby').mockResolvedValue(CANDIDATES);
   // Every participant reaches every place in 10 minutes
-  jest.spyOn(routesClient, 'travelSeconds').mockImplementation(async (origins, destinations) =>
-    origins.map(() => destinations.map(() => 600)));
+  jest.spyOn(routesClient, 'travelSeconds').mockImplementation((origins, destinations) =>
+    Promise.resolve(origins.map(() => destinations.map(() => 600))));
 });
 afterEach(async () => {
   jest.restoreAllMocks();
@@ -37,12 +38,12 @@ async function setup() {
 
 function generate(meetupId: string, userId: string): Test {
   return request(createApp())
-    .post(`/api/meetups/${meetupId}/recommendations/from-places`)
+    .post(`/api/meetups/${meetupId}/recommendations`)
     .set('Authorization', bearer(userId));
 }
 
-// Interface POST /api/meetups/:meetupId/recommendations/from-places
-describe('Mocked: POST /api/meetups/:meetupId/recommendations/from-places', () => {
+// Interface POST /api/meetups/:meetupId/recommendations
+describe('Mocked: POST /api/meetups/:meetupId/recommendations', () => {
   // Input: organizer of a SETUP meetup
   // Expected status code: 500
   // Expected behavior: the claimed VOTING status is rolled back to SETUP
@@ -70,6 +71,111 @@ describe('Mocked: POST /api/meetups/:meetupId/recommendations/from-places', () =
     const res = await generate(meetup.id, organizer.id);
 
     expect(res.status).toBe(409);
+    expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
+  });
+});
+
+// Interface POST /api/meetups/:meetupId/recommendations (Google Places and Routes behaviour)
+describe('Mocked: POST /api/meetups/:meetupId/recommendations with Google results', () => {
+  // Mocked behavior: Google Places returns 0, 1 or 2 places
+  // Input: organizer of a SETUP meetup generates recommendations
+  // Expected status code: 400
+  // Expected behavior: travel times are never requested; nothing is stored and the meetup stays in SETUP
+  // Expected output: { error: "Not enough nearby places found. At least 3 are needed to start voting." }
+  test.each([0, 1, 2])('Only %i nearby places', async (count) => {
+    const { organizer, meetup } = await setup();
+    jest.spyOn(placesClient, 'searchNearby').mockResolvedValue(CANDIDATES.slice(0, count));
+    const travel = jest.spyOn(routesClient, 'travelSeconds');
+
+    const res = await generate(meetup.id, organizer.id);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'Not enough nearby places found. At least 3 are needed to start voting.' });
+    expect(travel).not.toHaveBeenCalled();
+    expect(await RecommendationModel.countDocuments()).toBe(0);
+    expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
+  });
+
+  // Mocked behavior: Google Places returns 3 places, but Google Routes finds no route to the third
+  // Input: organizer of a SETUP meetup generates recommendations
+  // Expected status code: 400
+  // Expected behavior: a place a member cannot reach is not a candidate, so too few remain; the meetup stays in SETUP
+  // Expected output: None
+  test('Too few places are reachable', async () => {
+    const { organizer, meetup } = await setup();
+    jest.spyOn(routesClient, 'travelSeconds').mockResolvedValue([[600, 600, null]]);
+
+    const res = await generate(meetup.id, organizer.id);
+
+    expect(res.status).toBe(400);
+    expect(await RecommendationModel.countDocuments()).toBe(0);
+    expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
+  });
+
+  // Mocked behavior: Google Places fails; then Google Routes fails
+  // Input: organizer of a SETUP meetup generates recommendations
+  // Expected status code: 502 both times
+  // Expected behavior: nothing is stored and the meetup stays in SETUP, so the organizer can try again
+  // Expected output: { error: <the integration's safe message> }
+  test.each([
+    ['Places', () => jest.spyOn(placesClient, 'searchNearby'), 'Unable to retrieve nearby places. Please try again later.'],
+    ['Routes', () => jest.spyOn(routesClient, 'travelSeconds'), 'Unable to estimate travel times. Please try again later.'],
+  ] as const)('Google %s failure', async (_name, spyOnClient, message) => {
+    const { organizer, meetup } = await setup();
+    spyOnClient().mockRejectedValue(new UpstreamError(message));
+
+    const res = await generate(meetup.id, organizer.id);
+
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({ error: message });
+    expect(await RecommendationModel.countDocuments()).toBe(0);
+    expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
+  });
+
+  // Mocked behavior: Google Places and Routes succeed
+  // Input: organizer (at 49.2, -123.2, prefers FOOD) and a member (at 49.4, -123.4, prefers OUTDOORS) submitted details
+  // Expected status code: 201
+  // Expected behavior: places are searched once, around the average location and for both members' place types;
+  //   travel times are requested once for both members to the 3 places
+  // Expected output: None
+  test('Searches around all participants for all their preferences', async () => {
+    const { organizer, meetup } = await setup();
+    const member = await createUserN(2);
+    await addMember(String(meetup.groupId), member.id);
+    await MeetupModel.updateOne({ _id: meetup.id }, { $set: { participants: [
+      { userId: organizer.id, startLocation: { lat: 49.2, lng: -123.2 }, travelMode: 'WALK', preferences: ['FOOD'] },
+      { userId: member.id, startLocation: { lat: 49.4, lng: -123.4 }, travelMode: 'DRIVE', preferences: ['OUTDOORS'] },
+    ] } });
+    const search = jest.spyOn(placesClient, 'searchNearby');
+    const travel = jest.spyOn(routesClient, 'travelSeconds');
+
+    expect((await generate(meetup.id, organizer.id)).status).toBe(201);
+
+    expect(search).toHaveBeenCalledTimes(1);
+    const [center, placeTypes] = search.mock.calls[0] ?? [];
+    expect(center?.lat).toBeCloseTo(49.3);
+    expect(center?.lng).toBeCloseTo(-123.3);
+    expect(placeTypes).toEqual(['restaurant', 'park']);
+    expect(travel).toHaveBeenCalledTimes(1);
+    expect(travel.mock.calls[0]?.[0].map((origin) => origin.mode)).toEqual(['WALK', 'DRIVE']);
+    expect(travel.mock.calls[0]?.[1]).toHaveLength(3);
+  });
+
+  // Mocked behavior: none is reached (Google is not called)
+  // Input: the organizer's stored entry has no start location (written around the API); organizer generates
+  // Expected status code: 409
+  // Expected behavior: Google is not called and the meetup stays in SETUP
+  // Expected output: { error: "A member has an invalid starting location. Please submit it again." }
+  test('Participant without a start location', async () => {
+    const { organizer, meetup } = await setup();
+    await MeetupModel.collection.updateOne({ _id: meetup._id }, { $unset: { 'participants.0.startLocation': '' } });
+    const search = jest.spyOn(placesClient, 'searchNearby');
+
+    const res = await generate(meetup.id, organizer.id);
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: 'A member has an invalid starting location. Please submit it again.' });
+    expect(search).not.toHaveBeenCalled();
     expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
   });
 });
@@ -119,8 +225,8 @@ async function setupThreeMembers() {
   return { a: a, b: b, c: c, group, meetup };
 }
 
-// Interface POST /api/meetups/:meetupId/recommendations/from-places, GET /api/meetups/:meetupId/recommendations
-describe('Mocked: fairness-ranked recommendations end to end', () => {
+// Interface POST /api/meetups/:meetupId/recommendations, then GET /api/meetups/:meetupId/recommendations
+describe('Mocked: POST /api/meetups/:meetupId/recommendations ranked by fairness', () => {
   // Mocked behavior: Google returns 4 places; travel times as in SPREAD_MINUTES; nobody has Fair Credit
   // Input: organizer a generates, then member b loads the recommendations
   // Expected status code: 201; 200
@@ -144,7 +250,8 @@ describe('Mocked: fairness-ranked recommendations end to end', () => {
       .get(`/api/meetups/${meetup.id}/recommendations`)
       .set('Authorization', bearer(b.id));
     expect(loaded.status).toBe(200);
-    expect(loaded.body.candidates[1].scores.total).toBeCloseTo(res.body.candidates[1].scores.total);
+    const storedTotal: number = res.body.candidates[1].scores.total;
+    expect(loaded.body.candidates[1].scores.total).toBeCloseTo(storedTotal);
   });
 
   // Mocked behavior: as above, but member c has 5 hours of Fair Credit in the group

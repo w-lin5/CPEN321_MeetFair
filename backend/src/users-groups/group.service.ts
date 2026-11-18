@@ -1,21 +1,23 @@
 import { randomInt } from 'node:crypto';
 
+import type { Types } from 'mongoose';
+
 import { BadRequest, Conflict, Forbidden, NotFound } from '../common/errors';
 import { tuning } from '../config';
-import { GroupModel, MeetupModel } from './models';
-import { publisher } from '../realtime/publisher';
+import { isDuplicateKeyError } from '../db';
 import { SERVER_EVENTS, meetupRoom } from '../realtime/events';
-import { VoteModel } from '../voting-fairness/models';
+import { publisher } from '../realtime/publisher';
+import { dependentData } from './dependent-data';
+import { GroupModel, MeetupModel } from './models';
 import { userService } from './user.service';
-import { TripModel } from '../live-location/models';
+
+type GroupDoc = Awaited<ReturnType<typeof requireMembership>>;
+
+const MEMBERSHIP_CHANGED = 'Group membership changed. Please refresh and try again.';
 
 function generateInviteCode(): string {
   const alphabet = tuning.inviteCodeAlphabet;
   return Array.from({ length: tuning.inviteCodeLength }, () => alphabet.charAt(randomInt(alphabet.length))).join('');
-}
-
-function isDuplicateKey(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && 'code' in err && err.code === tuning.mongoDuplicateKeyCode;
 }
 
 // Insert the group with a fresh invite code, retrying on a collision; null if every attempt collided
@@ -29,7 +31,7 @@ async function insertWithUniqueInviteCode(userId: string, name: string) {
         members: [{ userId, role: 'ORGANIZER' }],
       });
     } catch (err) {
-      if (!isDuplicateKey(err)) throw err;
+      if (!isDuplicateKeyError(err)) throw err;
     }
   }
   return null;
@@ -46,16 +48,15 @@ async function listForUser(userId: string) {
   return GroupModel.find({ 'members.userId': userId }).sort({ createdAt: -1 });
 }
 
+function isMember(group: { members: { userId: unknown }[] }, userId: string): boolean {
+  return group.members.some((member) => String(member.userId) === userId);
+}
+
 // Load a group, ensuring it exists and the user is a member (404 / 403 otherwise)
 async function requireMembership(groupId: string, userId: string) {
   const group = await GroupModel.findById(groupId);
-
   if (!group) throw new NotFound('Group not found');
-  
-  if (!group.members.some((m) => String(m.userId) === userId)) {
-    throw new Forbidden('Not a member of this group');
-  }
-  
+  if (!isMember(group, userId)) throw new Forbidden('Not a member of this group');
   return group;
 }
 
@@ -85,70 +86,89 @@ async function join(userId: string, inviteCode: string) {
     { _id: group._id, 'members.userId': { $ne: userId } },
     { $push: { members: { userId, role: 'MEMBER', joinedAt: new Date() } } },
   );
-  
   if (result.modifiedCount === 0) throw new Conflict('Already a member of this group');
 
   return GroupModel.findById(group._id).orFail();
 }
 
-async function removeMember(groupId: string, organizerId: string, memberId: string) {
-  const group = await requireMembership(groupId, organizerId);
+// Ids of the group's meetups, optionally only those in one status
+async function meetupIdsOf(groupId: string, status?: 'SETUP'): Promise<string[]> {
+  const meetups = await MeetupModel.find(status ? { groupId, status } : { groupId }).select('_id');
+  return meetups.map((meetup) => String(meetup._id));
+}
+
+// A departing meetup organizer must not leave an unfinished meetup without anyone able to manage it
+async function handOverMeetups(groupId: string, fromUserId: string, toUserId: string | Types.ObjectId): Promise<void> {
+  await MeetupModel.updateMany(
+    { groupId, organizerId: fromUserId, status: { $ne: 'SETTLED' } },
+    { $set: { organizerId: toUserId } },
+  );
+}
+
+// Open meetup pages reload silently: a departure is not announced like a deletion
+function publishMeetupsUpdated(meetupIds: string[]): void {
+  for (const meetupId of meetupIds) {
+    publisher.publish(meetupRoom(meetupId), SERVER_EVENTS.meetupUpdated, { meetupId });
+  }
+}
+
+function requireRemovable(group: GroupDoc, organizerId: string, memberId: string): void {
   if (String(group.organizerId) !== organizerId) throw new Forbidden('Only the group organizer can remove members');
   if (memberId === organizerId) throw new BadRequest('The group organizer cannot remove themselves');
-  if (!group.members.some(member => String(member.userId) === memberId)) throw new NotFound('Member not found in this group');
-  const participatingInActiveVote = await MeetupModel.exists({
+  if (!isMember(group, memberId)) throw new NotFound('Member not found in this group');
+}
+
+// The group organizer removes another member together with everything they entered in the group's meetups
+async function removeMember(groupId: string, organizerId: string, memberId: string) {
+  requireRemovable(await requireMembership(groupId, organizerId), organizerId, memberId);
+  // Their details already count towards an open vote or a finalized destination
+  const inActiveMeetup = await MeetupModel.exists({
     groupId,
     'participants.userId': memberId,
     status: { $in: ['VOTING', 'FINALIZED'] },
   });
-  if (participatingInActiveVote) {
-    throw new Conflict('This member has entered details for a meetup whose voting has started. Settle that meetup before removing them.');
+  if (inActiveMeetup) {
+    throw new Conflict(
+      'This member has entered details for a meetup whose voting has started. Settle that meetup before removing them.',
+    );
   }
-  const meetups = await MeetupModel.find({ groupId }).select('_id');
-  const meetupIds = meetups.map(meetup => meetup._id);
-  const result = await GroupModel.updateOne(
+
+  const meetupIds = await meetupIdsOf(groupId);
+  const removed = await GroupModel.updateOne(
     { _id: groupId, organizerId, 'members.userId': memberId },
     { $pull: { members: { userId: memberId } } },
   );
-  if (result.modifiedCount === 0) throw new Conflict('Group membership changed. Please refresh and try again.');
+  if (removed.modifiedCount === 0) throw new Conflict(MEMBERSHIP_CHANGED);
+
+  // Membership is revoked first; then everything the member entered in this group goes
   publisher.revokeUser(memberId);
-  // Membership is revoked first; remove all submitted inputs and votes in this group only.
   await MeetupModel.updateMany({ groupId }, { $pull: { participants: { userId: memberId } } });
-  await VoteModel.deleteMany({ meetupId: { $in: meetupIds }, userId: memberId });
-  await TripModel.updateMany({ meetupId: { $in: meetupIds }, userId: memberId }, { $set: { sharing: false, location: null } });
-  // A removed meetup organizer must not leave an active meetup without anyone able to manage it.
-  await MeetupModel.updateMany(
-    { groupId, organizerId: memberId, status: { $ne: 'SETTLED' } },
-    { $set: { organizerId } },
-  );
-  for (const meetupId of meetupIds) {
-    publisher.publish(meetupRoom(String(meetupId)), SERVER_EVENTS.meetupUpdated, { meetupId: String(meetupId) });
-  }
+  await dependentData.participationWithdrawn(meetupIds, memberId);
+  await dependentData.memberLeft(meetupIds, memberId);
+  await handOverMeetups(groupId, memberId, organizerId);
+  publishMeetupsUpdated(meetupIds);
 }
 
+// A member leaves the group; their details are withdrawn from meetups that are still in SETUP
 async function leave(groupId: string, userId: string) {
   const group = await requireMembership(groupId, userId);
-  if (String(group.organizerId) === userId) throw new BadRequest('The group organizer cannot leave. Delete the group instead.');
+  if (String(group.organizerId) === userId) {
+    throw new BadRequest('The group organizer cannot leave. Delete the group instead.');
+  }
   if (await MeetupModel.exists({ groupId, status: 'VOTING', 'participants.userId': userId })) {
     throw new Conflict('You cannot leave while a meetup you joined is still voting.');
   }
-  const setupMeetups = await MeetupModel.find({ groupId, status: 'SETUP' }).select('_id');
-  const allMeetups = await MeetupModel.find({ groupId }).select('_id');
-  await TripModel.updateMany({ meetupId: { $in: allMeetups.map(m => m._id) }, userId }, { $set: { sharing: false, location: null } });
-  const setupIds = setupMeetups.map(meetup => meetup._id);
+
+  const [meetupIds, setupMeetupIds] = await Promise.all([meetupIdsOf(groupId), meetupIdsOf(groupId, 'SETUP')]);
+  await dependentData.memberLeft(meetupIds, userId);
   await MeetupModel.updateMany({ groupId, status: 'SETUP' }, { $pull: { participants: { userId } } });
-  await VoteModel.deleteMany({ meetupId: { $in: setupIds }, userId });
-  await MeetupModel.updateMany(
-    { groupId, organizerId: userId, status: { $ne: 'SETTLED' } },
-    { $set: { organizerId: group.organizerId } },
-  );
-  const result = await GroupModel.updateOne({ _id: groupId, 'members.userId': userId }, { $pull: { members: { userId } } });
-  if (result.modifiedCount === 0) throw new Conflict('Group membership changed. Please refresh and try again.');
+  await dependentData.participationWithdrawn(setupMeetupIds, userId);
+  await handOverMeetups(groupId, userId, group.organizerId);
+
+  const left = await GroupModel.updateOne({ _id: groupId, 'members.userId': userId }, { $pull: { members: { userId } } });
+  if (left.modifiedCount === 0) throw new Conflict(MEMBERSHIP_CHANGED);
   publisher.revokeUser(userId);
-  // Silent refresh only: leaving is not a deletion notification.
-  for (const meetupId of setupIds) {
-    publisher.publish(meetupRoom(String(meetupId)), SERVER_EVENTS.meetupUpdated, { meetupId: String(meetupId) });
-  }
+  publishMeetupsUpdated(setupMeetupIds);
 }
 
 export const groupService = { create, listForUser, requireMembership, getDetail, join, removeMember, leave };

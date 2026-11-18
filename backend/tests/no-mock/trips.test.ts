@@ -1,7 +1,7 @@
 import request, { type Test } from 'supertest';
 import { createApp } from '../../src/app';
 import { signSessionToken } from '../../src/common/session';
-import { TripModel } from '../../src/live-location/models';
+import { TripModel } from '../../src/voting-fairness/models';
 import { MeetupModel } from '../../src/users-groups/models';
 import { clearDb, startDb, stopDb } from '../helpers/db';
 import { addMember, createFinalizedMeetup, createGroup, createUserN } from '../helpers/factories';
@@ -66,14 +66,13 @@ describe('Unmocked: POST /api/meetups/:meetupId/trip/arrive', () => {
   // Expected behavior: a single trip is stored with one server-set startedAt; the location is saved for the caller, not the spoofed
   //   user; the duration is computed by the server (client value ignored); arrival is idempotent and clears the location
   // Expected output: trip list shows the member sharing their location; arrived trip
-  //   { status: "ARRIVED", sharing: false, location: null, source: "TRACKED", actualSeconds: 125-129 } with an unchanged arrivedAt on repeat
+  //   { status: "ARRIVED", sharing: false, location: null, actualSeconds: 125-129 } with an unchanged arrivedAt on repeat
   test('server times one trip, accepts latest positions, and clears location on idempotent arrival', async () => {
     const { meetup, member, viewer, auth, call } = await setup();
-    const starts = await Promise.all([call('start'), call('start')]);
-    expect(starts.map(r => Number(r.status))).toEqual([200, 200]);
+    const [firstStart, secondStart] = await Promise.all([call('start'), call('start')]);
+    expect([firstStart.status, secondStart.status]).toEqual([200, 200]);
     expect(await TripModel.countDocuments({ meetupId: meetup.id })).toBe(1);
-    const startedAt = starts[0]?.body.startedAt as string;
-    expect(starts[1]?.body.startedAt).toBe(startedAt);
+    expect(secondStart.body.startedAt).toBe(firstStart.body.startedAt);
     const position = await request(app).put(`/api/meetups/${meetup.id}/trip/location`).set('Authorization', auth(member.id))
       .send({ lat: 49.2, lng: -123.2, accuracyM: 8, userId: viewer.id });
     expect(position.status).toBe(200);
@@ -83,7 +82,7 @@ describe('Unmocked: POST /api/meetups/:meetupId/trip/arrive', () => {
     await TripModel.updateOne({ meetupId: meetup.id }, { $set: { startedAt: new Date(Date.now() - 125000) } });
     const arrived = await call('arrive').send({ actualSeconds: 99999 });
     expect(arrived.status).toBe(200);
-    expect(arrived.body).toMatchObject({ status: 'ARRIVED', sharing: false, location: null, source: 'TRACKED' });
+    expect(arrived.body).toMatchObject({ status: 'ARRIVED', sharing: false, location: null });
     expect(arrived.body.actualSeconds).toBeGreaterThanOrEqual(125);
     expect(arrived.body.actualSeconds).toBeLessThan(130);
     expect((await call('arrive')).body.arrivedAt).toBe(arrived.body.arrivedAt);
@@ -134,8 +133,8 @@ describe('Unmocked: GET /api/meetups/:meetupId/trips', () => {
   });
 });
 
-// Interface POST /api/groups/:groupId/leave (trip side effects)
-describe('Unmocked: POST /api/groups/:groupId/leave', () => {
+// Interface DELETE /api/groups/:groupId/members/me (trip side effects)
+describe('Unmocked: DELETE /api/groups/:groupId/members/me', () => {
   // Input: participant sharing their location leaves the group, then lists trips
   // Expected status code: 204; then 403
   // Expected behavior: the trip stops sharing and its location is cleared
@@ -145,7 +144,7 @@ describe('Unmocked: POST /api/groups/:groupId/leave', () => {
     await call('start');
     await request(app).put(`/api/meetups/${meetup.id}/trip/location`).set('Authorization', auth(member.id))
       .send({ lat: 49, lng: -123, accuracyM: 8 });
-    expect((await request(app).post(`/api/groups/${group.id}/leave`).set('Authorization', auth(member.id))).status).toBe(204);
+    expect((await request(app).delete(`/api/groups/${group.id}/members/me`).set('Authorization', auth(member.id))).status).toBe(204);
     expect(await TripModel.findOne({ meetupId: meetup.id }).lean()).toMatchObject({ sharing: false, location: null });
     expect((await request(app).get(`/api/meetups/${meetup.id}/trips`).set('Authorization', auth(member.id))).status).toBe(403);
   });

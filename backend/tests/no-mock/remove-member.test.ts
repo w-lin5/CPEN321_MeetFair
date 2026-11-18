@@ -3,8 +3,6 @@ import { createApp } from '../../src/app';
 import { setRevoker } from '../../src/realtime/publisher';
 import { GroupModel, MeetupModel } from '../../src/users-groups/models';
 import { VoteModel, FairCreditEntryModel } from '../../src/voting-fairness/models';
-import * as placesClient from '../../src/integrations/places.client';
-import { placeSearchService } from '../../src/recommendation/place-search.service';
 import { bearer } from '../helpers/auth';
 import { clearDb, startDb, stopDb } from '../helpers/db';
 import { addMember, addParticipants, createGroup, createMeetup, createUserN, createVotingMeetup, MISSING_ID, PARTICIPATION, PLACE_1 } from '../helpers/factories';
@@ -195,21 +193,20 @@ describe('Unmocked: DELETE /api/groups/:groupId/members/:memberId', () => {
     expect(votes.body).toMatchObject({ participantCount: 1, lockedCount: 0, totalWeight: 0 });
   });
 
-  // Input: organizer removes a SETUP participant, searches places (Google search stubbed to capture its arguments), then the member rejoins
+  // Input: organizer removes a SETUP participant, then the member rejoins with the invite code
   // Expected status code: 204
-  // Expected behavior: the search uses only the organizer's location and FOOD preference; rejoining does not restore the removed details
+  // Expected behavior: only the organizer's details remain, so later recommendations use them alone; rejoining does not
+  //   restore the removed details
   // Expected output: None
-  test('subsequent searches use only remaining members and rejoining does not restore old inputs', async () => {
+  test('removal drops the inputs of the member and rejoining does not restore them', async () => {
     const { organizer, member, group } = await setup();
     const meetup = await createMeetup(group.id, organizer.id);
     await MeetupModel.updateOne({ _id: meetup.id }, { $set: { participants: [
       { userId: organizer.id, ...PARTICIPATION, startLocation: { lat: 40, lng: -74 }, preferences: ['FOOD'] },
       { userId: member.id, ...PARTICIPATION, startLocation: { lat: 50, lng: -120 } },
     ] } });
-    const google = jest.spyOn(placesClient, 'searchNearby').mockResolvedValue([]);
     expect((await remove(group.id, member.id, organizer.id)).status).toBe(204);
-    await placeSearchService.search(meetup.id, organizer.id);
-    expect(google).toHaveBeenCalledWith({ lat: 40, lng: -74 }, ['restaurant']);
+    expect((await MeetupModel.findById(meetup.id).orFail()).participants.map(p => String(p.userId))).toEqual([organizer.id]);
     await request(createApp()).post('/api/groups/join').set('Authorization', bearer(member.id)).send({ inviteCode: group.inviteCode });
     expect((await MeetupModel.findById(meetup.id).orFail()).participants.map(p => String(p.userId))).toEqual([organizer.id]);
   });

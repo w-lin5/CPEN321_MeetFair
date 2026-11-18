@@ -5,6 +5,7 @@ import { MeetupModel } from '../../src/users-groups/models';
 import { bearer } from '../helpers/auth';
 import { clearDb, startDb, stopDb } from '../helpers/db';
 import {
+  FUTURE_TIME,
   MISSING_ID,
   PARTICIPATION,
   addMember,
@@ -76,9 +77,9 @@ describe('Unmocked: POST /api/groups/:groupId/meetups', () => {
   // Expected status code: 400
   // Expected behavior: nothing is stored
   test.each([
-    [{ scheduledAt: '2026-11-05T22:30:00Z' }],
-    [{ title: '   ', scheduledAt: '2026-11-05T22:30:00Z' }],
-    [{ title: 'x'.repeat(101), scheduledAt: '2026-11-05T22:30:00Z' }],
+    [{ scheduledAt: FUTURE_TIME }],
+    [{ title: '   ', scheduledAt: FUTURE_TIME }],
+    [{ title: 'x'.repeat(101), scheduledAt: FUTURE_TIME }],
     [{ title: 'Library' }],
     [{ title: 'Library', scheduledAt: 'tomorrow' }],
     [{ title: 'Library', scheduledAt: '2026-13-45T99:99' }],
@@ -104,7 +105,7 @@ describe('Unmocked: POST /api/groups/:groupId/meetups', () => {
     const res = await request(createApp())
       .post(`/api/groups/${group.id}/meetups`)
       .set('Authorization', bearer(outsider.id))
-      .send({ title: 'Library', scheduledAt: '2026-11-05T22:30:00Z' });
+      .send({ title: 'Library', scheduledAt: FUTURE_TIME });
 
     expect(res.status).toBe(403);
     expect(await MeetupModel.countDocuments()).toBe(0);
@@ -118,7 +119,7 @@ describe('Unmocked: POST /api/groups/:groupId/meetups', () => {
     const res = await request(createApp())
       .post(`/api/groups/${groupId}/meetups`)
       .set('Authorization', bearer(user.id))
-      .send({ title: 'Library', scheduledAt: '2026-11-05T22:30:00Z' });
+      .send({ title: 'Library', scheduledAt: FUTURE_TIME });
 
     expect(res.status).toBe(status);
   });
@@ -128,7 +129,7 @@ describe('Unmocked: POST /api/groups/:groupId/meetups', () => {
   test('No token', async () => {
     const res = await request(createApp())
       .post(`/api/groups/${MISSING_ID}/meetups`)
-      .send({ title: 'Library', scheduledAt: '2026-11-05T22:30:00Z' });
+      .send({ title: 'Library', scheduledAt: FUTURE_TIME });
 
     expect(res.status).toBe(401);
   });

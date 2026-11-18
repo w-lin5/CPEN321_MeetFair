@@ -1,25 +1,28 @@
-import { BadRequest, NotFound, Conflict } from '../common/errors';
-import type { MeetupStatus } from '../common/types';
-import { groupService } from './group.service';
-import { MeetupModel, type MeetupWinner } from './models';
-import type { ParticipationInput } from './schemas';
-import { VoteModel } from '../voting-fairness/models';
-import { publisher } from '../realtime/publisher';
+import { BadRequest, Conflict, NotFound } from '../common/errors';
+import type { LatLng, MeetupStatus, TravelMode } from '../common/types';
 import { SERVER_EVENTS, meetupRoom } from '../realtime/events';
+import { publisher } from '../realtime/publisher';
+import { dependentData } from './dependent-data';
+import { groupService } from './group.service';
+import { type MeetupFields, MeetupModel, type MeetupWinner } from './models';
+import type { ParticipationInput } from './schemas';
 
-// Create a meetup in SETUP (enum); the caller must be a group member and becomes its organizer
+// A participant as the travel computations need them: who, from where, how, and what they prefer
+export interface Traveller {
+  userId: string;
+  location: LatLng;
+  mode: TravelMode;
+  preferences: string[];
+}
+
+// Create a meetup in SETUP; the caller must be a group member and becomes its organizer
 async function create(userId: string, groupId: string, input: { title: string; scheduledAt: string }) {
   await groupService.requireMembership(groupId, userId);
   const scheduledAt = new Date(input.scheduledAt);
   if (!Number.isFinite(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now()) {
     throw new BadRequest('Meeting time must be in the future.');
   }
-  return MeetupModel.create({
-    groupId,
-    organizerId: userId,
-    title: input.title,
-    scheduledAt,
-  });
+  return MeetupModel.create({ groupId, organizerId: userId, title: input.title, scheduledAt });
 }
 
 async function listForGroup(groupId: string, userId: string) {
@@ -34,13 +37,33 @@ async function getById(meetupId: string) {
   return meetup;
 }
 
+// Meetups by id without an access check, for callers that already checked the group; missing ids are skipped
+async function findByIds(meetupIds: string[]) {
+  return MeetupModel.find({ _id: { $in: meetupIds } });
+}
+
 // Load a meetup, ensuring it exists and the user belongs to its group (404 / 403 otherwise)
 async function getForMember(meetupId: string, userId: string) {
   const meetup = await getById(meetupId);
-
   await groupService.requireMembership(String(meetup.groupId), userId);
-
   return meetup;
+}
+
+// Every participant with the start location and travel mode they submitted
+function travellers(meetup: Pick<MeetupFields, 'participants'>): Traveller[] {
+  return meetup.participants.map((participant) => {
+    const start = participant.startLocation;
+    // The schema requires coordinates; this only guards against a document written around it
+    if (!start || !Number.isFinite(start.lat) || !Number.isFinite(start.lng)) {
+      throw new Conflict('A member has an invalid starting location. Please submit it again.');
+    }
+    return {
+      userId: String(participant.userId),
+      location: { lat: start.lat, lng: start.lng },
+      mode: participant.travelMode,
+      preferences: participant.preferences,
+    };
+  });
 }
 
 // Atomic status change: only moves the meetup if it is still in `from`; returns whether it moved
@@ -67,7 +90,7 @@ async function recordCalendarEvent(meetupId: string, userId: string, eventId: st
   return recorded.modifiedCount > 0;
 }
 
-// Add or replace the caller's participation entry (i.e., details and preferences); only allowed while the meetup is in SETUP
+// Add or replace the caller's participation entry (start location, travel mode, preferences) while in SETUP
 async function submitParticipation(meetupId: string, userId: string, input: ParticipationInput) {
   await getForMember(meetupId, userId);
   const entry = { userId, ...input };
@@ -77,13 +100,11 @@ async function submitParticipation(meetupId: string, userId: string, input: Part
     { _id: meetupId, status: 'SETUP', 'participants.userId': userId },
     { $set: { 'participants.$': entry } },
   );
-
   if (replaced.matchedCount === 0) {
     const added = await MeetupModel.updateOne(
       { _id: meetupId, status: 'SETUP', 'participants.userId': { $ne: userId } },
       { $push: { participants: entry } },
     );
-
     if (added.modifiedCount === 0) throw new Conflict('Meetup is no longer accepting participation');
   }
 
@@ -92,26 +113,30 @@ async function submitParticipation(meetupId: string, userId: string, input: Part
   return updated;
 }
 
-async function leave(meetupId: string, userId: string) {
-  const meetup = await getForMember(meetupId, userId);
-  if (meetup.status !== 'SETUP') throw new Conflict('You can only leave a meetup before voting starts.');
-  const result = await MeetupModel.updateOne(
+// Withdraw the caller's participation entry; only possible before voting starts
+async function withdrawParticipation(meetupId: string, userId: string) {
+  await getForMember(meetupId, userId);
+  // Conditional on SETUP so a vote that starts concurrently never loses a participant
+  const withdrawn = await MeetupModel.updateOne(
     { _id: meetupId, status: 'SETUP' },
     { $pull: { participants: { userId } } },
   );
-  if (result.matchedCount === 0) throw new Conflict('Voting has started. You can no longer leave this meetup.');
-  await VoteModel.deleteMany({ meetupId, userId });
+  if (withdrawn.matchedCount === 0) throw new Conflict('You can only leave a meetup before voting starts.');
+
+  await dependentData.participationWithdrawn([meetupId], userId);
   publisher.publish(meetupRoom(meetupId), SERVER_EVENTS.meetupUpdated, { meetupId });
 }
 
 export const meetupService = {
-  leave,
   create,
   listForGroup,
   getById,
+  findByIds,
   getForMember,
-  submitParticipation,
+  travellers,
   transitionStatus,
   finalize,
   recordCalendarEvent,
+  submitParticipation,
+  withdrawParticipation,
 };

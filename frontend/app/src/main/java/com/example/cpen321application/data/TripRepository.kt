@@ -1,28 +1,30 @@
 package com.example.cpen321application.data
 
+import com.example.cpen321application.model.MeetupTrip
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class SharedPosition(val lat: Double, val lng: Double, val accuracyM: Double, val updatedAt: String)
-data class MeetupTrip(val userId: String, val name: String, val photoUrl: String?, val status: String,
-    val sharing: Boolean, val startedAt: String, val arrivedAt: String?, val actualSeconds: Long?,
-    val location: SharedPosition?)
-
-internal fun parseTrip(o: JSONObject) = MeetupTrip(
-    o.getString("userId"), o.optString("name", "You"), o.stringOrNull("photoUrl"), o.getString("status"),
-    o.getBoolean("sharing"), o.getString("startedAt"), o.stringOrNull("arrivedAt"),
-    if (o.isNull("actualSeconds")) null else o.getLong("actualSeconds"),
-    o.optJSONObject("location")?.let { SharedPosition(it.getDouble("lat"), it.getDouble("lng"),
-        it.getDouble("accuracyM"), it.getString("updatedAt")) },
-)
-
+/** Live commute tracking: the caller's own trip to a finalized meetup and everyone's trips for the map. */
 class TripRepository(private val api: ApiClient) {
-    suspend fun list(id: String): ApiResult<List<MeetupTrip>> = api.get("meetups/$id/trips")
-        .parse { JSONArray(it).mapObjects(::parseTrip) }
-    suspend fun start(id: String): ApiResult<MeetupTrip> = api.post("meetups/$id/trip/start").parse { parseTrip(JSONObject(it)) }
-    suspend fun arrive(id: String): ApiResult<MeetupTrip> = api.post("meetups/$id/trip/arrive").parse { parseTrip(JSONObject(it)) }
-    suspend fun stop(id: String): ApiResult<Unit> = api.post("meetups/$id/trip/stop").parse { Unit }
-    suspend fun location(id: String, lat: Double, lng: Double, accuracy: Float): ApiResult<MeetupTrip> =
-        api.put("meetups/$id/trip/location", JSONObject().put("lat", lat).put("lng", lng).put("accuracyM", accuracy))
-            .parse { parseTrip(JSONObject(it)) }
+    /** Every trip of the meetup; a location is only included for members who share theirs right now. */
+    suspend fun list(meetupId: String): ApiResult<List<MeetupTrip>> =
+        api.get("meetups/$meetupId/trips").parse { JSONArray(it).mapObjects(::parseTrip) }
+
+    /** Starts the caller's trip, or resumes sharing on their active one; the server keeps the first start time. */
+    suspend fun start(meetupId: String): ApiResult<MeetupTrip> =
+        api.post("meetups/$meetupId/trip/start").parse { parseTrip(JSONObject(it)) }
+
+    /** Ends the caller's trip; the server computes the actual commute time. */
+    suspend fun arrive(meetupId: String): ApiResult<MeetupTrip> =
+        api.post("meetups/$meetupId/trip/arrive").parse { parseTrip(JSONObject(it)) }
+
+    /** Pauses location sharing without ending the trip. */
+    suspend fun stopSharing(meetupId: String): ApiResult<Unit> =
+        api.post("meetups/$meetupId/trip/stop").parse { }
+
+    /** Reports the device's latest position while the caller shares their trip. */
+    suspend fun updateLocation(meetupId: String, lat: Double, lng: Double, accuracyM: Float): ApiResult<MeetupTrip> {
+        val body = JSONObject().put("lat", lat).put("lng", lng).put("accuracyM", accuracyM)
+        return api.put("meetups/$meetupId/trip/location", body).parse { parseTrip(JSONObject(it)) }
+    }
 }

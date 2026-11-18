@@ -1,5 +1,6 @@
 import { BadRequest, Conflict, Forbidden, NotFound } from '../common/errors';
 import { tuning } from '../config';
+import { isDuplicateKeyError } from '../db';
 import { calendarClient } from '../integrations/calendar.client';
 import { SERVER_EVENTS, meetupRoom } from '../realtime/events';
 import { publisher } from '../realtime/publisher';
@@ -10,10 +11,6 @@ import { VoteModel } from './models';
 import { decideWinner, tally } from './tally';
 
 type MeetupDoc = Awaited<ReturnType<typeof meetupService.getById>>;
-
-function isDuplicateKey(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && 'code' in err && err.code === tuning.mongoDuplicateKeyCode;
-}
 
 function requireParticipant(meetup: MeetupDoc, userId: string) {
   const participant = meetup.participants.find((p) => String(p.userId) === userId);
@@ -70,7 +67,7 @@ async function castVote(meetupId: string, userId: string, placeId: string) {
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
     ).orFail();
   } catch (err) {
-    if (isDuplicateKey(err)) throw new Conflict('Your vote is locked');
+    if (isDuplicateKeyError(err)) throw new Conflict('Your vote is locked');
     throw err;
   }
 

@@ -168,7 +168,8 @@ private fun FairCreditHero(balance: Long) {
             )
 
             Text(
-                text = "Positive credit means you travelled more than the group average. Voting uses your balance to set your vote weight; it does not spend credit.",
+                text = "Positive credit means you travelled more than the group average. Voting uses your " +
+                    "balance to set your vote weight; it does not spend credit.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -372,7 +373,8 @@ private fun CalculationBreakdown(entry: FairnessEntry) {
                 color = TealPrimary,
             )
             Text(
-                text = "A positive change earns credit; a negative change lowers your balance. The calculation is rounded to whole seconds.",
+                text = "A positive change earns credit; a negative change lowers your balance. " +
+                    "The calculation is rounded to whole seconds.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

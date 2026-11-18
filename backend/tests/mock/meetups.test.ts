@@ -4,7 +4,7 @@ import { createApp } from '../../src/app';
 import { GroupModel, MeetupModel } from '../../src/users-groups/models';
 import { bearer } from '../helpers/auth';
 import { clearDb, startDb, stopDb } from '../helpers/db';
-import { PARTICIPATION, createGroup, createMeetup, createUserN } from '../helpers/factories';
+import { FUTURE_TIME, PARTICIPATION, createGroup, createMeetup, createUserN } from '../helpers/factories';
 
 beforeAll(startDb);
 afterEach(async () => {
@@ -25,7 +25,7 @@ async function setup() {
   return { user, group, meetup };
 }
 
-const NEW_MEETUP = { title: 'Library', scheduledAt: '2026-11-05T22:30:00Z' };
+const NEW_MEETUP = { title: 'Library', scheduledAt: FUTURE_TIME };
 
 // Interface POST /api/groups/:groupId/meetups
 describe('Mocked: POST /api/groups/:groupId/meetups', () => {

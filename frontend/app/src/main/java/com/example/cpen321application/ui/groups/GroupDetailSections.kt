@@ -240,7 +240,7 @@ private fun GroupOptionsMenu(isOrganizer: Boolean, busy: GroupBusyState, actions
                         actions.onDelete()
                     },
                     enabled = !busy.deletion.submitting && !busy.removal.pending,
-                    modifier = Modifier.testTag("delete_group"),
+                    modifier = Modifier.testTag(TestTags.DELETE_GROUP_BUTTON),
                 )
             } else {
                 DropdownMenuItem(
@@ -254,7 +254,7 @@ private fun GroupOptionsMenu(isOrganizer: Boolean, busy: GroupBusyState, actions
                         actions.onLeave()
                     },
                     enabled = !busy.leaving.submitting,
-                    modifier = Modifier.testTag("leave_group"),
+                    modifier = Modifier.testTag(TestTags.LEAVE_GROUP_BUTTON),
                 )
             }
         }
@@ -378,7 +378,7 @@ internal fun GroupFairCreditButton(onClick: () -> Unit) {
         border = BorderStroke(1.dp, TealPrimary),
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("group_fair_credit_button"),
+            .testTag(TestTags.GROUP_FAIR_CREDIT_BUTTON),
     ) {
         Text(
             text = "View Group's Fair Credits",

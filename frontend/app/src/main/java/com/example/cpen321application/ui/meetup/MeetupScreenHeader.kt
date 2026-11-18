@@ -77,22 +77,27 @@ internal fun MeetupDialogs(
         Confirm.None -> Unit
         Confirm.Settle -> ConfirmDialog(
             title = "Settle Fair Credit?",
-            text = "Finish this meetup and update everyone's Fair Credit. Completed trips use actual travel time; members who never started tracking use estimated travel time. All started trips must arrive first. This cannot be undone.",
+            text = "Finish this meetup and update everyone's Fair Credit. Completed trips use actual travel time; " +
+                "members who never started tracking use estimated travel time. All started trips must arrive " +
+                "first. This cannot be undone.",
             confirmLabel = "Settle",
             onDismiss = onDismiss,
             onConfirm = { onConfirm(confirm) },
         )
         Confirm.Leave -> ConfirmDialog(
             title = "Leave meetup?",
-            text = "Your starting location and preferences for this meetup will be deleted and will no longer affect place searches. You can join again by entering your details before voting starts.",
+            text = "Your starting location and preferences for this meetup will be deleted and will no longer " +
+                "affect place searches. You can join again by entering your details before voting starts.",
             confirmLabel = "Leave",
             onDismiss = onDismiss,
             onConfirm = { onConfirm(confirm) },
         )
         Confirm.Delete -> DeleteConfirmation(
             title = "Delete meetup?",
-            description = "Delete ${meetup.title}, its participation details, candidates and votes? This cannot be undone. Settled Fair Credit and external calendar events will remain.",
-            votingWarning = if (meetup.status == MeetupStatus.VOTING) "Warning: this meetup currently has voting in progress. Deleting it will end the vote." else null,
+            description = "Delete ${meetup.title}, its participation details, candidates and votes? This cannot " +
+                "be undone. Settled Fair Credit and external calendar events will remain.",
+            votingWarning = "Warning: this meetup currently has voting in progress. Deleting it will end the vote."
+                .takeIf { meetup.status == MeetupStatus.VOTING },
             onDismiss = onDismiss,
             onDelete = { onConfirm(confirm) },
         )
@@ -114,7 +119,7 @@ internal fun MeetupOptionsMenu(
                 text = { Text(if (running == MeetupAction.LEAVE) "Leaving..." else "Leave meetup") },
                 onClick = onLeave,
                 enabled = running == null,
-                modifier = Modifier.testTag("leave_meetup"),
+                modifier = Modifier.testTag(TestTags.LEAVE_MEETUP_BUTTON),
             )
         }
         if (ui.isOrganizer) {
@@ -127,7 +132,7 @@ internal fun MeetupOptionsMenu(
                 },
                 onClick = onDelete,
                 enabled = running == null,
-                modifier = Modifier.testTag("delete_meetup"),
+                modifier = Modifier.testTag(TestTags.DELETE_MEETUP_BUTTON),
             )
         }
     }
@@ -166,8 +171,18 @@ internal fun MeetupHeader(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp).testTag(TestTags.MEETUP_STATUS_TEXT),
             ) {
-                Icon(imageVector = spec.icon, contentDescription = null, tint = spec.color, modifier = Modifier.size(14.dp))
-                Text(text = spec.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = spec.color)
+                Icon(
+                    imageVector = spec.icon,
+                    contentDescription = null,
+                    tint = spec.color,
+                    modifier = Modifier.size(14.dp),
+                )
+                Text(
+                    text = spec.label,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = spec.color,
+                )
                 Text(text = "Status: ${meetup.status.name}", fontSize = 0.sp, color = Color.Transparent)
             }
         }
@@ -192,7 +207,7 @@ internal fun MeetupHeader(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.testTag("meetup_organizer_text"),
+                modifier = Modifier.testTag(TestTags.MEETUP_ORGANIZER_TEXT),
             )
         }
     }

@@ -11,10 +11,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SelectableDates
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,12 +26,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.example.cpen321application.ui.common.TestTags
 import com.example.cpen321application.ui.theme.Dimens
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.ZoneOffset
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
@@ -40,7 +41,11 @@ import java.util.Locale
 internal fun calendarDateMillis(date: LocalDate): Long = date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
 internal fun calendarDate(millis: Long): LocalDate = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
 
-internal fun isFutureMeetingTime(time: LocalDateTime, now: Instant = Instant.now(), zone: ZoneId = ZoneId.systemDefault()): Boolean =
+internal fun isFutureMeetingTime(
+    time: LocalDateTime,
+    now: Instant = Instant.now(),
+    zone: ZoneId = ZoneId.systemDefault(),
+): Boolean =
     time.atZone(zone).toInstant().isAfter(now)
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,10 +67,17 @@ internal fun MeetingDateTimePicker(initial: LocalDateTime, onDismiss: () -> Unit
         DatePickerDialog(
             onDismissRequest = onDismiss,
             confirmButton = {
-                TextButton(enabled = calendar.selectedDateMillis?.let { !calendarDate(it).isBefore(LocalDate.now()) } == true,
+                val selectedDate = calendar.selectedDateMillis?.let(::calendarDate)
+                TextButton(
+                    enabled = selectedDate != null && !selectedDate.isBefore(LocalDate.now()),
                     onClick = {
-                        calendar.selectedDateMillis?.let { date = calendarDate(it).toString(); step = 1 }
-                    }, modifier = Modifier.testTag("meeting_date_next")) { Text("Next") }
+                        if (selectedDate != null) {
+                            date = selectedDate.toString()
+                            step = 1
+                        }
+                    },
+                    modifier = Modifier.testTag(TestTags.MEETING_DATE_NEXT),
+                ) { Text("Next") }
             },
             dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
         ) {
@@ -78,10 +90,10 @@ internal fun MeetingDateTimePicker(initial: LocalDateTime, onDismiss: () -> Unit
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
                     Text(LocalDate.parse(date).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)))
-                    Text("24-hour time · ${java.time.ZoneId.systemDefault().id}")
+                    Text("24-hour time · ${ZoneId.systemDefault().id}")
                     Row(horizontalArrangement = Arrangement.spacedBy(Dimens.Spacing)) {
-                        TimeWheel("Hour", 23, hour, "meeting_hour_wheel") { hour = it; error = null }
-                        TimeWheel("Minute", 59, minute, "meeting_minute_wheel") { minute = it; error = null }
+                        TimeWheel("Hour", 23, hour, TestTags.MEETING_HOUR_WHEEL) { hour = it; error = null }
+                        TimeWheel("Minute", 59, minute, TestTags.MEETING_MINUTE_WHEEL) { minute = it; error = null }
                     }
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 }
@@ -92,7 +104,7 @@ internal fun MeetingDateTimePicker(initial: LocalDateTime, onDismiss: () -> Unit
                     if (isFutureMeetingTime(selected)) onConfirm(selected)
                     else error = "Please choose a time later than now."
                 },
-                    modifier = Modifier.testTag("meeting_time_confirm")) { Text("Use this time") }
+                    modifier = Modifier.testTag(TestTags.MEETING_TIME_CONFIRM)) { Text("Use this time") }
             },
             dismissButton = {
                 Row {

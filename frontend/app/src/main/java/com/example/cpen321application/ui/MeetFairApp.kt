@@ -3,11 +3,13 @@ package com.example.cpen321application.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.cpen321application.AppContainer
+import com.example.cpen321application.notifications.ReminderSetup
 import com.example.cpen321application.ui.auth.SignInScreen
 import com.example.cpen321application.ui.common.NotificationHost
 import com.example.cpen321application.ui.fairness.GroupFairnessScreen
@@ -16,6 +18,7 @@ import com.example.cpen321application.ui.groups.GroupDetailScreen
 import com.example.cpen321application.ui.groups.GroupListScreen
 import com.example.cpen321application.ui.groups.JoinGroupScreen
 import com.example.cpen321application.ui.meetup.CreateMeetupScreen
+import com.example.cpen321application.ui.meetup.LiveLocationScreen
 import com.example.cpen321application.ui.meetup.MeetupScreen
 import com.example.cpen321application.ui.meetup.ParticipationScreen
 import com.example.cpen321application.ui.profile.ProfileScreen
@@ -27,17 +30,28 @@ import com.example.cpen321application.ui.voting.VotingScreen
 fun MeetFairApp(container: AppContainer, reminderMeetupId: String? = null, onReminderOpened: () -> Unit = {}) {
     val token by container.sessionStore.token.collectAsState()
     val current = token
-    if (current == null) SignInScreen(container) else AuthedApp(container, current, reminderMeetupId, onReminderOpened)
+    if (current == null) {
+        SignInScreen(container)
+    } else {
+        AuthedApp(container, current, reminderMeetupId, onReminderOpened)
+    }
 }
 
 // Signed in shell: owns the saveable back stack and routes system back to Navigator.pop
 @Composable
-private fun AuthedApp(container: AppContainer, token: String, reminderMeetupId: String?, onReminderOpened: () -> Unit) {
+private fun AuthedApp(
+    container: AppContainer,
+    token: String,
+    reminderMeetupId: String?,
+    onReminderOpened: () -> Unit,
+) {
     val navigator = rememberSaveable(saver = Navigator.Saver) { Navigator.initial() }
-    com.example.cpen321application.notifications.ReminderSetup(container)
-    androidx.compose.runtime.LaunchedEffect(reminderMeetupId) {
+    ReminderSetup(container)
+    // A tapped reminder or sharing notification opens its meetup, unless that page is already showing
+    LaunchedEffect(reminderMeetupId) {
         if (reminderMeetupId != null) {
-            if (navigator.current.route != Route.Meetup(reminderMeetupId)) navigator.push(Route.Meetup(reminderMeetupId))
+            val meetupRoute = Route.Meetup(reminderMeetupId)
+            if (navigator.current.route != meetupRoute) navigator.push(meetupRoute)
             onReminderOpened()
         }
     }
@@ -74,6 +88,12 @@ private fun ProfileRoutes(container: AppContainer, navigator: Navigator, route: 
     }
 }
 
+// Closes a page of a meetup that was deleted, and the meetup's own page underneath it
+private fun Navigator.leaveDeletedMeetup(meetupId: String) {
+    pop()
+    if (current.route == Route.Meetup(meetupId)) pop()
+}
+
 @Composable
 private fun MeetupRoutes(container: AppContainer, navigator: Navigator, route: Route.Meetups) {
     when (route) {
@@ -90,21 +110,24 @@ private fun MeetupRoutes(container: AppContainer, navigator: Navigator, route: R
             onOpenVoting = { navigator.push(Route.Voting(route.meetupId)) },
             onOpenLiveLocation = { navigator.push(Route.LiveLocation(route.meetupId)) },
         )
-        is Route.LiveLocation -> com.example.cpen321application.ui.meetup.LiveLocationScreen(
-            container, route.meetupId, onBack = navigator::pop, onDeleted = {
-                navigator.pop()
-                if (navigator.current.route == Route.Meetup(route.meetupId)) navigator.pop()
-            })
+        is Route.LiveLocation -> LiveLocationScreen(
+            container,
+            route.meetupId,
+            onBack = navigator::pop,
+            onDeleted = { navigator.leaveDeletedMeetup(route.meetupId) },
+        )
         is Route.Participation -> ParticipationScreen(container, route.meetupId, onBack = navigator::pop)
         // Once voting is open, back from the voting screen returns to the meetup, not to the finished form
         is Route.StartVoting -> StartVotingScreen(container, route.meetupId, onBack = navigator::pop, onStarted = {
             navigator.pop()
             navigator.push(Route.Voting(route.meetupId))
         })
-        is Route.Voting -> VotingScreen(container, route.meetupId, onBack = navigator::pop, onDeleted = {
-            navigator.pop()
-            if (navigator.current.route == Route.Meetup(route.meetupId)) navigator.pop()
-        })
+        is Route.Voting -> VotingScreen(
+            container,
+            route.meetupId,
+            onBack = navigator::pop,
+            onDeleted = { navigator.leaveDeletedMeetup(route.meetupId) },
+        )
     }
 }
 

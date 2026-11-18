@@ -16,37 +16,84 @@ import com.example.cpen321application.notifications.REMINDER_MEETUP_ID
 internal const val SHARING_NOTIFICATION_ID = 4001
 internal const val BACKGROUND_SHARING_NOTIFICATION_ID = 4002
 
+private const val ONGOING_CHANNEL = "live_location"
+private const val BACKGROUND_CHANNEL = "live_location_background"
+private const val OPEN_MEETUP_REQUEST_CODE = 1
+
+// The background reminder removes itself; the ongoing notification stays for as long as sharing does
+private const val BACKGROUND_REMINDER_TIMEOUT_MS = 8_000L
+
+/** The notifications that keep location sharing visible to the user while it runs. */
 internal class LiveSharingNotifications(private val context: Context) {
     private val manager = context.getSystemService(NotificationManager::class.java)
 
-    private fun builder(meetupId: String, background: Boolean): NotificationCompat.Builder {
-        manager.createNotificationChannel(NotificationChannel("live_location", "Live location sharing", NotificationManager.IMPORTANCE_LOW))
-        manager.createNotificationChannel(NotificationChannel("live_location_background", "Background sharing reminders", NotificationManager.IMPORTANCE_HIGH))
-        val open = PendingIntent.getActivity(context, 1, Intent(context, MainActivity::class.java)
-            .setData(Uri.parse("meetfair://sharing/$meetupId"))
-            .putExtra(REMINDER_MEETUP_ID, meetupId)
-            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        return NotificationCompat.Builder(context, if (background) "live_location_background" else "live_location")
-            .setSmallIcon(R.drawable.ic_meetup_reminder)
-            .setContentTitle("MeetFair is sharing your live location")
-            .setContentText(if (background) "Live location sharing continues in the background. Tap to return to your meetup."
-                else "Location sharing is active. Open your meetup to mark arrival or pause sharing.")
-            .setContentIntent(open).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-    }
+    /** Shown for as long as the foreground service shares the location. */
+    fun ongoing(meetupId: String): Notification =
+        builder(
+            meetupId,
+            ONGOING_CHANNEL,
+            text = "Location sharing is active. Open your meetup to mark arrival or pause sharing.",
+        ).setOngoing(true).setOnlyAlertOnce(true).build()
 
-    fun ongoing(meetupId: String): Notification = builder(meetupId, false).setOngoing(true).setOnlyAlertOnce(true).build()
-
+    /** A heads-up reminder when the app goes to the background while still sharing. */
     fun showBackground(meetupId: String) {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
-        val notice = builder(meetupId, true).setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true).setTimeoutAfter(8000).build()
-        try { manager.notify(BACKGROUND_SHARING_NOTIFICATION_ID, notice) } catch (_: SecurityException) {
+        val reminder = builder(
+            meetupId,
+            BACKGROUND_CHANNEL,
+            text = "Live location sharing continues in the background. Tap to return to your meetup.",
+        ).setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setTimeoutAfter(BACKGROUND_REMINDER_TIMEOUT_MS)
+            .build()
+        try {
+            manager.notify(BACKGROUND_SHARING_NOTIFICATION_ID, reminder)
+        } catch (_: SecurityException) {
             // Permission can be revoked while the activity is leaving the foreground.
         }
     }
 
-    fun dismissBackground() { manager.cancel(BACKGROUND_SHARING_NOTIFICATION_ID) }
-    fun clear() { dismissBackground(); manager.cancel(SHARING_NOTIFICATION_ID) }
+    fun dismissBackground() {
+        manager.cancel(BACKGROUND_SHARING_NOTIFICATION_ID)
+    }
+
+    fun clear() {
+        dismissBackground()
+        manager.cancel(SHARING_NOTIFICATION_ID)
+    }
+
+    private fun builder(meetupId: String, channel: String, text: String): NotificationCompat.Builder {
+        createChannels()
+        return NotificationCompat.Builder(context, channel)
+            .setSmallIcon(R.drawable.ic_meetup_reminder)
+            .setContentTitle("MeetFair is sharing your live location")
+            .setContentText(text)
+            .setContentIntent(openMeetup(meetupId))
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+    }
+
+    // Creating a channel that already exists does nothing
+    private fun createChannels() {
+        val ongoing = NotificationChannel(ONGOING_CHANNEL, "Live location sharing", NotificationManager.IMPORTANCE_LOW)
+        val background = NotificationChannel(
+            BACKGROUND_CHANNEL,
+            "Background sharing reminders",
+            NotificationManager.IMPORTANCE_HIGH,
+        )
+        manager.createNotificationChannels(listOf(ongoing, background))
+    }
+
+    private fun openMeetup(meetupId: String): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java)
+            .setData(Uri.parse("meetfair://sharing/$meetupId"))
+            .putExtra(REMINDER_MEETUP_ID, meetupId)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        return PendingIntent.getActivity(
+            context,
+            OPEN_MEETUP_REQUEST_CODE,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
 }

@@ -16,8 +16,22 @@ export type GroupRole = (typeof GROUP_ROLES)[number];
 export const COMMUTE_SOURCES = ['TRACKED', 'ESTIMATED'] as const;
 export type CommuteSource = (typeof COMMUTE_SOURCES)[number];
 
+// ACTIVE from "I'm leaving" until the member arrives; ARRIVED trips carry the actual commute time
+export const TRIP_STATUSES = ['ACTIVE', 'ARRIVED'] as const;
+export type TripStatus = (typeof TRIP_STATUSES)[number];
+
 // Latitude and longitude
 export interface LatLng {
   lat: number;
   lng: number;
+}
+
+// A place a group could meet at, identified by its Google Places id
+export interface Place {
+  placeId: string;
+  name: string;
+  address: string;
+  location: LatLng;
+  // Google Places types (e.g. "cafe"), used to match member preferences
+  types?: string[];
 }

@@ -10,7 +10,7 @@ sequenceDiagram
     participant DB as MongoDB
 
     O->>FE: tap "Start voting"
-    FE->>REC: POST /api/meetups/:meetupId/recommendations/from-places
+    FE->>REC: POST /api/meetups/:meetupId/recommendations
     REC->>UG: getForMember(meetupId, userId)
     UG-->>REC: Meetup (organizer, participants, status)
     alt not the organizer, not in SETUP, or details missing

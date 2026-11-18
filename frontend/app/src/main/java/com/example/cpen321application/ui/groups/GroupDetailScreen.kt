@@ -1,30 +1,18 @@
 package com.example.cpen321application.ui.groups
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -34,163 +22,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.cpen321application.AppContainer
-import com.example.cpen321application.data.ApiResult
 import com.example.cpen321application.data.GroupEvent
-import com.example.cpen321application.data.GroupRepository
-import com.example.cpen321application.data.MeetupRepository
-import com.example.cpen321application.data.TripRepository
-import java.time.Instant
-import com.example.cpen321application.model.Group
-import com.example.cpen321application.model.GroupMember
-import com.example.cpen321application.model.GroupRole
-import com.example.cpen321application.model.Meetup
-import com.example.cpen321application.model.MeetupStatus
-import com.example.cpen321application.ui.common.DeleteConfirmation
-import com.example.cpen321application.ui.common.FormState
 import com.example.cpen321application.ui.common.LocalNotify
-import com.example.cpen321application.ui.common.MeetFairCard
 import com.example.cpen321application.ui.common.TestTags
-import com.example.cpen321application.ui.common.UiState
 import com.example.cpen321application.ui.common.UiStateContent
-import com.example.cpen321application.ui.common.toFormState
-import com.example.cpen321application.ui.meetup.MeetupStatusSpec
-import com.example.cpen321application.ui.meetup.getStatusSpec
-import com.example.cpen321application.ui.meetup.isoToDisplay
 import com.example.cpen321application.ui.screenViewModel
 import com.example.cpen321application.ui.theme.Dimens
-import com.example.cpen321application.ui.theme.RosePrimary
 import com.example.cpen321application.ui.theme.TealPrimary
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
-
-/** A group together with its meetups, loaded as one unit so the screen has a single loading/error state. */
-data class GroupDetailData(
-    val group: Group,
-    val meetups: List<Meetup>,
-    val hasTrackingStage: Boolean = false,
-)
-data class MemberRemovalState(val pending: Boolean = false, val error: String? = null)
-
-/** Loads one group (with members' names) and its meetups. */
-class GroupDetailViewModel(
-    private val groups: GroupRepository,
-    private val meetups: MeetupRepository,
-    private val trips: TripRepository,
-    private val groupId: String,
-) : ViewModel() {
-    private val _state = MutableStateFlow<UiState<GroupDetailData>>(UiState.Loading)
-    val state: StateFlow<UiState<GroupDetailData>> = _state.asStateFlow()
-
-    private val _removal = MutableStateFlow(MemberRemovalState())
-    val removal: StateFlow<MemberRemovalState> = _removal.asStateFlow()
-    private val _deletion = MutableStateFlow(FormState<Unit>())
-    val deletion: StateFlow<FormState<Unit>> = _deletion.asStateFlow()
-    private val _leaving = MutableStateFlow(FormState<Unit>())
-    val leaving: StateFlow<FormState<Unit>> = _leaving.asStateFlow()
-
-    fun leaveGroup() {
-        if (_leaving.value.submitting || _leaving.value.result != null) return
-        if (_deletion.value.submitting || _removal.value.pending) return
-        _leaving.value = FormState(submitting = true)
-        viewModelScope.launch { _leaving.value = groups.leave(groupId).toFormState() }
-    }
-    private var deleted = false
-    private val _missing = MutableStateFlow(false)
-    val missing: StateFlow<Boolean> = _missing.asStateFlow()
-    private var loadJob: Job? = null
-
-    fun onGroupEvent(event: GroupEvent) {
-        when (event) {
-            GroupEvent.Connected -> load()
-            is GroupEvent.Deleted -> if (event.groupId == groupId) {
-                deleted = true
-                loadJob?.cancel()
-                _state.value = UiState.Error("This group has been deleted by its organizer.")
-            }
-            is GroupEvent.MeetupDeleted -> if (event.groupId == groupId) {
-                load()
-            }
-        }
-    }
-
-    fun deleteGroup() {
-        if (_deletion.value.submitting) return
-        _deletion.value = FormState(submitting = true)
-        viewModelScope.launch { _deletion.value = groups.delete(groupId).toFormState() }
-    }
-
-    fun removeMember(memberId: String) {
-        if (_removal.value.pending || _deletion.value.submitting || _leaving.value.submitting) return
-        _removal.value = MemberRemovalState(pending = true)
-        viewModelScope.launch {
-            when (val result = groups.removeMember(groupId, memberId)) {
-                is ApiResult.Failure -> _removal.value = MemberRemovalState(error = result.error.message)
-                is ApiResult.Success -> {
-                    load()
-                    _removal.value = MemberRemovalState()
-                }
-            }
-        }
-    }
-
-    private suspend fun isTrackingStage(meetupList: List<Meetup>): Boolean {
-        return meetupList.any { meetup ->
-            meetup.status == MeetupStatus.FINALIZED && (
-                runCatching { !Instant.now().isBefore(Instant.parse(meetup.scheduledAt)) }.getOrDefault(false) ||
-                    trips.list(meetup.id).let { tripResult ->
-                        tripResult is ApiResult.Success && tripResult.data.isNotEmpty()
-                    }
-                )
-        }
-    }
-
-    fun load() {
-        if (deleted) return
-        loadJob?.cancel()
-        loadJob = viewModelScope.launch {
-            _state.value = UiState.Loading
-            val groupRes = groups.detail(groupId)
-            if (groupRes is ApiResult.Failure && groupRes.error.httpCode == 404) {
-                deleted = true
-                _missing.value = true
-                _state.value = UiState.Empty
-            } else if (groupRes is ApiResult.Success) {
-                val meetupRes = meetups.listForGroup(groupId)
-                if (meetupRes is ApiResult.Success) {
-                    val tracking = isTrackingStage(meetupRes.data)
-                    _state.value = UiState.Success(GroupDetailData(groupRes.data, meetupRes.data, tracking))
-                } else if (meetupRes is ApiResult.Failure) {
-                    _state.value = UiState.Error(meetupRes.error.message)
-                }
-            } else if (groupRes is ApiResult.Failure) {
-                _state.value = UiState.Error(groupRes.error.message)
-            }
-        }
-    }
-
-    companion object {
-        fun factory(c: AppContainer, groupId: String) = viewModelFactory {
-            initializer { GroupDetailViewModel(c.groupRepository, c.meetupRepository, c.tripRepository, groupId) }
-        }
-    }
-}
 
 @Composable
 fun GroupDetailScreen(
@@ -232,7 +74,12 @@ fun GroupDetailScreen(
             GroupInfo(data, currentUserId, busy, actions, navigation)
 
             if (confirmLeave) {
-                LeaveGroupDialog(data.meetups, currentUserId, onDismiss = { confirmLeave = false }, onLeave = vm::leaveGroup)
+                LeaveGroupDialog(
+                    data.meetups,
+                    currentUserId,
+                    onDismiss = { confirmLeave = false },
+                    onLeave = vm::leaveGroup,
+                )
             }
             if (confirmDelete) {
                 DeleteGroupDialog(data, onDismiss = { confirmDelete = false }, onDelete = vm::deleteGroup)
@@ -286,74 +133,6 @@ private fun GroupDetailEffects(
     LaunchedEffect(leaving.result) {
         if (leaving.result != null && !exited) { exited = true; onBack() }
     }
-}
-
-@Composable
-private fun LeaveGroupDialog(
-    meetups: List<Meetup>,
-    userId: String?,
-    onDismiss: () -> Unit,
-    onLeave: () -> Unit,
-) {
-    val voting = meetups.any { meetup ->
-        meetup.status == MeetupStatus.VOTING && meetup.participants.any { it.userId == userId }
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (voting) "Cannot leave group" else "Leave group?") },
-        text = { Text(if (voting) "A meetup you joined is still voting. Wait until its voting ends before leaving."
-            else "Your details in meetups that have not started voting will be deleted. Completed voting and Fair Credit history will remain.") },
-        confirmButton = { TextButton(onClick = {
-            onDismiss()
-            if (!voting) onLeave()
-        }) { Text(if (voting) "OK" else "Leave") } },
-        dismissButton = { if (!voting) TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
-}
-
-@Composable
-private fun DeleteGroupDialog(data: GroupDetailData, onDismiss: () -> Unit, onDelete: () -> Unit) {
-    DeleteConfirmation(
-        title = "Delete group?",
-        description = "Delete ${data.group.name} and all its meetups, participation details, votes and group Fair Credit data? This cannot be undone. External calendar events will remain.",
-        votingWarning = if (data.meetups.any { it.status == MeetupStatus.VOTING })
-            "Warning: this group still has meetups with voting in progress. Deleting it will end those votes." else null,
-        onDismiss = onDismiss,
-        onDelete = { onDismiss(); onDelete() },
-    )
-}
-
-@Composable
-private fun RemoveMemberDialog(
-    member: GroupMember,
-    meetups: List<Meetup>,
-    onDismiss: () -> Unit,
-    onRemove: (String) -> Unit,
-) {
-    val activeParticipation = meetups.any { meetup ->
-        (meetup.status == MeetupStatus.VOTING || meetup.status == MeetupStatus.FINALIZED) &&
-            meetup.participants.any { it.userId == member.userId }
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (activeParticipation) "Cannot remove member" else "Remove member?") },
-        text = {
-            Text(if (activeParticipation)
-                "This member submitted details for a meetup whose voting has started. Settle that meetup before removing them."
-            else "Remove ${member.name ?: "this member"} from the group? Their meetup details and votes in this group will be deleted, and they will lose access.")
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                onDismiss()
-                if (!activeParticipation) onRemove(member.userId)
-            }) { Text(if (activeParticipation) "OK" else "Remove") }
-        },
-        dismissButton = {
-            if (!activeParticipation) {
-                TextButton(onClick = onDismiss) { Text("Cancel") }
-            }
-        },
-    )
 }
 
 @Composable
@@ -418,254 +197,3 @@ private fun GroupInfo(
         )
     }
 }
-
-@Composable
-private fun MemberRow(
-    member: GroupMember,
-    canRemove: Boolean,
-    removalPending: Boolean,
-    deletionSubmitting: Boolean,
-    onRemove: (GroupMember) -> Unit,
-) {
-    val isOrganizer = member.role == GroupRole.ORGANIZER
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics(mergeDescendants = true) {}
-            .testTag(TestTags.MEMBER_ITEM),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        MemberIdentity(
-            name = member.name,
-            modifier = Modifier.weight(1f),
-        )
-
-        MemberTrailingAction(
-            isOrganizer = isOrganizer,
-            canRemove = canRemove,
-            removalPending = removalPending,
-            deletionSubmitting = deletionSubmitting,
-            userId = member.userId,
-            onRemove = { onRemove(member) },
-        )
-    }
-}
-
-@Composable
-private fun MemberIdentity(
-    name: String?,
-    modifier: Modifier = Modifier,
-) {
-    val initial = (name ?: "U").take(1).uppercase()
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = modifier,
-    ) {
-        Surface(
-            shape = CircleShape,
-            color = TealPrimary,
-            modifier = Modifier.size(40.dp),
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = initial,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
-                )
-            }
-        }
-
-        Text(
-            text = name ?: "Unknown",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
-}
-
-@Composable
-private fun MemberTrailingAction(
-    isOrganizer: Boolean,
-    canRemove: Boolean,
-    removalPending: Boolean,
-    deletionSubmitting: Boolean,
-    userId: String,
-    onRemove: () -> Unit,
-) {
-    if (isOrganizer) {
-        Surface(
-            shape = CircleShape,
-            color = RosePrimary.copy(alpha = 0.15f),
-            modifier = Modifier.padding(start = 8.dp),
-        ) {
-            Text(
-                text = "Organizer",
-                color = RosePrimary,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            )
-        }
-    } else if (canRemove) {
-        TextButton(
-            onClick = onRemove,
-            enabled = !removalPending && !deletionSubmitting,
-            modifier = Modifier.testTag("remove_member_$userId"),
-        ) {
-            Text("Remove", color = MaterialTheme.colorScheme.error)
-        }
-    }
-}
-
-private data class MeetupDateParts(val month: String, val day: String, val time: String)
-
-private fun parseMeetupDateParts(iso: String): MeetupDateParts = try {
-    val zdt = Instant.parse(iso).atZone(ZoneId.systemDefault())
-    val month = zdt.format(DateTimeFormatter.ofPattern("MMM", Locale.US)).uppercase()
-    val day = zdt.format(DateTimeFormatter.ofPattern("dd", Locale.US))
-    val time = zdt.format(DateTimeFormatter.ofPattern("h:mm a", Locale.US))
-    MeetupDateParts(month, day, time)
-} catch (_: Exception) {
-    MeetupDateParts("OCT", "28", isoToDisplay(iso))
-}
-
-@Composable
-private fun MeetupDateBadge(
-    parts: MeetupDateParts,
-    spec: MeetupStatusSpec,
-) {
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = spec.backgroundColor,
-        modifier = Modifier.size(width = 56.dp, height = 56.dp),
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                text = parts.month,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = spec.color.copy(alpha = 0.8f),
-            )
-            Text(
-                text = parts.day,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.ExtraBold,
-                color = spec.color,
-            )
-        }
-    }
-}
-
-@Composable
-private fun MeetupStatusChip(
-    spec: MeetupStatusSpec,
-) {
-    Surface(
-        shape = CircleShape,
-        color = spec.backgroundColor,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-        ) {
-            Icon(
-                imageVector = spec.icon,
-                contentDescription = null,
-                tint = spec.color,
-                modifier = Modifier.size(12.dp),
-            )
-            Text(
-                text = spec.label,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = spec.color,
-            )
-        }
-    }
-}
-
-@Composable
-private fun MeetupDetails(
-    title: String,
-    time: String,
-    organizerDisplay: String,
-    spec: MeetupStatusSpec,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-            text = time,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = "Organizer: $organizerDisplay",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        MeetupStatusChip(spec = spec)
-    }
-}
-
-@Composable
-private fun MeetupRow(
-    meetup: Meetup,
-    members: List<GroupMember>,
-    currentUserId: String?,
-    onOpen: (String) -> Unit,
-) {
-    val parts = parseMeetupDateParts(meetup.scheduledAt)
-    val spec = getStatusSpec(meetup.status)
-    val organizer = members.find { it.userId == meetup.organizerId }
-    val organizerDisplay = if (meetup.organizerId == currentUserId) "You" else (organizer?.name ?: "Organizer")
-
-    MeetFairCard(
-        modifier = Modifier
-            .clickable { onOpen(meetup.id) }
-            .testTag(TestTags.MEETUP_ITEM),
-        shape = RoundedCornerShape(20.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.weight(1f),
-            ) {
-                MeetupDateBadge(parts = parts, spec = spec)
-                MeetupDetails(
-                    title = meetup.title,
-                    time = parts.time,
-                    organizerDisplay = organizerDisplay,
-                    spec = spec,
-                )
-            }
-
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = "Open meetup",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-

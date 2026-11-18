@@ -6,18 +6,18 @@ const HOUR = 3600;
 // Interface creditChanges / normalizedBurden (pure)
 describe('creditChanges', () => {
   // Input: three trips of 40, 25 and 10 minutes
-  // Expected output: expected burden is the 25-minute average; deltas +15, 0, -15 minutes (sum 0)
+  // Expected output: expected burden is the 25-minute average; deltas +15, 0, -15 minutes (sum 0); each source is kept
   test('Credits members who travelled more than average', () => {
     const changes = creditChanges([
-      { userId: 'a', mode: 'TRANSIT', actualSeconds: 2400 },
-      { userId: 'b', mode: 'DRIVE', actualSeconds: 1500 },
-      { userId: 'c', mode: 'WALK', actualSeconds: 600 },
+      { userId: 'a', mode: 'TRANSIT', actualSeconds: 2400, source: 'TRACKED' },
+      { userId: 'b', mode: 'DRIVE', actualSeconds: 1500, source: 'ESTIMATED' },
+      { userId: 'c', mode: 'WALK', actualSeconds: 600, source: 'TRACKED' },
     ]);
 
     expect(changes).toEqual([
-      { userId: 'a', actualSeconds: 2400, normalizedBurden: 2400, expectedBurden: 1500, delta: 900 },
-      { userId: 'b', actualSeconds: 1500, normalizedBurden: 1500, expectedBurden: 1500, delta: 0 },
-      { userId: 'c', actualSeconds: 600, normalizedBurden: 600, expectedBurden: 1500, delta: -900 },
+      { userId: 'a', source: 'TRACKED', actualSeconds: 2400, normalizedBurden: 2400, expectedBurden: 1500, delta: 900 },
+      { userId: 'b', source: 'ESTIMATED', actualSeconds: 1500, normalizedBurden: 1500, expectedBurden: 1500, delta: 0 },
+      { userId: 'c', source: 'TRACKED', actualSeconds: 600, normalizedBurden: 600, expectedBurden: 1500, delta: -900 },
     ]);
   });
 
@@ -25,9 +25,9 @@ describe('creditChanges', () => {
   // Expected output: every duration is rounded to an integer second
   test('Rounds to whole seconds', () => {
     const changes = creditChanges([
-      { userId: 'a', mode: 'WALK', actualSeconds: 100.4 },
-      { userId: 'b', mode: 'WALK', actualSeconds: 0 },
-      { userId: 'c', mode: 'WALK', actualSeconds: 0 },
+      { userId: 'a', mode: 'WALK', actualSeconds: 100.4, source: 'TRACKED' },
+      { userId: 'b', mode: 'WALK', actualSeconds: 0, source: 'TRACKED' },
+      { userId: 'c', mode: 'WALK', actualSeconds: 0, source: 'TRACKED' },
     ]);
 
     expect(changes.map((c) => [c.actualSeconds, c.expectedBurden, c.delta])).toEqual([[100, 33, 67], [0, 33, -33], [0, 33, -33]]);

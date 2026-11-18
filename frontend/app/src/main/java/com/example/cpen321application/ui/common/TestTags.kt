@@ -61,14 +61,30 @@ object TestTags {
     const val MEETUP_WINNER_TEXT = "meetup_winner_text"
     const val ADD_TO_CALENDAR_BUTTON = "add_to_calendar_button"
     const val CALENDAR_ADDED_TEXT = "calendar_added_text"
+    const val PULL_TO_REFRESH = "pull_to_refresh"
+    const val DELETE_GROUP_BUTTON = "delete_group"
+    const val LEAVE_GROUP_BUTTON = "leave_group"
+    const val GROUP_FAIR_CREDIT_BUTTON = "group_fair_credit_button"
+    const val MEETING_DATE_NEXT = "meeting_date_next"
+    const val MEETING_HOUR_WHEEL = "meeting_hour_wheel"
+    const val MEETING_MINUTE_WHEEL = "meeting_minute_wheel"
+    const val MEETING_TIME_CONFIRM = "meeting_time_confirm"
+    const val MEETUP_ORGANIZER_TEXT = "meetup_organizer_text"
+    const val LEAVE_MEETUP_BUTTON = "leave_meetup"
+    const val DELETE_MEETUP_BUTTON = "delete_meetup"
+    const val OPEN_DIRECTIONS_BUTTON = "open_directions_button"
+    const val START_TRIP_BUTTON = "start_trip_button"
+    const val SETTLE_FAIR_CREDIT_BUTTON = "settle_fair_credit"
 
     // Chips are tagged per option name, e.g. modeChip("WALK")
     fun modeChip(mode: String) = "mode_chip_$mode"
     fun preferenceChip(preference: String) = "preference_chip_$preference"
     fun profileGroupItem(groupId: String) = "profile_group_item_$groupId"
+    fun removeMemberButton(userId: String) = "remove_member_$userId"
 
     // Voting rows are tagged per candidate placeId
     fun candidateItem(placeId: String) = "candidate_item_$placeId"
+    fun candidateMapLink(placeId: String) = "candidate_map_$placeId"
     fun voteButton(placeId: String) = "vote_button_$placeId"
     fun pickWinnerButton(placeId: String) = "pick_winner_button_$placeId"
 }

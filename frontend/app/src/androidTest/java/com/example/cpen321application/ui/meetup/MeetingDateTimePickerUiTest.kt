@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
+import com.example.cpen321application.ui.common.TestTags
 import java.time.LocalDateTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -30,11 +31,11 @@ class MeetingDateTimePickerUiTest {
                 } else Text("Selected")
             }
         }
-        compose.onNodeWithTag("meeting_date_next").performClick()
-        compose.onNodeWithTag("meeting_hour_wheel").assertIsDisplayed()
-        compose.onNodeWithTag("meeting_minute_wheel").assertIsDisplayed()
-        compose.onNodeWithTag("meeting_hour_wheel").performTouchInput { swipeUp(durationMillis = 600) }
-        compose.onNodeWithTag("meeting_time_confirm").performClick()
+        compose.onNodeWithTag(TestTags.MEETING_DATE_NEXT).performClick()
+        compose.onNodeWithTag(TestTags.MEETING_HOUR_WHEEL).assertIsDisplayed()
+        compose.onNodeWithTag(TestTags.MEETING_MINUTE_WHEEL).assertIsDisplayed()
+        compose.onNodeWithTag(TestTags.MEETING_HOUR_WHEEL).performTouchInput { swipeUp(durationMillis = 600) }
+        compose.onNodeWithTag(TestTags.MEETING_TIME_CONFIRM).performClick()
         compose.runOnIdle {
             assertEquals(initial.toLocalDate(), result.value?.toLocalDate())
             assertEquals(30, result.value?.minute)
@@ -52,7 +53,7 @@ class MeetingDateTimePickerUiTest {
                 else Text("Original time unchanged")
             }
         }
-        compose.onNodeWithTag("meeting_date_next").performClick()
+        compose.onNodeWithTag(TestTags.MEETING_DATE_NEXT).performClick()
         compose.onNodeWithText("Cancel").performClick()
         compose.onNodeWithText("Original time unchanged").assertIsDisplayed()
         compose.runOnIdle { assertNull(result) }

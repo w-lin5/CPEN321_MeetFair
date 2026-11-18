@@ -206,7 +206,7 @@ This ensures that the recommendation algorithm does not simply prioritize shorte
 
 ## 4. Implementation Notes
 
-Both phases are implemented in `backend/src/recommendation/scoring.ts` (pure functions) and wired into `POST /api/meetups/:meetupId/recommendations/from-places`:
+Both phases are implemented in `backend/src/recommendation/scoring.ts` (pure functions) and wired into `POST /api/meetups/:meetupId/recommendations`:
 
 1. Google Places Nearby Search finds up to 10 places around the members' average start location, matching **every** participant's preference categories.
 2. Google Routes `computeRouteMatrix` estimates $ETA_{ij}$ for each member in their own travel mode. Places that any member cannot reach are dropped.

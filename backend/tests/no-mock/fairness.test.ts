@@ -141,15 +141,18 @@ describe('Unmocked: fairCreditService settlement', () => {
     expect(await fairCreditService.getBalance(ada.id, groupA.id)).toBe(0);
   });
 
-  // Input: the same meetup settled twice
-  // Expected behavior: 409 the second time; balances are not double counted
-  test('A meetup can only be settled once', async () => {
+  // Input: the same meetup settled twice, the second time with different trip durations
+  // Expected behavior: the first settlement stands; the ledger and the balances are not changed or double counted
+  // Expected output: the second call returns the two entries of the first settlement
+  test('A meetup is only settled once', async () => {
     const { ada, grace, groupA, meetupA } = await setup();
     await fairCreditService.settleMeetup(groupA.id, meetupA.id, [trip(ada.id, 50), trip(grace.id, 30)]);
 
-    await expect(fairCreditService.settleMeetup(groupA.id, meetupA.id, [trip(ada.id, 90), trip(grace.id, 10)]))
-      .rejects.toMatchObject({ status: 409 });
+    const repeated = await fairCreditService.settleMeetup(groupA.id, meetupA.id, [trip(ada.id, 90), trip(grace.id, 10)]);
+
+    expect(repeated.map((entry) => entry.delta).sort((a, b) => a - b)).toEqual([-600, 600]);
     expect(await fairCreditService.getBalance(ada.id, groupA.id)).toBe(600);
+    expect(await fairCreditService.getBalance(grace.id, groupA.id)).toBe(-600);
     expect(await FairCreditEntryModel.countDocuments()).toBe(2);
   });
 

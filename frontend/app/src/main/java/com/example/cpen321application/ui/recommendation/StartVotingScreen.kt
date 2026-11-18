@@ -49,14 +49,14 @@ class StartVotingViewModel(private val voting: VotingRepository, private val mee
     val state: StateFlow<FormState<Recommendation>> = _state.asStateFlow()
 
     init {
-        generateFromPlaces()
+        generateRecommendations()
     }
 
-    fun generateFromPlaces() {
+    fun generateRecommendations() {
         if (_state.value.submitting || _state.value.result != null) return
         _state.value = FormState(submitting = true)
         viewModelScope.launch {
-            _state.value = voting.generateFromPlaces(meetupId).toFormState()
+            _state.value = voting.generateRecommendations(meetupId).toFormState()
         }
     }
 
@@ -112,7 +112,7 @@ fun StartVotingScreen(container: AppContainer, meetupId: String, onBack: () -> U
             state.error?.let { errorMsg ->
                 ErrorView(
                     message = errorMsg,
-                    onRetry = vm::generateFromPlaces,
+                    onRetry = vm::generateRecommendations,
                     buttonTestTag = TestTags.START_VOTING_SUBMIT,
                 )
             }

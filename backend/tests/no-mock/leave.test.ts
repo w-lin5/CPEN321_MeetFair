@@ -1,8 +1,6 @@
 import request, { type Test } from 'supertest';
 import { createApp } from '../../src/app';
-import * as placesClient from '../../src/integrations/places.client';
 import { setTransport } from '../../src/realtime/publisher';
-import { placeSearchService } from '../../src/recommendation/place-search.service';
 import { GroupModel, MeetupModel } from '../../src/users-groups/models';
 import { VoteModel } from '../../src/voting-fairness/models';
 import { bearer } from '../helpers/auth';
@@ -32,27 +30,24 @@ function leaveMeetup(id: string, userId?: string): Test {
   return userId ? req.set('Authorization', bearer(userId)) : req;
 }
 function leaveGroup(id: string, userId?: string): Test {
-  const req = request(createApp()).post(`/api/groups/${id}/leave`);
+  const req = request(createApp()).delete(`/api/groups/${id}/members/me`);
   return userId ? req.set('Authorization', bearer(userId)) : req;
 }
 
 // Interface DELETE /api/meetups/:meetupId/participation
 describe('Unmocked: DELETE /api/meetups/:meetupId/participation', () => {
-  // Input: member leaves a SETUP meetup in which both members submitted details; organizer then searches places (Google search stubbed to capture its arguments)
+  // Input: member leaves a SETUP meetup in which both members submitted details
   // Expected status code: 204
-  // Expected behavior: only the member's participation is removed; group membership is kept; the place search uses only the
-  //   organizer's location and FOOD preference; one "meetup:updated" event is published
+  // Expected behavior: only the member's participation is removed, so later recommendations no longer use their details;
+  //   group membership is kept; one "meetup:updated" event is published
   // Expected output: None
-  test('leaving SETUP meetup removes inputs, excludes them from search and keeps group membership', async () => {
+  test('leaving SETUP meetup removes inputs and keeps group membership', async () => {
     const { organizer, member, group, meetup } = await setup();
     const events: string[] = [];
     setTransport((_room, event) => events.push(event));
     expect((await leaveMeetup(meetup.id, member.id)).status).toBe(204);
     expect((await MeetupModel.findById(meetup.id).orFail()).participants.map(p => String(p.userId))).toEqual([organizer.id]);
     expect((await GroupModel.findById(group.id).orFail()).members).toHaveLength(2);
-    const google = jest.spyOn(placesClient, 'searchNearby').mockResolvedValue([]);
-    await placeSearchService.search(meetup.id, organizer.id);
-    expect(google).toHaveBeenCalledWith({ lat: 40, lng: -74 }, ['restaurant']);
     expect(events).toEqual(['meetup:updated']);
   });
 
@@ -80,8 +75,8 @@ describe('Unmocked: DELETE /api/meetups/:meetupId/participation', () => {
   });
 });
 
-// Interface POST /api/groups/:groupId/leave
-describe('Unmocked: POST /api/groups/:groupId/leave', () => {
+// Interface DELETE /api/groups/:groupId/members/me
+describe('Unmocked: DELETE /api/groups/:groupId/members/me', () => {
   // Input: member leaves a group while participating in one of its VOTING meetups
   // Expected status code: 409
   // Expected behavior: group membership and SETUP participations are unchanged

@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 
+import { tuning } from './config';
+
 export async function connectDb(uri: string): Promise<void> {
   await mongoose.connect(uri);
   // Unique indexes back several 409 checks (one vote per member, one settlement per meetup, ...);
@@ -9,6 +11,11 @@ export async function connectDb(uri: string): Promise<void> {
 
 export async function disconnectDb(): Promise<void> {
   await mongoose.disconnect();
+}
+
+// Unique indexes turn races (two votes, two invite codes, ...) into this error, which callers map to a 409 or a retry
+export function isDuplicateKeyError(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && err.code === tuning.mongoDuplicateKeyCode;
 }
 
 // Defines JSON serialization options to normalize Mongoose documents by renaming _id to id and removing the internal __v version key
