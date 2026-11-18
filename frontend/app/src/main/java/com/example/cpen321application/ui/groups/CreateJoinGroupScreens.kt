@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -219,6 +220,10 @@ fun CreateGroupScreen(container: AppContainer, onBack: () -> Unit, onCreated: (g
     val state by vm.state.collectAsState()
     state.result?.let { onCreated(it.id) }
 
+    LaunchedEffect(Unit) {
+        vm.clearError()
+    }
+
     ScreenColumn(title = "", onBack = onBack) {
         MockupFormCard(CREATE_SPEC, state, vm::submit, onClearError = vm::clearError)
     }
@@ -229,6 +234,10 @@ fun JoinGroupScreen(container: AppContainer, onBack: () -> Unit, onJoined: (grou
     val vm: JoinGroupViewModel = screenViewModel(JoinGroupViewModel.factory(container))
     val state by vm.state.collectAsState()
     state.result?.let { onJoined(it.id) }
+
+    LaunchedEffect(Unit) {
+        vm.clearError()
+    }
 
     ScreenColumn(title = "", onBack = onBack) {
         MockupFormCard(JOIN_SPEC, state, vm::submit, onClearError = vm::clearError)

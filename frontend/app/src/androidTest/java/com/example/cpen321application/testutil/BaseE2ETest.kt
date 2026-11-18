@@ -1,5 +1,8 @@
 package com.example.cpen321application.testutil
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -10,6 +13,8 @@ import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.runner.RunWith
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Base test class for all E2E feature tests.
@@ -26,9 +31,8 @@ abstract class BaseE2ETest {
     @Before
     open fun setUp() {
         val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
-        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
         LiveLocationService.stop(targetContext)
-        runCatching { device.executeShellCommand("cmd connectivity airplane-mode disable") }
+        restoreNetwork()
         createdGroupNames.clear()
         compose.assertSignedInOnGroupList()
     }
@@ -36,9 +40,47 @@ abstract class BaseE2ETest {
     @After
     open fun tearDown() {
         val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
-        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
         LiveLocationService.stop(targetContext)
-        runCatching { device.executeShellCommand("cmd connectivity airplane-mode disable") }
+        restoreNetwork()
         compose.cleanupCreatedGroups(createdGroupNames)
+    }
+
+    protected fun restoreNetwork(timeoutMs: Long = 15_000L) {
+        val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        runCatching { device.executeShellCommand("cmd connectivity airplane-mode disable") }
+
+        val cm = targetContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        fun isConnected(): Boolean {
+            val net = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(net) ?: return false
+            return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        }
+
+        if (isConnected()) {
+            Thread.sleep(500)
+            return
+        }
+
+        val latch = CountDownLatch(1)
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(network: android.net.Network, capabilities: NetworkCapabilities) {
+                if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                    latch.countDown()
+                }
+            }
+            override fun onAvailable(network: android.net.Network) {
+                latch.countDown()
+            }
+        }
+        try {
+            cm.registerDefaultNetworkCallback(callback)
+            if (isConnected()) latch.countDown()
+            latch.await(timeoutMs, TimeUnit.MILLISECONDS)
+            Thread.sleep(1000)
+        } catch (_: Exception) {
+        } finally {
+            runCatching { cm.unregisterNetworkCallback(callback) }
+        }
     }
 }

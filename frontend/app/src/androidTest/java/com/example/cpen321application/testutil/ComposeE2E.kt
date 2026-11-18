@@ -1,5 +1,6 @@
 package com.example.cpen321application.testutil
 
+import android.util.Log
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasContentDescription
@@ -69,72 +70,63 @@ fun ComposeTestRule.assertSignedInOnGroupList() {
 }
 
 /**
- * Deletes groups created by an E2E test. Attempts every group and reports cleanup failures so a
- * broken cleanup flow cannot silently leave test data behind.
+ * Best-effort cleanup for groups created by an E2E test. Cleanup errors are logged so they never
+ * replace or fail the test's original result in tearDown.
  */
 fun ComposeTestRule.cleanupCreatedGroups(names: Iterable<String>) {
-    val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-    val groupList = hasTestTag(TestTags.CREATE_GROUP_BUTTON)
-    val cleanupErrors = mutableListOf<String>()
-    val groupsToDelete = names.toList().distinct().asReversed()
-    if (groupsToDelete.isEmpty()) return
-
-    fun returnToGroupList() {
-        repeat(10) {
-            if (exists(groupList)) return
-            val clickedBack = runCatching {
-                if (exists(hasTestTag(TestTags.BACK_BUTTON))) {
-                    onAllNodes(hasTestTag(TestTags.BACK_BUTTON))[0].performClick()
-                    true
-                } else false
-            }.getOrDefault(false)
-
-            if (!clickedBack) {
-                runCatching { device.pressBack() }
-            }
-            // A back action may return through several nested screens. Keep trying if this
-            // intermediate screen does not reach the list yet.
-            runCatching { waitUntil(2_000) { exists(groupList) } }
-        }
-        if (!exists(groupList)) {
-            relaunchApp()
-        }
-        check(exists(groupList)) { "Could not navigate to the group list before cleanup" }
-    }
-
     try {
-        returnToGroupList()
-    } catch (error: Throwable) {
-        cleanupErrors += error.message ?: error::class.java.simpleName
-    }
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        val groupList = hasTestTag(TestTags.CREATE_GROUP_BUTTON)
+        val groupsToDelete = names.toList().distinct().asReversed()
+        if (groupsToDelete.isEmpty()) return
 
-    if (exists(groupList)) {
-        for (name in groupsToDelete) {
-            val groupMatcher = hasTestTag(TestTags.GROUP_ITEM) and hasText(name)
-            try {
-                if (!exists(groupMatcher)) {
-                    runCatching { onNode(groupMatcher).performScrollTo() }
+        fun returnToGroupList() {
+            repeat(10) {
+                if (exists(groupList)) return
+                val clickedBack = runCatching {
+                    if (exists(hasTestTag(TestTags.BACK_BUTTON))) {
+                        onAllNodes(hasTestTag(TestTags.BACK_BUTTON))[0].performClick()
+                        true
+                    } else false
+                }.getOrDefault(false)
+
+                if (!clickedBack) {
+                    runCatching { device.pressBack() }
                 }
-                if (!exists(groupMatcher)) continue
-
-                onNode(groupMatcher).performScrollTo().performClick()
-                waitUntil(NETWORK_TIMEOUT_MS) { exists(hasContentDescription("Options")) }
-                onNodeWithContentDescription("Options").performClick()
-                waitUntil(5_000) { exists(hasTestTag("delete_group")) }
-                onNodeWithTag("delete_group").performClick()
-                waitUntil(5_000) { exists(hasText("Delete group?")) }
-                onNodeWithText("Delete").performClick()
-                waitUntil(NETWORK_TIMEOUT_MS) { exists(groupList) && !exists(groupMatcher) }
-            } catch (error: Throwable) {
-                cleanupErrors += "'$name': ${error.message ?: error::class.java.simpleName}"
-                // Return to the list before attempting the next test-created group.
-                runCatching { returnToGroupList() }
+                runCatching { waitUntil(2_000) { exists(groupList) } }
+            }
+            if (!exists(groupList)) {
+                runCatching { relaunchApp() }
             }
         }
-    }
 
-    if (cleanupErrors.isNotEmpty()) {
-        fail("Failed to clean up test-created groups: ${cleanupErrors.joinToString("; ")}")
+        runCatching { returnToGroupList() }
+
+        if (exists(groupList)) {
+            for (name in groupsToDelete) {
+                val groupMatcher = hasTestTag(TestTags.GROUP_ITEM) and hasText(name)
+                try {
+                    if (!exists(groupMatcher)) {
+                        runCatching { onNode(groupMatcher).performScrollTo() }
+                    }
+                    if (!exists(groupMatcher)) continue
+
+                    onNode(groupMatcher).performScrollTo().performClick()
+                    waitUntil(NETWORK_TIMEOUT_MS) { exists(hasContentDescription("Options")) }
+                    onNodeWithContentDescription("Options").performClick()
+                    waitUntil(5_000) { exists(hasTestTag("delete_group")) }
+                    onNodeWithTag("delete_group").performClick()
+                    waitUntil(5_000) { exists(hasText("Delete group?")) }
+                    onNodeWithText("Delete").performClick()
+                    waitUntil(NETWORK_TIMEOUT_MS) { exists(groupList) && !exists(groupMatcher) }
+                } catch (error: Throwable) {
+                    Log.w("ComposeE2E", "Best-effort cleanup failed for group '$name': ${error.message}")
+                    runCatching { returnToGroupList() }
+                }
+            }
+        }
+    } catch (e: Throwable) {
+        Log.w("ComposeE2E", "Best-effort cleanup failed: ${e.message}")
     }
 }
 

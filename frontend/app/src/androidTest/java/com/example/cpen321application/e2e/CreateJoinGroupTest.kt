@@ -8,28 +8,23 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import com.example.cpen321application.MainActivity
-import com.example.cpen321application.testutil.assertSignedInOnGroupList
+import com.example.cpen321application.testutil.BaseE2ETest
 import com.example.cpen321application.testutil.textOf
 import com.example.cpen321application.testutil.uniqueName
 import com.example.cpen321application.testutil.waitFor
 import com.example.cpen321application.ui.common.TestTags
-import com.example.cpen321application.testutil.cleanupCreatedGroups
 import org.junit.Assert.assertTrue
-import org.junit.After
-import org.junit.Before
-import org.junit.Rule
 import org.junit.Test
-import org.junit.runner.RunWith
 
 // Generated codes use the unambiguous alphabet in backend config.ts (no 0/O, 1/I/L)
 private val INVITE_CODE_TEXT = Regex("([ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6})")
@@ -42,21 +37,7 @@ private const val UNUSED_INVITE_CODE = "000000"
  * the real back end. Each test starts signed in on the group list and creates the data it needs.
  * Joining another user's group needs a second account and is a manual step (documentation/Testing.md).
  */
-@RunWith(AndroidJUnit4::class)
-class CreateJoinGroupTest {
-    @get:Rule
-    val compose = createAndroidComposeRule<MainActivity>()
-
-    private val createdGroupNames = mutableListOf<String>()
-
-    @Before
-    fun startOnGroupList() {
-        createdGroupNames.clear()
-        compose.assertSignedInOnGroupList()
-    }
-
-    @After
-    fun deleteGroupsCreatedByTest() = compose.cleanupCreatedGroups(createdGroupNames)
+class CreateJoinGroupTest : BaseE2ETest() {
 
     // Create: main success scenario, steps 1-5
     @Test
@@ -94,6 +75,26 @@ class CreateJoinGroupTest {
         compose.onNodeWithTag(TestTags.CREATE_GROUP_SUBMIT).assertIsNotEnabled()
     }
 
+    // Create: failure scenario 2b, a name longer than 60 characters, followed by retry.
+    @Test
+    fun createGroup_nameLongerThan60Characters() {
+        val expectedError = "Invalid request: name must be a non-empty string of at most 60 characters"
+        compose.onNodeWithTag(TestTags.CREATE_GROUP_BUTTON).performClick()
+        compose.onNodeWithTag(TestTags.GROUP_NAME_INPUT).performTextInput("x".repeat(61))
+        compose.onNodeWithTag(TestTags.CREATE_GROUP_SUBMIT).performClick()
+
+        compose.waitFor(hasTestTag(TestTags.ERROR_TEXT) and hasText(expectedError))
+        compose.onNodeWithTag(TestTags.ERROR_TEXT).assertTextEquals(expectedError)
+
+        val validName = uniqueName("E2E Short Retry")
+        createdGroupNames += validName
+        compose.onNodeWithTag(TestTags.GROUP_NAME_INPUT).performTextClearance()
+        compose.onNodeWithTag(TestTags.GROUP_NAME_INPUT).performTextInput(validName)
+        compose.onNodeWithTag(TestTags.CREATE_GROUP_SUBMIT).performClick()
+        compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
+        compose.onNodeWithText(validName).assertIsDisplayed()
+    }
+
     // Join: failure scenario 2a, an invite code that matches no group
     @Test
     fun joinGroup_invalidCodeShowsErrorAndAllowsRetry() {
@@ -123,7 +124,7 @@ class CreateJoinGroupTest {
         compose.onNodeWithTag(TestTags.JOIN_GROUP_SUBMIT).performClick()
 
         // 3a1. The app says the user is already in the group
-        compose.waitFor(hasTestTag(TestTags.ERROR_TEXT))
+        compose.waitFor(hasTestTag(TestTags.ERROR_TEXT) and hasText("Already a member of this group"))
         compose.onNodeWithTag(TestTags.ERROR_TEXT).assertTextEquals("Already a member of this group")
     }
 
@@ -151,7 +152,7 @@ class CreateJoinGroupTest {
             compose.waitFor(hasTestTag(TestTags.ERROR_TEXT))
             compose.onNodeWithTag(TestTags.ERROR_TEXT).assertTextContains("Network error", substring = true)
         } finally {
-            device.executeShellCommand("cmd connectivity airplane-mode disable")
+            restoreNetwork()
         }
     }
 
