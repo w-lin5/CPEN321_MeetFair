@@ -1,7 +1,6 @@
 package com.example.cpen321application.e2e
 
 import android.content.Context
-import android.app.AlertDialog
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.compose.ui.semantics.SemanticsNode
@@ -30,9 +29,12 @@ import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import com.example.cpen321application.MainActivity
 import com.example.cpen321application.testutil.assertSignedInOnGroupList
+import com.example.cpen321application.testutil.assumeMultiUserRun
 import com.example.cpen321application.testutil.cleanupCreatedGroups
 import com.example.cpen321application.testutil.dismissSnackbarNotices
 import com.example.cpen321application.testutil.exists
+import com.example.cpen321application.testutil.manualStep
+import com.example.cpen321application.testutil.requireCreatedInviteCode
 import com.example.cpen321application.testutil.textOf
 import com.example.cpen321application.testutil.uniqueName
 import com.example.cpen321application.testutil.waitFor
@@ -41,7 +43,6 @@ import org.junit.Before
 import org.junit.After
 import org.junit.Rule
 import org.junit.Test
-import org.junit.Assume.assumeTrue
 import org.junit.runner.RunWith
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -230,14 +231,14 @@ class VotingTest : BaseE2ETest() {
         assumeMultiUserRun()
         val title = createGroupAndMeetup()
         enterParticipationDetails()
-        val inviteCode = inviteCodeForCreatedGroup()
-        manualStep("On Device B, join with invite code $inviteCode, open meetup '$title', and enter/save participation details. Then tap Continue here on Device A.")
+        val inviteCode = requireCreatedInviteCode(createdInviteCode)
+        compose.activity.manualStep("On Device B, join with invite code $inviteCode, open meetup '$title', and enter/save participation details. Then tap Continue here on Device A.")
 
         startVotingFromMeetup()
         val candidates = candidatePlaceIds()
         val first = candidates.first()
-        manualStep("On Device B, open 'Vote on a spot' and vote for the first place ($first). Then tap Continue here on Device A.")
-        manualStep("On Device B, tap 'Submit vote', then tap Continue here on Device A.")
+        compose.activity.manualStep("On Device B, open 'Vote on a spot' and vote for the first place ($first). Then tap Continue here on Device A.")
+        compose.activity.manualStep("On Device B, tap 'Submit vote', then tap Continue here on Device A.")
         compose.waitFor(hasText("1 of 2", substring = true), timeoutMs = 60_000)
         val lockedWeightText = compose.onAllNodes(hasText("Locked weight:", substring = true))
             .fetchSemanticsNodes().firstOrNull()?.let(::nodeText).orEmpty()
@@ -253,10 +254,10 @@ class VotingTest : BaseE2ETest() {
         val title = createGroupAndMeetup()
         // Device A must be a participant; Device B is the member that deliberately skips details.
         enterParticipationDetails()
-        val inviteCode = inviteCodeForCreatedGroup()
-        manualStep("On Device B, join with invite code $inviteCode and open meetup '$title'. Do not enter participation details. Then tap Continue here on Device A.")
+        val inviteCode = requireCreatedInviteCode(createdInviteCode)
+        compose.activity.manualStep("On Device B, join with invite code $inviteCode and open meetup '$title'. Do not enter participation details. Then tap Continue here on Device A.")
         startVotingFromMeetup()
-        manualStep("On Device B, open 'Vote on a spot'. Verify there are three places and tallies, no Vote or Submit vote buttons, and 'Only members who entered their details can vote.' is shown. Tap Continue here on Device A when done.")
+        compose.activity.manualStep("On Device B, open 'Vote on a spot'. Verify there are three places and tallies, no Vote or Submit vote buttons, and 'Only members who entered their details can vote.' is shown. Tap Continue here on Device A when done.")
     }
 
     // Multi-user: B keeps a stale voting screen offline while A finalizes; B retries after reconnecting.
@@ -265,11 +266,11 @@ class VotingTest : BaseE2ETest() {
         assumeMultiUserRun()
         val title = createGroupAndMeetup()
         enterParticipationDetails()
-        val inviteCode = inviteCodeForCreatedGroup()
-        manualStep("On Device B, join with invite code $inviteCode, open meetup '$title', and enter/save details. Then tap Continue here on Device A.")
+        val inviteCode = requireCreatedInviteCode(createdInviteCode)
+        compose.activity.manualStep("On Device B, join with invite code $inviteCode, open meetup '$title', and enter/save details. Then tap Continue here on Device A.")
 
         startVotingFromMeetup()
-        manualStep("On Device B, open 'Vote on a spot', turn on airplane mode, and leave the voting screen open. Then tap Continue here on Device A.")
+        compose.activity.manualStep("On Device B, open 'Vote on a spot', turn on airplane mode, and leave the voting screen open. Then tap Continue here on Device A.")
         val first = candidatePlaceIds().first()
 
         // A must have one locked vote so the server can choose the winner when voting closes.
@@ -284,7 +285,7 @@ class VotingTest : BaseE2ETest() {
         compose.onNodeWithTag(TestTags.CONFIRM_FINALIZE_BUTTON).performClick()
         compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT) and hasText("Voting is closed"))
 
-        manualStep("On Device B, turn airplane mode off and immediately tap Vote before the stale screen refreshes. If it refreshed already, repeat the scenario. Verify 'Voting is not open for this meetup', then closed status and no vote buttons. Tap Continue here on Device A when done.")
+        compose.activity.manualStep("On Device B, turn airplane mode off and immediately tap Vote before the stale screen refreshes. If it refreshed already, repeat the scenario. Verify 'Voting is not open for this meetup', then closed status and no vote buttons. Tap Continue here on Device A when done.")
         compose.onNodeWithTag(TestTags.WINNER_TEXT).assertIsDisplayed()
     }
 
@@ -389,33 +390,6 @@ class VotingTest : BaseE2ETest() {
             }
         } finally {
             connectivity.unregisterNetworkCallback(callback)
-        }
-    }
-
-    private fun assumeMultiUserRun() {
-        assumeTrue(
-            "Run with instrumentation argument multi-user=true and a second signed-in device",
-            InstrumentationRegistry.getArguments().getString("multi-user") == "true",
-        )
-    }
-
-    private fun inviteCodeForCreatedGroup(): String =
-        checkNotNull(createdInviteCode) { "The created group's invite code was not captured" }
-
-    private fun manualStep(message: String) {
-        val latch = CountDownLatch(1)
-        var dialog: AlertDialog? = null
-        compose.activity.runOnUiThread {
-            dialog = AlertDialog.Builder(compose.activity)
-                .setTitle("Manual User B step")
-                .setMessage(message)
-                .setPositiveButton("Continue") { _, _ -> latch.countDown() }
-                .setCancelable(false)
-                .show()
-        }
-        if (!latch.await(5, TimeUnit.MINUTES)) {
-            compose.activity.runOnUiThread { dialog?.dismiss() }
-            throw AssertionError("Timed out waiting for User B. Manual step: $message")
         }
     }
 

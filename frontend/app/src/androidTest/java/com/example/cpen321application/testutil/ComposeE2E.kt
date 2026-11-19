@@ -1,6 +1,8 @@
 package com.example.cpen321application.testutil
 
 import android.util.Log
+import android.app.AlertDialog
+import android.app.Activity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasContentDescription
@@ -16,6 +18,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import com.example.cpen321application.ui.common.TestTags
 import org.junit.Assert.fail
+import org.junit.Assume.assumeTrue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 // E2E tests talk to the real back end; a cold server or a slow emulator network can take several seconds
 const val NETWORK_TIMEOUT_MS = 20_000L
@@ -138,3 +143,33 @@ fun ComposeTestRule.textOf(tag: String): String =
 
 /** A name no earlier run has used, so a test never depends on data left by another test or user. */
 fun uniqueName(prefix: String): String = "$prefix ${System.currentTimeMillis()}"
+
+/** Skips multi-user scenarios unless the E2E runner was started with its multi-user option. */
+fun assumeMultiUserRun() {
+    assumeTrue(
+        "Run with instrumentation argument multi-user=true and a second signed-in device",
+        InstrumentationRegistry.getArguments().getString("multi-user") == "true",
+    )
+}
+
+/** Returns the invite code captured from a newly created group, with a useful setup error if absent. */
+fun requireCreatedInviteCode(inviteCode: String?): String =
+    checkNotNull(inviteCode) { "The created group's invite code was not captured" }
+
+/** Shows the standard manual Device B instruction dialog used by multi-user E2E scenarios. */
+fun Activity.manualStep(message: String) {
+    val latch = CountDownLatch(1)
+    var dialog: AlertDialog? = null
+    runOnUiThread {
+        dialog = AlertDialog.Builder(this)
+            .setTitle("Manual User B step")
+            .setMessage(message)
+            .setPositiveButton("Continue") { _, _ -> latch.countDown() }
+            .setCancelable(false)
+            .show()
+    }
+    if (!latch.await(5, TimeUnit.MINUTES)) {
+        runOnUiThread { dialog?.dismiss() }
+        throw AssertionError("Timed out waiting for User B. Manual step: $message")
+    }
+}
