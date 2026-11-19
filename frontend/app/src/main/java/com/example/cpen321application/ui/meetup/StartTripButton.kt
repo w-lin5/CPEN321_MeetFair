@@ -5,17 +5,8 @@ import android.content.Context
 import android.location.LocationManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -25,7 +16,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -33,11 +23,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.cpen321application.AppContainer
+import com.example.cpen321application.ui.common.TestTags
+import com.example.cpen321application.ui.common.MeetupActionButton
 import com.example.cpen321application.data.ApiResult
 import com.example.cpen321application.location.LiveLocationService
 import com.example.cpen321application.ui.theme.RosePrimary
@@ -129,8 +120,9 @@ private suspend fun executeTripStart(
     meetupId: String,
     onStarted: () -> Unit,
 ): String? {
-    if (LiveLocationService.status.value.meetupId?.let { it != meetupId } == true) {
-        return "Stop sharing your current trip before starting another one."
+    val activeSharing = LiveLocationService.status.value.meetupId
+    if (activeSharing != null && activeSharing != meetupId) {
+        LiveLocationService.stop(context)
     }
     if (!androidx.core.location.LocationManagerCompat.isLocationEnabled(
             context.getSystemService(LocationManager::class.java)
@@ -166,39 +158,16 @@ private fun StartTripActionView(
     onClick: () -> Unit,
 ) {
     Column(modifier = modifier) {
-        Button(
+        MeetupActionButton(
+            busy = busy,
+            label = label,
+            busyLabel = "Starting...",
+            icon = ArrowRightIcon,
+            color = RosePrimary,
+            testTag = TestTags.LEAVING_BUTTON,
             onClick = onClick,
-            enabled = !busy,
-            shape = CircleShape,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = RosePrimary,
-                contentColor = Color.White,
-                disabledContainerColor = RosePrimary.copy(alpha = 0.5f),
-                disabledContentColor = Color.White.copy(alpha = 0.7f),
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(54.dp)
-                .testTag("start_trip_button"),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    imageVector = ArrowRightIcon,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp),
-                )
-                Text(
-                    text = if (busy) "Starting..." else label,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                    color = Color.White,
-                )
-            }
-        }
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        )
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag(TestTags.ERROR_TEXT)) }
     }
 }
 
@@ -219,7 +188,7 @@ private fun StartTripConfirmationDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
+            TextButton(onClick = onConfirm, modifier = Modifier.testTag(TestTags.SHARE_TRIP_CONFIRM)) {
                 Text("Share and start trip")
             }
         },

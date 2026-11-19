@@ -61,6 +61,13 @@ object TestTags {
     const val MEETUP_WINNER_TEXT = "meetup_winner_text"
     const val ADD_TO_CALENDAR_BUTTON = "add_to_calendar_button"
     const val CALENDAR_ADDED_TEXT = "calendar_added_text"
+    const val LEAVING_BUTTON = "leaving_button"
+    const val SHARE_TRIP_CONFIRM = "share_trip_confirm"
+    const val VIEW_LIVE_LOCATION_BUTTON = "view_live_location_button"
+    const val TRIP_STATUS_TEXT = "trip_status_text"
+    const val LOCATION_SHARING_INDICATOR = "location_sharing_indicator"
+    const val ARRIVED_BUTTON = "arrived_button"
+    const val COMMUTE_DURATION_TEXT = "commute_duration_text"
 
     // Chips are tagged per option name, e.g. modeChip("WALK")
     fun modeChip(mode: String) = "mode_chip_$mode"

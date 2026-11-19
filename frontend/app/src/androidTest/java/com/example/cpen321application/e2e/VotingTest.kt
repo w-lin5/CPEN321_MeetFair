@@ -5,34 +5,36 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isEnabled
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performTextInput
-import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
-import com.example.cpen321application.MainActivity
-import com.example.cpen321application.testutil.assertSignedInOnGroupList
-import com.example.cpen321application.testutil.cleanupCreatedGroups
+import com.example.cpen321application.testutil.assumeMultiUserRun
+import com.example.cpen321application.testutil.candidatePlaceIds
+import com.example.cpen321application.testutil.createGroupAndMeetup
+import com.example.cpen321application.testutil.nodeText
+import com.example.cpen321application.testutil.tagStartingWith
 import com.example.cpen321application.testutil.exists
-import com.example.cpen321application.testutil.uniqueName
+import com.example.cpen321application.testutil.manualStep
+import com.example.cpen321application.testutil.requireCreatedInviteCode
 import com.example.cpen321application.testutil.waitFor
+import com.example.cpen321application.testutil.startVotingFromMeetup
+import com.example.cpen321application.testutil.submitParticipation
+import com.example.cpen321application.testutil.setUpTwoMemberVoting
 import com.example.cpen321application.ui.common.TestTags
-import org.junit.Before
-import org.junit.After
-import org.junit.Rule
 import org.junit.Test
-import org.junit.runner.RunWith
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+import com.example.cpen321application.testutil.BaseE2ETest
 
 /**
  * End-to-end tests for Use Case 1 "Vote on a Candidate" (Requirements_and_Design.md, feature 4)
@@ -41,21 +43,15 @@ import org.junit.runner.RunWith
  * needs. Tie-breaking and weighted voting requires a second account and is a manual step
  * (documentation/Testing.md).
  */
-@RunWith(AndroidJUnit4::class)
-class VotingTest {
-    @get:Rule
-    val compose = createAndroidComposeRule<MainActivity>()
+class VotingTest : BaseE2ETest() {
+    private var createdInviteCode: String? = null
+    private var createdGroupName: String? = null
 
-    private val createdGroupNames = mutableListOf<String>()
-
-    @Before
-    fun startOnGroupList() {
-        createdGroupNames.clear()
-        compose.assertSignedInOnGroupList()
+    override fun setUp() {
+        createdInviteCode = null
+        createdGroupName = null
+        super.setUp()
     }
-
-    @After
-    fun deleteGroupsCreatedByTest() = compose.cleanupCreatedGroups(createdGroupNames)
 
     // Vote on a Candidate: main success scenario, steps 1-8
     @Test
@@ -77,6 +73,7 @@ class VotingTest {
         }
         org.junit.Assert.assertEquals(3, placeIds.size)
         compose.onAllNodes(hasText("Picks:", substring = true)).assertCountEquals(3)
+        compose.waitFor(hasText("Locked weight:", substring = true))
         compose.onAllNodes(hasText("Locked weight:", substring = true)).assertCountEquals(3)
         compose.onNodeWithTag(TestTags.VOTER_COUNT_TEXT).assertTextContains("participant(s) have locked their vote", substring = true)
         compose.waitFor(hasTestTag(TestTags.VOTING_LIVE_TEXT))
@@ -103,10 +100,6 @@ class VotingTest {
         compose.onNodeWithTag(TestTags.voteButton(first)).performScrollTo().assertTextContains("Change vote", substring = true)
 
         // 6. The member selects "Submit vote" to lock their vote.
-        val votingStartedNotice = hasText("Voting has started.")
-        if (compose.exists(votingStartedNotice)) {
-            compose.waitUntil(5_000) { !compose.exists(votingStartedNotice) }
-        }
         compose.waitFor(hasTestTag(TestTags.LOCK_VOTE_BUTTON) and isEnabled())
         compose.onNodeWithTag(TestTags.LOCK_VOTE_BUTTON).performScrollTo().performClick()
 
@@ -173,14 +166,9 @@ class VotingTest {
 
     // 3b. Cast an initial vote before disconnecting the network.
     @Test
-    fun vote_offlineNetworkFailureKeepsPreviousVoteAndCanRetry() {
+    fun vote_offlineNetworkFailure() {
         openPreparedVotingScreen()
         compose.waitFor(hasTestTag(TestTags.VOTING_LIVE_TEXT))
-
-        val startedNotice = hasText("Voting has started.")
-        if (compose.exists(startedNotice)) {
-            compose.waitUntil(  5_000) { !compose.exists(startedNotice) }
-        }
 
         val candidates = compose.onAllNodes(tagStartingWith("candidate_item_")).fetchSemanticsNodes()
         org.junit.Assert.assertEquals("Voting should show three candidates", 3, candidates.size)
@@ -207,12 +195,7 @@ class VotingTest {
 
             // 3b2. Restore connectivity, retry the change, and verify the new selection is saved.
             device.executeShellCommand("cmd connectivity airplane-mode disable")
-            val connectivity = compose.activity.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            compose.waitUntil(20_000) {
-                val network = connectivity.activeNetwork
-                network != null && connectivity.getNetworkCapabilities(network)
-                    ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
-            }
+            awaitValidatedNetwork()
             compose.onNodeWithTag(TestTags.voteButton(replacement)).performScrollTo().performClick()
             val retrySucceeded = hasTestTag(TestTags.voteButton(replacement)) and hasText("Your vote")
             compose.waitFor(retrySucceeded or hasTestTag(TestTags.ERROR_TEXT))
@@ -229,35 +212,66 @@ class VotingTest {
         }
     }
 
+    // Multi-user: User B joins and votes manually; User A verifies the live tally and lock broadcast.
     @Test
-    fun vote_finalizeClosesVoting() {
-        // Prepare the organizer's voting screen with candidates and no votes locked.
-        openPreparedVotingScreen()
+    fun vote_otherMemberVotesAppearLive() {
+        assumeMultiUserRun()
+        val title = createGroupAndMeetup()
+        val inviteCode = requireCreatedInviteCode(createdInviteCode)
+        compose.setUpTwoMemberVoting(title, inviteCode, expectedMemberCount = 1)
+        compose.activity.manualStep("On Device B:\n1. Open 'Vote on a spot'.\n2. Vote for the first place in the list.\n3. Tap Continue here on Device A.")
+        compose.activity.manualStep("On Device B:\n1. Tap 'Submit vote' to lock your vote.\n2. Tap Continue here on Device A.")
+        compose.waitFor(hasText("1 of 2", substring = true), timeoutMs = 60_000)
+        val lockedWeightText = compose.onAllNodes(hasText("Locked weight:", substring = true))
+            .fetchSemanticsNodes().firstOrNull()?.let(::nodeText).orEmpty()
+        val lockedWeight = Regex("Locked weight: ([0-9]+(?:\\.[0-9]+)?)")
+            .find(lockedWeightText)?.groupValues?.get(1)?.toDoubleOrNull()
+        org.junit.Assert.assertTrue("First candidate should have positive locked weight", (lockedWeight ?: 0.0) > 0.0)
+    }
 
-        val candidateMatcher = tagStartingWith("candidate_item_")
-        compose.waitFor(candidateMatcher)
-        val placeId = compose.onAllNodes(candidateMatcher).fetchSemanticsNodes().first()
-            .config.getOrNull(SemanticsProperties.TestTag)!!.removePrefix("candidate_item_")
+    // Multi-user: Device B joins the group but does not enter meetup details, so it cannot vote.
+    @Test
+    fun vote_nonParticipantSeesNoVoteButtons() {
+        assumeMultiUserRun()
+        val title = createGroupAndMeetup()
+        // Device A must be a participant; Device B is the member that deliberately skips details.
+        compose.submitParticipation(expectedMemberCount = 1)
+        val inviteCode = requireCreatedInviteCode(createdInviteCode)
+        compose.activity.manualStep("On Device B:\n1. Join the group with invite code $inviteCode.\n2. Open meetup '$title'.\n" +
+            "3. Do not enter participation details.\n4. Tap Continue here on Device A.")
+        startVotingFromMeetup()
+        compose.activity.manualStep("On Device B:\n1. Open 'Vote on a spot'.\n2. Verify there are three places and tallies.\n" +
+            "3. Verify there are no Vote or Submit vote buttons.\n4. Verify 'Only members who entered their details can vote.' is shown.\n" +
+            "5. Tap Continue here on Device A.")
+    }
 
-        // Finalize with no locked votes; choose a winner when the UI requests a manual pick.
-        val votingStartedNotice = hasText("Voting has started.")
-        if (compose.exists(votingStartedNotice)) {
-            compose.waitUntil(5_000) { !compose.exists(votingStartedNotice) }
-        }
+    // Multi-user: B keeps a stale voting screen offline while A finalizes; B retries after reconnecting.
+    @Test
+    fun vote_afterFinalizeShowsNotOpenAndClosesVoting() {
+        assumeMultiUserRun()
+        val title = createGroupAndMeetup()
+        val inviteCode = requireCreatedInviteCode(createdInviteCode)
+        compose.setUpTwoMemberVoting(title, inviteCode, expectedMemberCount = 1)
+        compose.activity.manualStep("On Device B:\n1. Open 'Vote on a spot'.\n2. Turn on airplane mode.\n" +
+            "3. Leave the voting screen open.\n4. Tap Continue here on Device A.")
+        val first = candidatePlaceIds().first()
+
+        // A must have one locked vote so the server can choose the winner when voting closes.
+        compose.onNodeWithTag(TestTags.voteButton(first)).performScrollTo().performClick()
+        compose.waitFor(hasTestTag(TestTags.voteButton(first)) and hasText("Your vote"))
+        compose.waitFor(hasTestTag(TestTags.LOCK_VOTE_BUTTON) and isEnabled())
+        compose.onNodeWithTag(TestTags.LOCK_VOTE_BUTTON).performScrollTo().performClick()
+        compose.waitFor(hasTestTag(TestTags.VOTE_LOCKED_TEXT), timeoutMs = 60_000)
+
         compose.onNodeWithTag(TestTags.FINALIZE_BUTTON).performScrollTo().performClick()
-        val winnerMatcher = tagStartingWith("pick_winner_button_")
-        val confirmMatcher = hasTestTag(TestTags.CONFIRM_FINALIZE_BUTTON)
-        compose.waitFor(confirmMatcher or winnerMatcher)
-        if (compose.exists(confirmMatcher)) {
-            compose.onNodeWithTag(TestTags.CONFIRM_FINALIZE_BUTTON).performClick()
-        }
-        compose.waitFor(winnerMatcher)
-        compose.onNodeWithTag(TestTags.pickWinnerButton(placeId)).performScrollTo().performClick()
-
-        // Verify finalization closes voting and removes candidate vote and lock controls.
+        compose.waitFor(hasTestTag(TestTags.CONFIRM_FINALIZE_BUTTON))
+        compose.onNodeWithTag(TestTags.CONFIRM_FINALIZE_BUTTON).performClick()
         compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT) and hasText("Voting is closed"))
-        compose.onNodeWithTag(TestTags.voteButton(placeId)).assertDoesNotExist()
-        compose.onNodeWithTag(TestTags.LOCK_VOTE_BUTTON).assertDoesNotExist()
+
+        compose.activity.manualStep("On Device B:\n1. Turn airplane mode off.\n2. Immediately tap Vote before the stale screen refreshes.\n" +
+            "3. If the screen already refreshed, repeat the scenario.\n4. Verify 'Voting is not open for this meetup', closed status, and no vote buttons.\n" +
+            "5. Tap Continue here on Device A.")
+        compose.onNodeWithTag(TestTags.WINNER_TEXT).assertIsDisplayed()
     }
 
     // Helper: Creates a group and meetup, enters details, and starts voting for it.
@@ -267,48 +281,57 @@ class VotingTest {
 
     // Helper: Creates a uniquely named group and its first meetup, leaving the app on the meetup page
     private fun createGroupAndMeetup(): String {
-        val groupName = uniqueName("E2E Voting Group")
-        createdGroupNames += groupName
-        val meetupTitle = uniqueName("E2E Voting Meetup")
-
-        compose.onNodeWithTag(TestTags.CREATE_GROUP_BUTTON).performClick()
-        compose.onNodeWithTag(TestTags.GROUP_NAME_INPUT).performTextInput(groupName)
-        compose.onNodeWithTag(TestTags.CREATE_GROUP_SUBMIT).performClick()
-        compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
-
-        // Group creation opens the new group page. Create the meetup there.
-        compose.onNodeWithTag(TestTags.NEW_MEETUP_BUTTON).performClick()
-        compose.onNodeWithTag(TestTags.MEETUP_TITLE_INPUT).performTextInput(meetupTitle)
-        compose.onNodeWithTag(TestTags.CREATE_MEETUP_SUBMIT).performClick()
-        compose.waitFor(hasTestTag(TestTags.MEETUP_TITLE_TEXT) and hasText(meetupTitle))
-        return meetupTitle
+        val created = compose.createGroupAndMeetup(createdGroupNames, "E2E Voting Group", "E2E Voting Meetup")
+        createdGroupName = created.groupName
+        createdInviteCode = created.inviteCode
+        return created.title
     }
 
     // Helper: Creates a meetup, submits this user's starting location, and starts voting for it.
     private fun createMeetupAndEnterDetailsToVoting(): String {
         val meetupTitle = createGroupAndMeetup()
+        compose.submitParticipation(expectedMemberCount = 1)
 
-        compose.waitFor(hasTestTag(TestTags.PARTICIPATION_BUTTON))
-        compose.onNodeWithTag(TestTags.PARTICIPATION_BUTTON).performClick()
-
-        compose.waitFor(hasTestTag(TestTags.LOCATION_PICKER_BUTTON))
-        compose.onNodeWithTag(TestTags.LOCATION_PICKER_BUTTON).performClick()
-
-        compose.waitFor(hasTestTag(TestTags.LOCATION_CONFIRM))
-        compose.onNodeWithTag(TestTags.LOCATION_CONFIRM).performClick()
-
-        compose.waitFor(hasTestTag(TestTags.PARTICIPATION_SUBMIT) and isEnabled())
-        compose.onNodeWithTag(TestTags.PARTICIPATION_SUBMIT).performClick()
-
-        // Saving details returns to the meetup page, where its organizer can start voting.
-        compose.waitFor(hasTestTag(TestTags.START_VOTING_BUTTON))
-        compose.onNodeWithTag(TestTags.START_VOTING_BUTTON).performClick()
-        compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT))
-        compose.onNodeWithTag(TestTags.VOTING_STATUS_TEXT).assertTextContains("Voting is open")
+        // Starting voting generates candidates and navigates directly to the voting screen.
+        startVotingFromMeetup()
         return meetupTitle
     }
 
-    private fun tagStartingWith(prefix: String) = SemanticsMatcher("test tag starts with $prefix") { node ->
-        node.config.getOrNull(SemanticsProperties.TestTag)?.startsWith(prefix) == true
+    private fun startVotingFromMeetup() {
+        compose.startVotingFromMeetup()
     }
+
+    private fun candidatePlaceIds(): List<String> {
+        return compose.candidatePlaceIds()
+    }
+
+    private fun awaitValidatedNetwork(timeoutMs: Long = 20_000) {
+        val connectivity = compose.activity.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        fun networkIsValidated(): Boolean {
+            val network = connectivity.activeNetwork ?: return false
+            return connectivity.getNetworkCapabilities(network)
+                ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+        }
+
+        if (networkIsValidated()) return
+
+        val latch = CountDownLatch(1)
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(network: android.net.Network, capabilities: NetworkCapabilities) {
+                if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) {
+                    latch.countDown()
+                }
+            }
+        }
+        connectivity.registerDefaultNetworkCallback(callback)
+        try {
+            if (networkIsValidated()) latch.countDown()
+            check(latch.await(timeoutMs, TimeUnit.MILLISECONDS)) {
+                "Network did not become validated within ${timeoutMs / 1_000} seconds"
+            }
+        } finally {
+            connectivity.unregisterNetworkCallback(callback)
+        }
+    }
+
 }

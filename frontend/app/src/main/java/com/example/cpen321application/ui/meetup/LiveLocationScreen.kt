@@ -58,6 +58,8 @@ import com.example.cpen321application.model.PlaceCandidate
 import com.example.cpen321application.ui.common.LocalNotify
 import com.example.cpen321application.ui.common.MeetFairCard
 import com.example.cpen321application.ui.common.ScreenColumn
+import com.example.cpen321application.ui.common.TestTags
+import androidx.compose.ui.platform.testTag
 import com.example.cpen321application.ui.theme.RosePrimary
 import com.example.cpen321application.ui.theme.TealContainer
 import com.example.cpen321application.ui.theme.StatusGreen
@@ -364,6 +366,7 @@ private fun SharingStatusCard(message: String) {
         containerColor = TealContainer,
         borderWidth = 0.dp,
         shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.testTag(TestTags.LOCATION_SHARING_INDICATOR),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -384,6 +387,7 @@ private fun SharingStatusCard(message: String) {
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = TealPrimary,
+                    modifier = Modifier.testTag(TestTags.TRIP_STATUS_TEXT),
                 )
             }
             if (!androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) {
@@ -426,11 +430,13 @@ private fun ActiveTripCard(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.ExtraBold,
                     color = TealPrimary,
+                    modifier = Modifier.testTag(TestTags.TRIP_STATUS_TEXT),
                 )
                 Text(
                     text = "Time elapsed: ${formatTripDuration(elapsed)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag(TestTags.COMMUTE_DURATION_TEXT),
                 )
             }
 
@@ -461,7 +467,8 @@ private fun TripActionButtons(busy: Boolean, canPause: Boolean, onArrive: () -> 
             ),
             modifier = Modifier
                 .weight(1f)
-                .height(48.dp),
+                .height(48.dp)
+                .testTag(TestTags.ARRIVED_BUTTON),
         ) {
             Text("I arrived", fontWeight = FontWeight.ExtraBold)
         }
@@ -514,11 +521,13 @@ private fun ArrivedCard(actualSeconds: Long) {
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.ExtraBold,
                     color = StatusGreen,
+                    modifier = Modifier.testTag(TestTags.TRIP_STATUS_TEXT),
                 )
                 Text(
                     text = "Actual commute: ${formatTripDuration(actualSeconds)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag(TestTags.COMMUTE_DURATION_TEXT),
                 )
             }
         }
