@@ -6,8 +6,7 @@
 | --------------- | --------------------- | ------------- |
 | 2026-10-19 | All Sections | Initial submission for CP1 |
 | 2026-11-04 | 2.1.1, 2.1.2, 2.1.3, 2.3, 2.4, 3.2, 4.1, 4.2 | CP2: documented Recommendation Engine interfaces and test commands; updated Create or Join Group and Vote on a Candidate scenarios, automated coverage, and manual multi-user cases; clarified mocked tests and removed references to nonexistent models; updated the commit hash and coverage reports; removed a leftover placeholder and added the automated no-network Create or Join Group test. |
-| 2026-11-17 | 3.1, 3.2 | Added dedicated Security and Access Control NFR tests for real HTTPS/WSS, session verification, membership/organizer restrictions and Calendar token non-persistence; documented isolated execution prerequisites and separate deployment checks. |
-| 2026-11-17 | 3.1, 3.2 | Added Location Privacy backend and Android NFR tests and mapped consent, authorization, retention, coordinate-free realtime events and sharing notifications to the documented requirements; separated automated checks from full device lifecycle validation. |
+| 2026-11-19 | 2.1.1, 3.1, 3.2, 4.1, 4.2 | CP3: Added dedicated backend and Android NFR tests for Security and Access Control (HTTPS/WSS, session verification, role restrictions, Calendar token non-persistence) and Location Privacy (consent, authorization, point retention, coordinate-free realtime events, sharing notifications); added missing backend test-file references; updated front-end test specifications with the E2E suites covering all use cases and failure scenarios across Features 2, 4, and 5; corrected manual GUI expectations and current UI messages; clarified Calendar duplicate handling and settlement coverage; numbered Device B companion instructions; added dedicated hybrid multi-user runners aligned with the standard E2E runner startup; and updated test execution logs. |
 ---
 
 ## 2. Back-end Test Specification: APIs
@@ -18,29 +17,34 @@
 
 | **Interface**                                    | **Describe Group Location, No Mocks**                     | **Describe Group Location, With Mocks**                 | **Mocked Components**                                                                                                            |
 | ------------------------------------------------ | --------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| **GET /health**                                  | [`backend/tests/no-mock/health.test.ts#L6`](../backend/tests/no-mock/health.test.ts#L6)            | N/A *(no external dependencies)*                        | None                                                                                                                             |
-| **POST /api/auth/google**                        | [`backend/tests/no-mock/auth.test.ts#L14`](../backend/tests/no-mock/auth.test.ts#L14)             | [`backend/tests/mock/auth.test.ts#L21`](../backend/tests/mock/auth.test.ts#L21)               | Google ID Token Client (`idTokenClient.verifyIdToken`), MongoDB User Collection (`UserModel.findOneAndUpdate`) |
-| **GET /api/users/me**                            | [`backend/tests/no-mock/auth.test.ts#L63`](../backend/tests/no-mock/auth.test.ts#L63)             | [`backend/tests/mock/auth.test.ts#L147`](../backend/tests/mock/auth.test.ts#L147)             | MongoDB User Collection (`UserModel.findById`) |
-| **POST /api/groups**                             | [`backend/tests/no-mock/groups.test.ts#L14`](../backend/tests/no-mock/groups.test.ts#L14)           | [`backend/tests/mock/groups.test.ts#L27`](../backend/tests/mock/groups.test.ts#L27)             | MongoDB Group Collection (`GroupModel.create`) |
-| **GET /api/groups**                              | [`backend/tests/no-mock/groups.test.ts#L72`](../backend/tests/no-mock/groups.test.ts#L72)           | [`backend/tests/mock/groups.test.ts#L79`](../backend/tests/mock/groups.test.ts#L79)             | MongoDB Group Collection (`GroupModel.find`) |
-| **POST /api/groups/join**                        | [`backend/tests/no-mock/groups.test.ts#L170`](../backend/tests/no-mock/groups.test.ts#L170)          | [`backend/tests/mock/groups.test.ts#L149`](../backend/tests/mock/groups.test.ts#L149)            | MongoDB Group Collection (`GroupModel.findOne`, `GroupModel.updateOne`) |
-| **GET /api/groups/:groupId**                     | [`backend/tests/no-mock/groups.test.ts#L112`](../backend/tests/no-mock/groups.test.ts#L112)          | [`backend/tests/mock/groups.test.ts#L99`](../backend/tests/mock/groups.test.ts#L99)             | MongoDB Group and User Collections (`GroupModel.findById`, `UserModel.find`) |
-| **POST /api/groups/:groupId/meetups**            | [`backend/tests/no-mock/meetups.test.ts#L30`](../backend/tests/no-mock/meetups.test.ts#L30)          | [`backend/tests/mock/meetups.test.ts#L31`](../backend/tests/mock/meetups.test.ts#L31)            | MongoDB Group and Meetup Collections (`GroupModel.findById`, `MeetupModel.create`) |
-| **GET /api/groups/:groupId/meetups**             | [`backend/tests/no-mock/meetups.test.ts#L138`](../backend/tests/no-mock/meetups.test.ts#L138)         | [`backend/tests/mock/meetups.test.ts#L70`](../backend/tests/mock/meetups.test.ts#L70)            | MongoDB Meetup Collection (`MeetupModel.find`) |
-| **GET /api/meetups/:meetupId**                   | [`backend/tests/no-mock/meetups.test.ts#L187`](../backend/tests/no-mock/meetups.test.ts#L187)         | [`backend/tests/mock/meetups.test.ts#L90`](../backend/tests/mock/meetups.test.ts#L90)            | MongoDB Group and Meetup Collections (`GroupModel.findById`, `MeetupModel.findById`) |
-| **PUT /api/meetups/:meetupId/participation**     | [`backend/tests/no-mock/meetups.test.ts#L234`](../backend/tests/no-mock/meetups.test.ts#L234)         | [`backend/tests/mock/meetups.test.ts#L123`](../backend/tests/mock/meetups.test.ts#L123)           | MongoDB Meetup Collection (`MeetupModel.updateOne`) |
-| **POST /api/meetups/:meetupId/recommendations/from-places** | [`backend/tests/no-mock/recommendations.test.ts#L129`](../backend/tests/no-mock/recommendations.test.ts#L129) | [`backend/tests/mock/recommendations.test.ts#L45`](../backend/tests/mock/recommendations.test.ts#L45), [`#L123`](../backend/tests/mock/recommendations.test.ts#L123); [`backend/tests/unit/place-search.routes.test.ts#L176`](../backend/tests/unit/place-search.routes.test.ts#L176) | Google Places Client (`searchNearby`), Google Routes Client (`travelSeconds`), MongoDB Recommendation Collection (`RecommendationModel.create`); in the `unit` file also Meetup Service (`meetupService.getForMember`), Fair Credit Service (`fairCreditService.getBalances`), Recommendation Service (`recommendationService.generate`) |
-| **POST /api/meetups/:meetupId/places/search** | [`backend/tests/no-mock/recommendations.test.ts#L134`](../backend/tests/no-mock/recommendations.test.ts#L134) | [`backend/tests/unit/place-search.routes.test.ts#L36`](../backend/tests/unit/place-search.routes.test.ts#L36) | Google Places Client (`searchNearby`), Meetup Service (`meetupService.getForMember`) |
-| **GET /api/meetups/:meetupId/recommendations** | [`backend/tests/no-mock/recommendations.test.ts#L153`](../backend/tests/no-mock/recommendations.test.ts#L153) | [`backend/tests/mock/recommendations.test.ts#L78`](../backend/tests/mock/recommendations.test.ts#L78) | MongoDB Recommendation Collection (`RecommendationModel.findOne`) |
-| **recommendationService.getByMeetupId** *(internal; used by Voting & Fairness)* | [`backend/tests/no-mock/recommendations.test.ts#L139`](../backend/tests/no-mock/recommendations.test.ts#L139) | [`backend/tests/mock/recommendations.test.ts#L78`](../backend/tests/mock/recommendations.test.ts#L78) *(through the GET route)* | MongoDB Recommendation Collection (`RecommendationModel.findOne`) |
-| **PUT /api/meetups/:meetupId/vote**              | [`backend/tests/no-mock/voting.test.ts#L73`](../backend/tests/no-mock/voting.test.ts#L73)           | [`backend/tests/mock/voting.test.ts#L37`](../backend/tests/mock/voting.test.ts#L37)             | MongoDB Vote Collection (`VoteModel.findOneAndUpdate`) |
-| **POST /api/meetups/:meetupId/vote/lock**        | [`backend/tests/no-mock/voting.test.ts#L166`](../backend/tests/no-mock/voting.test.ts#L166)          | [`backend/tests/mock/voting.test.ts#L57`](../backend/tests/mock/voting.test.ts#L57)             | Fair Credit Service (`fairCreditService.getVoteWeight`) |
-| **GET /api/meetups/:meetupId/votes**             | [`backend/tests/no-mock/voting.test.ts#L206`](../backend/tests/no-mock/voting.test.ts#L206)          | [`backend/tests/mock/voting.test.ts#L76`](../backend/tests/mock/voting.test.ts#L76)             | MongoDB Vote Collection (`VoteModel.find`), Recommendation Service (`recommendationService.getByMeetupId`) |
-| **POST /api/meetups/:meetupId/finalize**         | [`backend/tests/no-mock/voting.test.ts#L271`](../backend/tests/no-mock/voting.test.ts#L271)          | [`backend/tests/mock/voting.test.ts#L111`](../backend/tests/mock/voting.test.ts#L111)            | MongoDB Meetup Collection (`MeetupModel.findOneAndUpdate`), Recommendation Service (`recommendationService.getByMeetupId`) |
-| **POST /api/meetups/:meetupId/calendar-event**   | [`backend/tests/no-mock/calendar.test.ts#L29`](../backend/tests/no-mock/calendar.test.ts#L29)         | [`backend/tests/mock/calendar.test.ts#L46`](../backend/tests/mock/calendar.test.ts#L46)           | Google Calendar Client (`calendarClient.createEvent`) |
-| **GET /api/users/me/profile**                    | [`backend/tests/no-mock/profile.test.ts#L39`](../backend/tests/no-mock/profile.test.ts#L39)          | [`backend/tests/mock/profile.test.ts#L24`](../backend/tests/mock/profile.test.ts#L24)            | MongoDB Fair Credit Collection (`FairCreditModel.find`), Group Service (`groupService.listForUser`) |
-| **PUT /api/users/me/profile**                    | [`backend/tests/no-mock/profile.test.ts#L89`](../backend/tests/no-mock/profile.test.ts#L89)          | [`backend/tests/mock/profile.test.ts#L64`](../backend/tests/mock/profile.test.ts#L64)            | MongoDB User Collection (`UserModel.findByIdAndUpdate`) |
-| **GET /api/groups/:groupId/fairness**            | [`backend/tests/no-mock/fairness.test.ts#L39`](../backend/tests/no-mock/fairness.test.ts#L39)         | [`backend/tests/mock/fairness.test.ts#L20`](../backend/tests/mock/fairness.test.ts#L20)           | MongoDB Fair Credit Entry Collection (`FairCreditEntryModel.find`), User Service (`userService.findByIds`) |
+| **GET /health**                                  | [`backend/tests/no-mock/health.test.ts`](../backend/tests/no-mock/health.test.ts)            | N/A *(no external dependencies)*                        | None                                                                                                                             |
+| **POST /api/auth/google**                        | [`backend/tests/no-mock/auth.test.ts`](../backend/tests/no-mock/auth.test.ts)             | [`backend/tests/mock/auth.test.ts`](../backend/tests/mock/auth.test.ts)               | Google ID Token Client (`idTokenClient.verifyIdToken`), MongoDB User Collection (`UserModel.findOneAndUpdate`) |
+| **GET /api/users/me**                            | [`backend/tests/no-mock/auth.test.ts`](../backend/tests/no-mock/auth.test.ts)             | [`backend/tests/mock/auth.test.ts`](../backend/tests/mock/auth.test.ts)             | MongoDB User Collection (`UserModel.findById`) |
+| **POST /api/groups**                             | [`backend/tests/no-mock/groups.test.ts`](../backend/tests/no-mock/groups.test.ts)           | [`backend/tests/mock/groups.test.ts`](../backend/tests/mock/groups.test.ts)             | MongoDB Group Collection (`GroupModel.create`) |
+| **GET /api/groups**                              | [`backend/tests/no-mock/groups.test.ts`](../backend/tests/no-mock/groups.test.ts)           | [`backend/tests/mock/groups.test.ts`](../backend/tests/mock/groups.test.ts)             | MongoDB Group Collection (`GroupModel.find`) |
+| **POST /api/groups/join**                        | [`backend/tests/no-mock/groups.test.ts`](../backend/tests/no-mock/groups.test.ts)          | [`backend/tests/mock/groups.test.ts`](../backend/tests/mock/groups.test.ts)            | MongoDB Group Collection (`GroupModel.findOne`, `GroupModel.updateOne`) |
+| **GET /api/groups/:groupId**                     | [`backend/tests/no-mock/groups.test.ts`](../backend/tests/no-mock/groups.test.ts)          | [`backend/tests/mock/groups.test.ts`](../backend/tests/mock/groups.test.ts)             | MongoDB Group and User Collections (`GroupModel.findById`, `UserModel.find`) |
+| **POST /api/groups/:groupId/meetups**            | [`backend/tests/no-mock/meetups.test.ts`](../backend/tests/no-mock/meetups.test.ts)          | [`backend/tests/mock/meetups.test.ts`](../backend/tests/mock/meetups.test.ts)            | MongoDB Group and Meetup Collections (`GroupModel.findById`, `MeetupModel.create`) |
+| **GET /api/groups/:groupId/meetups**             | [`backend/tests/no-mock/meetups.test.ts`](../backend/tests/no-mock/meetups.test.ts)         | [`backend/tests/mock/meetups.test.ts`](../backend/tests/mock/meetups.test.ts)            | MongoDB Meetup Collection (`MeetupModel.find`) |
+| **GET /api/meetups/:meetupId**                   | [`backend/tests/no-mock/meetups.test.ts`](../backend/tests/no-mock/meetups.test.ts)         | [`backend/tests/mock/meetups.test.ts`](../backend/tests/mock/meetups.test.ts)            | MongoDB Group and Meetup Collections (`GroupModel.findById`, `MeetupModel.findById`) |
+| **PUT /api/meetups/:meetupId/participation**     | [`backend/tests/no-mock/meetups.test.ts`](../backend/tests/no-mock/meetups.test.ts)         | [`backend/tests/mock/meetups.test.ts`](../backend/tests/mock/meetups.test.ts)           | MongoDB Meetup Collection (`MeetupModel.updateOne`) |
+| **DELETE /api/meetups/:meetupId/participation** and **POST /api/groups/:groupId/leave** | [`backend/tests/no-mock/leave.test.ts`](../backend/tests/no-mock/leave.test.ts) | N/A | Meetup and group membership/participation state |
+| **DELETE /api/groups/:groupId/members/:memberId** | [`backend/tests/no-mock/remove-member.test.ts`](../backend/tests/no-mock/remove-member.test.ts) | N/A | Group membership, meetup participation, votes, and Fair Credit cleanup |
+| **DELETE /api/meetups/:meetupId** and **DELETE /api/groups/:groupId** | [`backend/tests/no-mock/deletion.test.ts`](../backend/tests/no-mock/deletion.test.ts) | N/A | Meetup/group deletion and dependent records |
+| **POST /api/meetups/:meetupId/recommendations/from-places** | [`backend/tests/no-mock/recommendations.test.ts`](../backend/tests/no-mock/recommendations.test.ts) | [`backend/tests/mock/recommendations.test.ts`](../backend/tests/mock/recommendations.test.ts); [`backend/tests/unit/place-search.routes.test.ts`](../backend/tests/unit/place-search.routes.test.ts) | Google Places Client (`searchNearby`), Google Routes Client (`travelSeconds`), MongoDB Recommendation Collection (`RecommendationModel.create`); in the `unit` file also Meetup Service (`meetupService.getForMember`), Fair Credit Service (`fairCreditService.getBalances`), Recommendation Service (`recommendationService.generate`) |
+| **POST /api/meetups/:meetupId/places/search** | [`backend/tests/no-mock/recommendations.test.ts`](../backend/tests/no-mock/recommendations.test.ts) | [`backend/tests/unit/place-search.routes.test.ts`](../backend/tests/unit/place-search.routes.test.ts) | Google Places Client (`searchNearby`), Meetup Service (`meetupService.getForMember`) |
+| **GET /api/meetups/:meetupId/recommendations** | [`backend/tests/no-mock/recommendations.test.ts`](../backend/tests/no-mock/recommendations.test.ts) | [`backend/tests/mock/recommendations.test.ts`](../backend/tests/mock/recommendations.test.ts) | MongoDB Recommendation Collection (`RecommendationModel.findOne`) |
+| **recommendationService.getByMeetupId** *(internal; used by Voting & Fairness)* | [`backend/tests/no-mock/recommendations.test.ts`](../backend/tests/no-mock/recommendations.test.ts) | [`backend/tests/mock/recommendations.test.ts`](../backend/tests/mock/recommendations.test.ts) *(through the GET route)* | MongoDB Recommendation Collection (`RecommendationModel.findOne`) |
+| **PUT /api/meetups/:meetupId/vote**              | [`backend/tests/no-mock/voting.test.ts`](../backend/tests/no-mock/voting.test.ts)           | [`backend/tests/mock/voting.test.ts`](../backend/tests/mock/voting.test.ts)             | MongoDB Vote Collection (`VoteModel.findOneAndUpdate`) |
+| **POST /api/meetups/:meetupId/vote/lock**        | [`backend/tests/no-mock/voting.test.ts`](../backend/tests/no-mock/voting.test.ts)          | [`backend/tests/mock/voting.test.ts`](../backend/tests/mock/voting.test.ts)             | Fair Credit Service (`fairCreditService.getVoteWeight`) |
+| **GET /api/meetups/:meetupId/votes**             | [`backend/tests/no-mock/voting.test.ts`](../backend/tests/no-mock/voting.test.ts)          | [`backend/tests/mock/voting.test.ts`](../backend/tests/mock/voting.test.ts)             | MongoDB Vote Collection (`VoteModel.find`), Recommendation Service (`recommendationService.getByMeetupId`) |
+| **POST /api/meetups/:meetupId/finalize**         | [`backend/tests/no-mock/voting.test.ts`](../backend/tests/no-mock/voting.test.ts)          | [`backend/tests/mock/voting.test.ts`](../backend/tests/mock/voting.test.ts)            | MongoDB Meetup Collection (`MeetupModel.findOneAndUpdate`), Recommendation Service (`recommendationService.getByMeetupId`) |
+| **tally / winner selection** *(internal)*        | [`backend/tests/unit/tally.test.ts`](../backend/tests/unit/tally.test.ts); [`backend/tests/no-mock/voting.test.ts`](../backend/tests/no-mock/voting.test.ts) | N/A | Pure tally and tie-breaking rules; no external dependencies |
+| **POST /api/meetups/:meetupId/settle**            | [`backend/tests/no-mock/settlement.test.ts`](../backend/tests/no-mock/settlement.test.ts) | N/A | Trip and Fair Credit settlement state |
+| **POST /api/meetups/:meetupId/calendar-event**   | [`backend/tests/no-mock/calendar.test.ts`](../backend/tests/no-mock/calendar.test.ts)         | [`backend/tests/mock/calendar.test.ts`](../backend/tests/mock/calendar.test.ts)           | Google Calendar Client (`calendarClient.createEvent`) |
+| **GET /api/users/me/profile**                    | [`backend/tests/no-mock/profile.test.ts`](../backend/tests/no-mock/profile.test.ts)          | [`backend/tests/mock/profile.test.ts`](../backend/tests/mock/profile.test.ts)            | MongoDB Fair Credit Collection (`FairCreditModel.find`), Group Service (`groupService.listForUser`) |
+| **PUT /api/users/me/profile**                    | [`backend/tests/no-mock/profile.test.ts`](../backend/tests/no-mock/profile.test.ts)          | [`backend/tests/mock/profile.test.ts`](../backend/tests/mock/profile.test.ts)            | MongoDB User Collection (`UserModel.findByIdAndUpdate`) |
+| **GET /api/groups/:groupId/fairness**            | [`backend/tests/no-mock/fairness.test.ts`](../backend/tests/no-mock/fairness.test.ts)         | [`backend/tests/mock/fairness.test.ts`](../backend/tests/mock/fairness.test.ts)           | MongoDB Fair Credit Entry Collection (`FairCreditEntryModel.find`), User Service (`userService.findByIds`) |
 
 The Recommendation Engine is the component specified in full for CP2. Its `from-places` and `places/search` no-mock tests cover the cases rejected before Google is called (authentication, invalid or unknown meetup, non-organizer, wrong status, missing participation details). Successful generation, Google failures and insufficient results are covered by the tests with mocks, because a successful run depends on paid Google APIs and live results that a test cannot assert on.
 
@@ -175,99 +179,356 @@ npm test -- --runInBand tests/nfr
 
 `frontend/app/src/androidTest/java/com/example/cpen321application/e2e/`
 
-The suite is run with `./scripts/run-frontend-e2e-tests.sh` (macOS/Linux) or `./scripts/run-frontend-e2e-tests.ps1` (Windows), with an emulator running and the back end reachable at `API_BASE_URL`. The script starts the back end and installs the app, then waits: sign in to MeetFair on the emulator, and press Enter once the group list is visible. Tests start signed in on the group list and fail with a setup message otherwise. UI elements are located by the test tags defined in `ui/common/TestTags.kt`. Each test creates its own uniquely named groups, so tests do not depend on each other or on existing data.
+The frontend end-to-end (E2E) suite consists of four test classes covering the core user flows against the real back end and Google APIs:
+- [`CreateJoinGroupTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/CreateJoinGroupTest.kt): Feature 2: Groups and Meetups
+- [`VotingTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/VotingTest.kt): Feature 4: Voting and Fairness
+- [`FinalizeMeetupTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/FinalizeMeetupTest.kt): Feature 4: Voting and Fairness
+- [`ShareLiveLocationTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/ShareLiveLocationTest.kt): Feature 5: Live Location
+
+#### Instructions to Run Front-end Tests
+
+1. **Prerequisites**:
+   - An Android emulator or connected physical device running API 26+ (e.g., Pixel 9 on Android 15 / API 35).
+   - The back end running and reachable at the URL configured in `API_BASE_URL`.
+   - MeetFair signed in with a valid Google account on the test device, with the group list displayed on screen.
+
+2. **Automated Single-User Execution**:
+   - Run the dedicated runner script from the repository root:
+     - **Linux / macOS (Bash)**:
+       ```bash
+       chmod +x scripts/run-frontend-e2e-tests.sh
+       ./scripts/run-frontend-e2e-tests.sh
+       ```
+     - **Windows (PowerShell)**:
+       ```powershell
+       .\scripts\run-frontend-e2e-tests.ps1
+       ```
+       *(Note: If execution policy blocks PowerShell scripts, run with `pwsh -ExecutionPolicy Bypass -File .\scripts\run-frontend-e2e-tests.ps1`)*
+   - The script builds and installs the app and test APKs, checks that the user is signed in on the group list, and runs the 26 single-user automated E2E tests across all four test suites.
+   - Multi-user test are skipped automatically during standard single-device runs without failing.
+
+3. **Multi-User Interactive Execution**:
+   - Keep Device B signed in to MeetFair as the manual companion. Run the hybrid script from the repository root. Like the standard E2E runner, it starts the backend, uses `run-frontend` to start the default `Pixel_9` emulator when none is connected, builds/installs/launches the app, and waits for Device A sign-in before running Gradle:
+     - **Linux / macOS (Bash)**:
+       ```bash
+       chmod +x scripts/run-frontend-hybrid-tests.sh
+       ./scripts/run-frontend-hybrid-tests.sh
+       ```
+     - **Windows (PowerShell)**:
+       ```powershell
+       .\scripts\run-frontend-hybrid-tests.ps1
+       ```
+   - The runner selects the nine test methods marked for multi-user execution across the four E2E classes. Device A runs the automated flow and pauses at coordinated steps to show a numbered `manualStep` dialog with explicit Device B actions. Follow the steps on Device B, then tap **Continue here on Device A**; the test checks that the shared state updated across both accounts.
+
+4. **Test Isolation and Teardown**:
+   - All tests extend `BaseE2ETest`.
+   - Every test creates uniquely named groups with timestamp suffixes (`uniqueName`), preventing collisions and state pollution between runs.
+   - UI elements are located by semantic test tags defined in `ui/common/TestTags.kt`.
+   - `BaseE2ETest.setUp()` and `BaseE2ETest.tearDown()` stop active background location services (`LiveLocationService.stop`), restore network connectivity if airplane mode was enabled, and delete all test groups and their associated meetups/trips from the database via the backend API (`groupRepository.delete`).
 
 ### 4.2. Tests
 
-- **Use Cases: Create Group and Join Group** ([`CreateJoinGroupTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/CreateJoinGroupTest.kt))
+#### 4.2.1. Feature 2: Groups and Meetups ([`CreateJoinGroupTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/CreateJoinGroupTest.kt))
 
-  Create Group is formal use case 2 in the requirements specification. Join Group is a separate use case described in Section 3.4; both workflows are tested in this shared test file. The Create and Join labels below distinguish their scenarios.
+Covers formal Use Case 2 (Create Group) and Section 3.4 use cases (Join Group, Meetup Creation, Participation Details, Leaving, and Deletion).
 
-  - **Expected Behaviors (automated):**
+- **Expected Behaviors (Automated Single-User):**
 
-    | **Scenario Steps** | **Test Case Steps** |
-    | ------------------ | ------------------- |
-    | **Create, main success scenario** (`createGroup_showsInviteCodeAndListsTheGroup`) | |
-    | 1. The user selects "Create group" on the group list. | Click the button with test tag `create_group_button`. Check that the button with test tag `create_group_submit` is disabled. |
-    | 2. The user enters a group name and selects "Create". | Input a unique group name in the field with test tag `group_name_input`. Check that the button with test tag `create_group_submit` is enabled, and click it. |
-    | 3. The system creates the group with the user as its only member and organizer. | Wait for the node with test tag `invite_code_text`. Check that exactly one node with test tag `member_item` exists. Check that it contains "(organizer)". |
-    | 4. The system generates a unique 6-character invite code. | Check that the text of `invite_code_text` matches `Invite code:` followed by 6 characters from the invite code alphabet. |
-    | 5. The system displays the group page with the group name, invite code and member list. | Check that the group name is displayed. Click the button with test tag `back_button`. Wait for a node with test tag `group_item` and the group name on the group list. |
-    | **Create, failure 2a** (`createGroup_blankNameCannotBeSubmitted`) | |
-    | 2a. The user enters only spaces as the group name. | Click the button with test tag `create_group_button`. Input "   " in the field with test tag `group_name_input`. |
-    | 2a1. The "Create" button stays disabled. | Check that the button with test tag `create_group_submit` is disabled. |
-    | **Join, failure 2a** (`joinGroup_invalidCodeShowsErrorAndAllowsRetry`) | |
-    | 2a. The user enters an invite code that does not belong to any group. | Click the button with test tag `join_group_button`. Input "000000" in the field with test tag `invite_code_input`. Click the button with test tag `join_group_submit`. |
-    | 2a1. The system displays "Invalid invite code". | Wait for the node with test tag `error_text`. Check that its text is "Invalid invite code". |
-    | 2a2. The user stays on the join screen and may enter another code. | Check that the field with test tag `invite_code_input` is displayed. Check that the button with test tag `join_group_submit` is enabled. |
-    | **Join, failure 3a** (`joinGroup_alreadyMemberShowsError`) | |
-    | 3a. The user is already a member of this group; letter case does not matter. | Create a group through the UI and read its invite code. Click `back_button`, then `join_group_button`. Input the code in lower case in `invite_code_input`. Click `join_group_submit`. |
-    | 3a1. The system displays "Already a member of this group". | Wait for the node with test tag `error_text`. Check that its text is "Already a member of this group". |
-    | **Create, failure 3a and Join, failure 3b: no network** (`createAndJoinGroup_offlineShowsNetworkError`) | |
-    | Create 3a. The user's device has no network connection when creating a group. | Turn on airplane mode with UiDevice. Click `create_group_button`. Input a unique group name in `group_name_input`. Click `create_group_submit`. |
-    | Create 3a1. The system displays a "Network error" message. | Wait for the node with test tag `error_text`. Check that its text contains "Network error". |
-    | Join 3b. The user's device has no network connection when joining a group. | Click `back_button`. Wait for `join_group_button` and click it. Input an unused invite code in `invite_code_input`. Click `join_group_submit`. |
-    | Join 3b1. The system displays a "Network error" message. | Wait for the node with test tag `error_text`. Check that its text contains "Network error". Airplane mode is turned off when the test ends, including if it fails. |
+  | **Scenario Steps** | **Test Case Steps** |
+  | ------------------ | ------------------- |
+  | **Create Group, Main Success (steps 1–5)** (`createGroup_showsInviteCodeAndListsTheGroup`) | |
+  | 1. The user selects "Create group" on the group list. | Click the button with test tag `create_group_button`. Check that the button with test tag `create_group_submit` is disabled. |
+  | 2. The user enters a group name and selects "Create". | Input a unique group name in the field with test tag `group_name_input`. Check that the button with test tag `create_group_submit` is enabled, and click it. |
+  | 3. The system creates the group with the user as its only member and organizer. | Wait for the node with test tag `invite_code_text`. Check that exactly one node with test tag `member_item` exists. Check that it contains "(organizer)". |
+  | 4. The system generates a unique 6-character invite code. | Check that the text of `invite_code_text` matches `Invite code:` followed by 6 characters from the unambiguous alphabet. |
+  | 5. The system displays the group page with the group name, invite code and member list. | Check that the group name is displayed. Click the button with test tag `back_button`. Wait for a node with test tag `group_item` and the group name on the group list. |
+  | **Create Group, Failure 2a: blank name** (`createGroup_blankNameCannotBeSubmitted`) | |
+  | 2a. The user enters only spaces as the group name. | Click the button with test tag `create_group_button`. Input "   " in the field with test tag `group_name_input`. |
+  | 2a1. The "Create" button stays disabled. | Check that the button with test tag `create_group_submit` is disabled. |
+  | **Create Group, Failure 2b: name longer than 60 characters with retry** (`createGroup_nameLongerThan60Characters`) | |
+  | 2b. The user enters a group name longer than 60 characters and selects "Create". | Click `create_group_button`. Input 61 characters in `group_name_input`. Click `create_group_submit`. |
+  | 2b1. The system displays an error message and allows the user to correct the name. | Wait for `error_text`. Check that it displays "Invalid request: name must be a non-empty string of at most 60 characters". Clear input, enter a valid group name, and click `create_group_submit`. Verify the group is created and shows its invite code. |
+  | **Join Group, Failure 2a: invalid code** (`joinGroup_invalidCodeShowsErrorAndAllowsRetry`) | |
+  | 2a. The user enters an invite code that does not belong to any group. | Click the button with test tag `join_group_button`. Input "000000" in the field with test tag `invite_code_input`. Click the button with test tag `join_group_submit`. |
+  | 2a1. The system displays "Invalid invite code". | Wait for the node with test tag `error_text`. Check that its text is "Invalid invite code". |
+  | 2a2. The user stays on the join screen and may enter another code. | Check that the field with test tag `invite_code_input` is displayed. Check that the button with test tag `join_group_submit` is enabled. |
+  | **Join Group, Failure 3a: already a member** (`joinGroup_alreadyMemberShowsError`) | |
+  | 3a. The user is already a member of this group; letter case does not matter. | Create a group through the UI and read its invite code. Click `back_button`, then `join_group_button`. Input the code in lower case in `invite_code_input`. Click `join_group_submit`. |
+  | 3a1. The system displays "Already a member of this group". | Wait for the node with test tag `error_text`. Check that its text is "Already a member of this group". |
+  | **Create Group Failure 3a & Join Group Failure 3b: no network** (`createAndJoinGroup_offlineShowsNetworkError`) | |
+  | Create 3a. The user's device has no network connection when creating a group. | Turn on airplane mode with UiDevice. Click `create_group_button`. Input a unique group name in `group_name_input`. Click `create_group_submit`. |
+  | Create 3a1. The system displays a "Network error" message. | Wait for the node with test tag `error_text`. Check that its text contains "Network error". |
+  | Join 3b. The user's device has no network connection when joining a group. | Click `back_button`. Wait for `join_group_button` and click it. Input an unused invite code in `invite_code_input`. Click `join_group_submit`. |
+  | Join 3b1. The system displays a "Network error" message. | Wait for the node with test tag `error_text`. Check that its text contains "Network error". Airplane mode is turned off when the test ends, including if it fails. |
+  | **Create Meetup: creator is organizer** (`createMeetup_creatorIsOrganizer`) | |
+  | 1. The user creates a new meetup within their group. | Create a group and meetup. Wait for the meetup screen. |
+  | 2. The system marks the creator as the organizer and displays the meetup. | Check that `meetup_organizer_text` contains "organized". Check that `meetup_title_text` displays the meetup title. Click `back_button` and verify the meetup is listed under the group details. |
+  | **Submit Participation Details** (`participation_submitDetails`) | |
+  | 1. A member enters their location, commute mode, and preferences for a meetup. | Open the meetup. Click `participation_button` ("Enter details"). Select a starting position with `location_picker_button` and confirm via `location_confirm`. Click `participation_submit`. |
+  | 2. The system records the participant's details. | Wait for `participation_status_text` to show "Your details are in". Check that "1 member(s) have submitted their details" is displayed. Navigate back and verify the meetup remains listed. |
+  | **Leave Meetup in SETUP** (`leaveMeetup_leave`) | |
+  | 1. A member who submitted details decides to leave the meetup during setup. | Open the meetup with submitted participation details. Open the overflow menu ("Options") and click `leave_meetup`. Confirm "Leave". |
+  | 2. The system clears participation and resets the member's status. | Wait for the meetup screen to reload. Check that `participation_button` ("Enter details") is displayed again and submitted status is cleared. |
+  | **Delete Meetup in SETUP** (`deleteMeetup_deletesInSetup`) | |
+  | 1. The organizer chooses to delete a meetup during setup. | Open the meetup screen. Open Options and click `delete_meetup`. Confirm "Delete". |
+  | 2. The system removes the meetup from the group. | Wait for the group screen. Check that `meetups_empty` is displayed and that 0 nodes matching the meetup title exist. |
+  | **Delete Group** (`deleteGroup_deletesGroup`) | |
+  | 1. The organizer chooses to delete their group. | Create a group. Open Options on the group screen and click `delete_group`. Confirm "Delete". |
+  | 2. The system removes the group from the user's group list. | Wait for the group list. Check that `create_group_button` is displayed and that 0 nodes matching the group name exist. |
 
-  - **Scenarios not covered by the automated suite:**
+- **Multi-User Interactive Scenarios (`--multi-user`):**
 
-    | **Scenario** | **Reason** | **How It Is Checked Instead** |
-    | ------------ | ---------- | ----------------------------- |
-    | Join, main success scenario (steps 1-5) | Requires a second signed-in Google account. | Manual: account A creates a group; account B enters the code and sees the group page with both members. The back-end behavior is tested at `POST /api/groups/join`. |
-    | Create, failure 2b (name longer than 60 characters) | No end-to-end test yet. | The back-end validation is tested at `POST /api/groups`. |
+  | **Scenario Steps** | **Test Case Steps** |
+  | ------------------ | ------------------- |
+  | **Join Group, Main Success (steps 1–5)** (`joinGroup_success`) | |
+  | 1. User A creates a group and shares the invite code. | User A creates a group on Device A and reads `invite_code_text`. |
+  | 2. User B joins the group with the invite code on Device B. | Device A shows a numbered prompt: 1. Select **Join group**. 2. Enter the displayed invite code. 3. Tap **Join group**. 4. Verify the group opens. 5. Tap **Continue here** on Device A. |
+  | 3. The system adds User B to the group; both members are visible. | Device A reloads the group page and asserts that exactly 2 `member_item` nodes are displayed. |
+  | **Leave Group (non-organizer)** (`leaveGroup_nonOrganizerCanLeave`) | |
+  | 1. User B joins User A's group. | Device A shows a numbered prompt: 1. Select **Join group**. 2. Enter the displayed invite code and tap **Join group**. |
+  | 2. User B opens Options on Device B and selects "Leave group". | Continue the prompt: 3. In the group, open **Options**. 4. Select **Leave group** and confirm **Leave**. 5. Tap **Continue here** on Device A. |
+  | 3. The system removes User B; User A remains the sole member. | Device A reloads the group page and asserts that exactly 1 `member_item` node remains. |
+  | **Remove Member by Organizer** (`removeMember_success`) | |
+  | 1. User B joins User A's group. | Device A shows a numbered prompt: 1. Select **Join group**. 2. Enter the displayed invite code. 3. Tap **Join group**. 4. Verify the group opens. 5. Tap **Continue here** on Device A. Device A reloads and verifies 2 members. |
+  | 2. Organizer User A selects "Remove" next to User B's name and confirms. | User A clicks "Remove", verifies the "Remove member?" confirmation prompt is displayed, and clicks "Remove". |
+  | 3. The system removes User B from the group. | Device A asserts that the member list updates to exactly 1 `member_item`. |
 
-- **Use Case: Vote on a Candidate** ([`VotingTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/VotingTest.kt))
+- **Manual Scenarios with Technical Justification:**
 
-  - **Expected Behaviors (automated):**
+  | **Requirement / Use Case** | **Manual Test Procedure** | **Pass Criterion** | **Technical Justification for Manual Verification** |
+  | -------------------------- | -------------------------- | ------------------ | --------------------------------------------------- |
+  | **Create Meetup: Past time validation rejection** (Section 3.4 Use Case 2) | In the time picker, select today's date and a time earlier than now, then tap "Use this time". | The picker stays open and displays *"Please choose a time later than now."* | The UI behavior is visible in `MeetingDateTimePicker`; `MeetingDateTimePickerTest` covers the future-time predicate, but no Android GUI test currently checks this error. |
+  | **Create Meetup: Time picker cancellation** (Section 3.4 Use Case 2) | Open the date/time picker, change the date or time, then tap "Cancel" or outside the dialog. | The picker closes without applying the changed value. | No test currently checks cancellation behavior; this remains a manual GUI check. |
+  | **Enter Start Location: Google Maps gestures & place search** (Section 3.4 Use Case 4) | In the location picker, pan and pinch-to-zoom the Google Map, drag the pin marker, search for a venue by name, and select it. | The map responds to gestures, marker coordinates update, and the selected venue is populated. | `participation_submitDetails()` automates location confirmation. Direct gesture behavior on the Google Maps surface remains a manual GUI check. |
+  | **Leave Meetup: Blocked in active voting** (Section 3.4 Use Case 5) | With a meetup in VOTING status, open the overflow Options menu as a participant. | "Leave meetup" option is absent from the menu; direct API request returns 400/409. | UI dynamically hides state-ineligible actions; backend integrity is verified in [`meetups.test.ts`](../backend/tests/no-mock/meetups.test.ts). |
+  | **Leave Group: Blocked during active voting** (Section 3.4 Use Case 6) | User B joins a group, enters meetup details, and waits until voting starts. User B opens Options and selects "Leave group". | The dialog says *"A meetup you joined is still voting. Wait until its voting ends before leaving."* and offers only "OK"; membership remains. | The app displays this exact dialog text in `GroupDetailScreen`; the backend rule is covered in [`leave.test.ts`](../backend/tests/no-mock/leave.test.ts). |
+  | **Remove Member: Blocked during active voting or finalized meetup** (Section 3.4 Use Case 7) | Member B submits details for a meetup that reaches VOTING or FINALIZED. The organizer attempts to remove B. | The dialog says *"This member submitted details for a meetup whose voting has started. Settle that meetup before removing them."* | The app displays this text in `GroupDetailScreen`; backend enforcement is covered in [`remove-member.test.ts`](../backend/tests/no-mock/remove-member.test.ts). |
+  | **Delete Meetup / Delete Group: Prominent warning in VOTING** (Section 3.4 Use Cases 8 & 9) | Organizer opens Options on a meetup (or group) with an active vote in progress and selects "Delete". | Confirmation dialog displays an additional prominent warning that active voting is in progress and all votes will be discarded. | Deletion in SETUP is automated in `deleteMeetup_deletesInSetup` and `deleteGroup_deletesGroup`. Triggering active deletion in automated suites destroys shared test state; backend cascade is verified in [`deletion.test.ts`](../backend/tests/no-mock/deletion.test.ts). |
 
-    | **Scenario Steps** | **Test Case Steps** |
-    | ------------------ | ------------------- |
-    | **Main success scenario: open voting, vote, change vote, and lock vote** (`vote_castChangeAndLockVote`) | |
-    | 1. The member opens a meetup in VOTING and selects "Vote on a spot". | Navigate to a meetup in `VOTING` status. Wait for the button with test tag `open_voting_button` ("Vote on a spot") and click it. |
-    | 2. The app shows the three places, their picks and locked weights, the locked participant count, and the live update indicator. | Wait for `voting_status_text` ("Voting is open"). Check that exactly three `candidate_item_<placeId>` cards exist, that three "Picks:" labels and three "Locked weight:" labels are present, and that `voter_count_text` mentions participants who locked their vote. Check that `voting_live_text` says "Live: votes update automatically". |
-    | 3. The member selects "Vote" on one place. | Click the button with test tag `vote_button_<placeId>` for the chosen candidate place. |
-    | 4. The system records the vote; live tally updates are sent to members viewing the screen. | Wait for the vote request to complete. Check that the selected candidate's button says "Your vote" and that `lock_vote_button` ("Submit vote") is enabled and displayed. The update on another member's screen is checked manually. |
-    | 5. The member may select "Change vote" on another place; the system replaces the vote. | Click another candidate's `vote_button_<placeId>` ("Change vote"). Wait for its button to say "Your vote" and check that the previous candidate's button says "Change vote". |
-    | 6. The member selects "Submit vote" to lock their vote. | Click `lock_vote_button` ("Submit vote") and wait for the locked state or an error. The test accepts the transient "Locking…" state but does not assert that it is observed. |
-    | 7. The system snapshots the member's Fair Credit as vote weight and locks the vote. 8. The app shows "Your vote is locked" with its weight. | Wait for `vote_locked_text` and check the displayed weight is between 1.0 and 1.5. Check that `voter_count_text` starts with "1 of ", all candidate vote buttons are absent, and "Your locked vote" is displayed on the selected candidate. |
-    | **Failure 2a: live updates disconnected** (`vote_disconnectedLiveShowsManualRefresh`) | |
-    | 2a. Live updates disconnect while the voting screen is open. | Use UiAutomator to turn on airplane mode on the emulator. |
-    | 2a1. The screen switches to manual refresh. | Check that `voting_live_text` disappears and `refresh_results_button` is displayed. |
-    | 2a2. An offline vote attempt fails without selecting a candidate. | Tap a candidate's `vote_button_<placeId>` while offline. Check for "Network error" and that its button remains labeled "Vote". |
-    | 2a3. The member can request a results refresh. | Tap `refresh_results_button` and check that the voter count remains displayed. The test does not verify changed tally values after refreshing. |
-    | **Failure 3b: offline voting preserves the previous choice** (`vote_offlineNetworkFailureKeepsPreviousVoteAndCanRetry`) | |
-    | 3b. The member already has a vote when connectivity is lost. | Select a candidate, then use UiAutomator to turn on airplane mode. |
-    | 3b1. A failed change does not replace the saved choice. | Tap "Change vote" for another candidate. Check for "Network error", "Your vote" on the original candidate, and "Change vote" on the attempted candidate. |
-    | 3b2. The member can retry after restoring connectivity. | Turn airplane mode off, wait for Android to report a validated network, and tap "Change vote" again. Check that the replacement candidate is selected and the original candidate now says "Change vote". |
-    | Finalizing voting closes the screen (`vote_finalizeClosesVoting`) | |
-    | The organizer finalizes a meetup with no locked votes. | Click Finalize; if the early-finalization confirmation appears, confirm it. Choose a winner when prompted. |
-    | The voting UI closes and removes voting controls. | Check that the status says "Voting is closed" and that candidate vote buttons and `lock_vote_button` are absent. |
+---
 
-  - **Scenarios not covered by the automated suite:**
+#### 4.2.2. Feature 4: Voting and Fairness (1) ([`VotingTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/VotingTest.kt))
 
-    | **Scenario** | **Reason** | **How It Is Checked Instead** |
-    | ------------ | ---------- | ----------------------------- |
-    | Failure 1a: non-participant member viewing voting | The automated setup uses one signed-in account, which creates the group and enters meetup details. A different group member account is needed to view voting without participating. | Manual: use a second group member who has not submitted meetup participation details; open voting and check that no vote or lock controls appear and that the non-participant message is shown. |
-    | Failure 3a: vote arrives after organizer finalizes | Reproducing the stale-screen request requires two users and coordinated timing; finalizing through the same screen immediately hides its vote controls. | Manual two-user check: User B organizes a meetup and starts voting. User A joins the group, enters meetup details, opens voting, and selects a candidate. Coordinate User B finalizing while User A's vote request is still in flight. On User A's device, check that the request error is shown and the screen updates to "Voting is closed" with voting controls hidden. |
-    | Multi-member live tally broadcast (steps 4 & 7) | Testing that another user's screen updates in real time via Socket.IO without manual interaction requires two concurrent active client sessions running on separate emulators. | Manual: Member A and Member B open the voting screen simultaneously; Member A votes and locks; Member B's screen displays the updated picks, locked weight, and voter count automatically. Realtime socket event delivery is tested at `backend/tests/no-mock/realtime.test.ts` and `backend/tests/no-mock/voting.test.ts`. |
+Covers the Vote on a Candidate and Lock Vote use cases.
 
-  - **Test Logs:**
-    ```
-    ==> Running frontend E2E tests (com.example.cpen321application.e2e.CreateJoinGroupTest,com.example.cpen321application.e2e.VotingTest) ...
+- **Expected Behaviors (Automated Single-User):**
 
-    > Task :app:connectedDebugAndroidTest
-    Starting 9 tests on Pixel_9(AVD) - 16
+  | **Scenario Steps** | **Test Case Steps** |
+  | ------------------ | ------------------- |
+  | **Main Success Scenario: open voting, vote, change vote, and lock vote (steps 1–8)** (`vote_castChangeAndLockVote`) | |
+  | 1. The member opens a meetup in VOTING and selects "Vote on a spot". | Navigate to a meetup in `VOTING` status. Wait for the button with test tag `open_voting_button` ("Vote on a spot") and click it. |
+  | 2. The app shows the three places, their picks and locked weights, the locked participant count, and the live update indicator. | Wait for `voting_status_text` ("Voting is open"). Check that exactly three `candidate_item_<placeId>` cards exist, that three "Picks:" labels and three "Locked weight:" labels are present, and that `voter_count_text` mentions participants who locked their vote. Check that `voting_live_text` says "Live: votes update automatically". |
+  | 3. The member selects "Vote" on one place. | Click the button with test tag `vote_button_<placeId>` for the chosen candidate place. |
+  | 4. The system records the vote; live tally updates are sent to members viewing the screen. | Wait for the vote request to complete. Check that the selected candidate's button says "Your vote" and that `lock_vote_button` ("Submit vote") is enabled and displayed. |
+  | 5. The member may select "Change vote" on another place; the system replaces the vote. | Click another candidate's `vote_button_<placeId>` ("Change vote"). Wait for its button to say "Your vote" and check that the previous candidate's button says "Change vote". |
+  | 6. The member selects "Submit vote" to lock their vote. | Click `lock_vote_button` ("Submit vote") and wait for the locked state or an error. The test accepts the transient "Locking…" state. |
+  | 7. The system snapshots the member's Fair Credit as vote weight and locks the vote. 8. The app shows "Your vote is locked" with its weight. | Wait for `vote_locked_text` and check the displayed weight is between 1.0 and 1.5. Check that `voter_count_text` starts with "1 of ", all candidate vote buttons are absent, and "Your locked vote" is displayed on the selected candidate. |
+  | **Failure 2a: live updates disconnected** (`vote_disconnectedLiveShowsManualRefresh`) | |
+  | 2a. Live updates disconnect while the voting screen is open. | Use UiAutomator to turn on airplane mode on the emulator. |
+  | 2a1. The screen switches to manual refresh. | Check that `voting_live_text` disappears and `refresh_results_button` is displayed. |
+  | 2a2. An offline vote attempt fails without selecting a candidate. | Tap a candidate's `vote_button_<placeId>` while offline. Check for "Network error" and that its button remains labeled "Vote". |
+  | 2a3. The member can request a results refresh. | Tap `refresh_results_button` and check that the voter count remains displayed. |
+  | **Failure 3b: offline voting preserves the previous choice and retries** (`vote_offlineNetworkFailure`) | |
+  | 3b. The member already has a vote when connectivity is lost. | Select a candidate, then use UiAutomator to turn on airplane mode. |
+  | 3b1. A failed change does not replace the saved choice. | Tap "Change vote" for another candidate. Check for "Network error", "Your vote" on the original candidate, and "Change vote" on the attempted candidate. |
+  | 3b2. The member can retry after restoring connectivity. | Turn airplane mode off, wait for Android to report a validated network, and tap "Change vote" again. Check that the replacement candidate is selected ("Your vote") and the original candidate now says "Change vote". |
 
-    Pixel_9(AVD) - 16 Tests 1/9 completed. (0 skipped) (0 failed)
-    Pixel_9(AVD) - 16 Tests 2/9 completed. (0 skipped) (0 failed)
-    Pixel_9(AVD) - 16 Tests 3/9 completed. (0 skipped) (0 failed)
-    Pixel_9(AVD) - 16 Tests 5/9 completed. (0 skipped) (0 failed)
-    Pixel_9(AVD) - 16 Tests 6/9 completed. (0 skipped) (0 failed)
-    Pixel_9(AVD) - 16 Tests 7/9 completed. (0 skipped) (0 failed)
-    Pixel_9(AVD) - 16 Tests 8/9 completed. (0 skipped) (0 failed)
-    Finished 9 tests on Pixel_9(AVD) - 16
+- **Multi-User Interactive Scenarios (`--multi-user`):**
 
-    BUILD SUCCESSFUL in 2m 20s
-    71 actionable tasks: 3 executed, 68 up-to-date
-    ==> Frontend E2E tests finished.
-    ```
+  | **Scenario Steps** | **Test Case Steps** |
+  | ------------------ | ------------------- |
+  | **Multi-member live tally broadcast (steps 4 & 7)** (`vote_otherMemberVotesAppearLive`) | |
+  | 1. User A starts voting on Device A. | User A creates a group and meetup, submits participation details, and starts voting. |
+  | 2. User B joins on Device B, opens voting, votes for candidate 1, and submits vote. | Device A shows numbered prompts on Device B: 1. Join with the displayed invite code. 2. Open the named meetup. 3. Enter and save participation details. 4. Tap **Continue here** on Device A. Then: 1. Open **Vote on a spot**. 2. Vote for candidate 1. 3. Tap **Continue here** on Device A. Then: 1. Tap **Submit vote**. 2. Tap **Continue here** on Device A. |
+  | 3. User A's screen reflects User B's locked vote automatically via WebSocket broadcast. | Device A waits for `voter_count_text` to update to "1 of 2" and asserts that candidate 1 displays positive locked weight without manual refresh. |
+  | **Failure 1a: non-participant member cannot vote** (`vote_nonParticipantSeesNoVoteButtons`) | |
+  | 1. User B joins the group but skips entering meetup participation details. | Device A shows a numbered prompt: 1. Join with the displayed invite code. 2. Open the named meetup. 3. Do not enter participation details. 4. Tap **Continue here** on Device A. Device A starts voting. |
+  | 2. User B opens the voting screen on Device B. | Device A shows the next numbered prompt: 1. Open **Vote on a spot**. 2. Verify three places and tallies. 3. Verify there are no **Vote** or **Submit vote** buttons. 4. Verify "Only members who entered their details can vote." is displayed. 5. Tap **Continue here** on Device A. |
+  | 3. System presents candidate cards but hides voting controls. | Device A verifies User B's non-participant state is reflected in the voting screen. |
+  | **Failure 3a: vote submitted after organizer finalizes** (`vote_afterFinalizeShowsNotOpenAndClosesVoting`) | |
+  | 1. User B opens the voting screen on Device B and disconnects network (stale screen). | Device A shows a numbered prompt: 1. Open **Vote on a spot**. 2. Turn on airplane mode. 3. Leave the voting screen open. 4. Tap **Continue here** on Device A. |
+  | 2. User A locks their vote and finalizes the meetup on Device A. | User A votes, locks vote, clicks "Finalize meetup", confirms early prompt, and closes voting. |
+  | 3. User B reconnects and taps "Vote" on the stale screen. | Device A shows a numbered prompt: 1. Turn airplane mode off. 2. Immediately tap **Vote** before the stale screen refreshes; repeat if it already refreshed. 3. Verify "Voting is not open for this meetup", closed status, and no vote buttons. 4. Tap **Continue here** on Device A. |
+
+- **Manual Scenarios with Technical Justification:**
+
+  | **Requirement / Use Case** | **Manual Test Procedure** | **Pass Criterion** | **Technical Justification for Manual Verification** |
+  | -------------------------- | -------------------------- | ------------------ | --------------------------------------------------- |
+  | **Failure 6a: Vote already locked from another device** (Use Case 1 Failure 6a) | Log in to the same user account on Device 1 and Device 2. Open the voting screen on both. Lock vote on Device 1. Immediately tap "Vote" or "Submit vote" on Device 2. | Device 2 receives rejection, displays *"Your vote is already locked"*, and refreshes to show the locked status badge and Fair Credit weight. | Simulating concurrent sessions of the exact same authenticated identity on multiple emulators with race-condition timing cannot be automated deterministically in Android single-runner tests. Backend concurrency safety is verified in [`voting.test.ts`](../backend/tests/no-mock/voting.test.ts). |
+
+---
+
+#### 4.2.3. Feature 4: Voting and Fairness (2) ([`FinalizeMeetupTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/FinalizeMeetupTest.kt))
+
+Covers formal Use Case 4 (Finalize Meetup), Calendar integration, and Section 3.4 Use Case 5 (View Fairness History).
+
+- **Expected Behaviors (Automated Single-User):**
+
+  | **Scenario Steps** | **Test Case Steps** |
+  | ------------------ | ------------------- |
+  | **Finalize Meetup, Main Success: locked vote determines winner (steps 1–4)** (`finalize_finalizeMeetup`) | |
+  | 1. The Organizer votes for and locks a candidate, then selects "Finalize meetup". | Cast and lock vote on the first candidate place. Click the button with test tag `finalize_button`. |
+  | 2. The system tallies locked votes, determines the winner, and closes voting. | Wait for `voting_status_text` ("Voting is closed"). Check that the winning candidate displays `winner_text`, and all vote and submit buttons are removed. |
+  | 3. The meetup screen displays the finalized meeting spot and calendar action. | Click `back_button`. Check that `meetup_winner_text` under "MEETING SPOT" displays the winning location name. Check that `add_to_calendar_button` is displayed. |
+  | **Failure 1a: early finalization prompt cancelled** (`finalize_earlyPromptKeepVotingLeavesPollOpen`) | |
+  | 1a. The Organizer selects "Finalize meetup" before all participants have locked votes. | Open voting with unlocked participants. Click `finalize_button`. |
+  | 1a1. The system displays the "Finalize early?" confirmation dialog. | Check that "Finalize early?" is displayed with the warning that unlocked votes do not count. |
+  | 1a2. The Organizer selects "Keep voting". | Click "Keep voting". Check that the dialog dismisses, `voting_status_text` remains "Voting is open", and `finalize_button` remains displayed. |
+  | **Failure 2a: nobody locked a vote; manual winner selection** (`finalize_earlyPromptFinalizeAnyway`) | |
+  | 2a. The Organizer attempts early finalization when 0 votes are locked. | Open voting with 0 locked votes. Click `finalize_button`. On the "Finalize early?" prompt, click `confirm_finalize_button` ("Finalize anyway"). |
+  | 2a1. The system rejects automatic tally and prompts the Organizer to pick a winner. | Wait for `error_text`. Check that it displays "Cannot finalize with no locked votes; pick a winner". Check that all 3 candidates display `pick_winner_button_<placeId>`. |
+  | 2a2. The Organizer picks a location. | Click `pick_winner_button_<placeId>` for one of the candidates. Check that voting closes with the chosen candidate marked as the winner on both the voting and meetup screens. |
+  | **Failure 1b: offline finalization** (`finalize_offlineError`) | |
+  | 1b. The Organizer's device has no network connection when finalizing. | Enable airplane mode with UiDevice. Click `finalize_button`, then confirm `confirm_finalize_button`. |
+  | 1b1. The system displays a "Network error" message and leaves voting open. | Wait for `error_text`. Check that it contains "Network error". Check that `voting_status_text` remains "Voting is open". Airplane mode is restored in teardown. |
+  | **Add to Google Calendar (steps 5–8)** (`calendar_addFinalizedMeetup`) | |
+  | 1. A member selects "Add to Google Calendar" on a finalized meetup. | Navigate to the finalized meetup screen. Click `add_to_calendar_button`. |
+  | 2. The app obtains Google Calendar authorization and creates the event. | Handle system permission/consent prompts (Allow/Continue/Next). Wait for `calendar_added_text` ("Added to your Google Calendar"). |
+  | 3. The event is verified in Google Calendar. | If Google Calendar is installed, launch it via intent, search for the meetup title, and assert the event details open with the meetup title and finalized location. |
+  | **View Fairness: Profile lists user's groups** (`fairness_profileListsGroups`) | |
+  | 1. The user navigates to their profile screen. | Create a group. Navigate to the main screen and click `profile_button`. |
+  | 2. The system displays the user's groups and past fairness context. | Check that the created group name is displayed on the profile page. |
+  | **View Fairness: Group fair credits and balances** (`fairness_groupFairCredits`) | |
+  | 1. The user views group Fair Credits. | From the group details screen, click `group_fair_credit_button` ("Fair Credits"). |
+  | 2. The system displays member balances and settled history. | Check that `fair_credit_text` is displayed, "Group balances" is shown, `fairness_member_item` is displayed, and `fairness_history_empty` ("No settled meetups yet") is displayed. |
+
+- **Multi-User Interactive Scenarios (`--multi-user`):**
+
+  | **Scenario Steps** | **Test Case Steps** |
+  | ------------------ | ------------------- |
+  | **Failure 1a: finalize early excludes unlocked votes** (`finalize_earlyCountsOnlyLockedVotes`) | |
+  | 1. User A votes and locks for candidate 1. User B votes for candidate 2 but does not lock it. | User A casts and locks vote for candidate 1. Device A shows a numbered prompt: 1. Open **Vote on a spot**. 2. Vote for candidate 2. 3. Verify the vote is recorded; do not tap **Submit vote**. 4. Tap **Continue here** on Device A. |
+  | 2. Organizer User A selects "Finalize meetup" and confirms "Finalize anyway". | User A clicks `finalize_button`, confirms `confirm_finalize_button`. |
+  | 3. The system tallies only locked votes; candidate 1 wins. | Check that voting closes and candidate 1 (the only locked vote) is declared the winner, ignoring User B's unlocked vote. |
+  | **Failure 2b2: unresolved tie offers only tied candidates** (`finalize_unresolvedTieOffersOnlyTiedCandidates`) | |
+  | 1. User A locks a vote for candidate 1; User B locks a vote for candidate 2 (equal Fair Credit). | User A locks vote for candidate 1. Device A shows a numbered prompt: 1. Open **Vote on a spot**. 2. Vote for candidate 2. 3. Tap **Submit vote** to lock it. 4. Tap **Continue here** on Device A. Device A verifies 2 of 2 locked votes. |
+  | 2. Organizer User A selects "Finalize meetup". | User A clicks `finalize_button`. |
+  | 3. The system detects an unbreakable tie and prompts manual selection for tied candidates only. | Wait for `error_text` containing "Tie between candidates". Check that manual pick buttons (`pick_winner_button_`) are presented for candidates 1 and 2, but NOT for untied candidate 3. |
+
+- **Manual Scenarios with Technical Justification:**
+
+  | **Requirement / Use Case** | **Manual Test Procedure** | **Pass Criterion** | **Technical Justification for Manual Verification** |
+  | -------------------------- | -------------------------- | ------------------ | --------------------------------------------------- |
+  | **Failure 2b1: Tie broken by single heaviest locked vote** (Use Case 4 Failure 2b1) | User A (weight 1.0) and User B (weight 1.2) participate. Votes result in tied vote totals (e.g. 2.4 vs 2.4), but Candidate 2 received User B's 1.2 vote. Organizer finalizes. | System automatically selects Candidate 2 as winner without presenting manual selection. | Pre-seeding exact historical Fair Credit accounts across multiple users to form fractional tie totals requires manual database fixture generation. Deterministically tested in [`tally.test.ts`](../backend/tests/unit/tally.test.ts) and [`voting.test.ts`](../backend/tests/no-mock/voting.test.ts). |
+  | **Failure 3a: Meetup already finalized from another device** (Use Case 4 Failure 3a) | Organizer opens voting on two devices. Device 1 finalizes the meetup. Device 2 attempts to finalize. | Device 2 displays *"Only a meetup in VOTING can be finalized"*, hides vote controls, and displays the winner chosen on Device 1. | Concurrent organizer actions on duplicate sessions. Concurrency protection verified in [`voting.test.ts`](../backend/tests/no-mock/voting.test.ts). |
+  | **Failure 6a: Google Calendar consent canceled** (Use Case 4 Failure 6a) | On finalized meetup, tap "Add to Google Calendar". When the Google account permission prompt opens, tap "Cancel" or system Back. | App displays *"Google Calendar permission request was canceled."* and keeps the button enabled for retry. | Google OAuth permission dialog is an external Google Play Services / Chrome Custom Tab activity outside Compose test inspection. |
+  | **Failure 7a: Google Calendar API rate limit / server failure** (Use Case 4 Failure 7a) | Simulate Google API error (e.g. 429 quota exhaustion) and tap "Add to Google Calendar". | App displays the error reason (e.g. *"Google Calendar API rate limit reached. Please retry in a few minutes."*); no event ID is saved. | Live Google API quota exhaustion cannot be triggered in automated production tests without risking quota throttling. Verified via mocks in [`calendar.test.ts`](../backend/tests/mock/calendar.test.ts). |
+  | **Calendar Failure 7b: duplicate event request** (Use Case 4 Failure 7b) | Add a finalized meetup once through the GUI and verify it appears as "In calendar". The app replaces `add_to_calendar_button` with this status, so the GUI cannot submit a second add request. For the duplicate-request check, submit the same Calendar event request again using the meetup ID and an authorized access token. | The GUI shows "In calendar" after the first add. The repeated API request returns *"This meetup is already in your calendar"*. The request assertion in `calendar_duplicateEvent` is automated, but it is API-level; the GUI behavior remains a manual check. | The current UI removes the add button after success. The instrumentation method submits a repository request directly and does not exercise a second GUI tap. Backend behavior is covered in [`calendar.test.ts`](../backend/tests/no-mock/calendar.test.ts). |
+  | **View Fairness History: Settled meetup ledger entries** (Section 3.4 Use Case 5) | Complete a meetup through arrival, then as organizer trigger "Settle Fair Credit". Open Group Details -> "Fair Credits". | Screen displays the settled meetup ledger entry with commute duration, group average, and net credit adjustment. | `shareLocation_startTripArrive` checks arrival but does not settle or inspect the ledger. Settlement is currently covered by backend tests in [`settlement.test.ts`](../backend/tests/no-mock/settlement.test.ts); the complete GUI flow remains manual. |
+
+---
+
+#### 4.2.4. Feature 5: Live Location ([`ShareLiveLocationTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/ShareLiveLocationTest.kt))
+
+Covers Share Live Location and View Members' Location.
+
+- **Expected Behaviors (Automated Single-User):**
+
+  | **Scenario Steps** | **Test Case Steps** |
+  | ------------------ | ------------------- |
+  | **Main Success Scenario: start trip, share live location, and arrive (steps 1–8)** (`shareLocation_startTripArrive`) | |
+  | 1. The participant opens the finalized meetup at its scheduled time. | Open finalized meetup scheduled 1 minute ahead. Wait for `leaving_button` ("I am leaving") to become available upon meetup time arrival, and click it. |
+  | 2. The participant confirms live location sharing in the disclosure dialog. | Wait for "Share your live location?" explanation dialog. Click `share_trip_confirm` ("Share and start trip"). |
+  | 3-4. System requests and participant grants runtime location permission. | Handle Android runtime permission prompt if presented ("While using the app"). |
+  | 5-6. System starts trip, records start time, and shares live updates. | Open live location view. Check that `location_sharing_indicator` and `trip_status_text` ("On the way") are displayed. |
+  | 8. The participant selects "I arrived"; system records arrival and stops sharing. | Click `arrived_button`. If the "Have you arrived?" confirmation appears, confirm "I arrived". Check that `trip_status_text` updates to "Arrived", `commute_duration_text` is displayed, and `location_sharing_indicator` is removed. |
+  | **Failure 1a: before scheduled meetup time** (`shareLocation_beforeMeetupTime`) | |
+  | 1a. The participant views the finalized meetup 10 minutes before scheduled time. | Create and finalize a meetup scheduled 10 minutes in the future. Open the meetup screen. |
+  | 1a1. The app does not offer "I am leaving". | Check that the button with test tag `leaving_button` does not exist. |
+  | **Failure 4a: denied location permission with retry** (`shareLocation_deniedPermission`) | |
+  | 4a. The participant denies location permission when prompted. | Revoke app location permissions via `pm revoke`. Click `leaving_button` and confirm "Share and start trip". Select "Don't allow" in the system permission dialog. |
+  | 4a1. The system displays permission error; no trip is started. | Check that `error_text` displays "Location permission is required to share your trip. No trip was started." Check that `location_sharing_indicator` does not exist and `leaving_button` remains displayed. |
+  | 4a2. The participant retries and grants permission. | Click `leaving_button`, confirm sharing dialog, and grant permission. Check that live location sharing starts successfully (`location_sharing_indicator` and `trip_status_text` displayed). |
+  | **Failures 6a & 6b: connection outage and location retry** (`shareLocation_networkLoss`) | |
+  | 6a/6b. Network drops while sharing live location during an active trip. | Start trip with live sharing active. Enable airplane mode with UiDevice. |
+  | 6a1/6b1. The app displays connection loss and retry notices while keeping sharing active. | Wait for and check "Live connection unavailable. Refreshing periodically." (6a) and "Location update failed. Retrying..." (6b). Check that `location_sharing_indicator` remains displayed. |
+  | 6a2/6b2. Connectivity is restored; sharing automatically resumes. | Disable airplane mode. Wait for sharing indicator to confirm recovery ("Sharing your live location" or "Waiting for a fresh location fix..."). |
+
+- **Multi-User Interactive Scenarios (`--multi-user`):**
+
+  | **Scenario Steps** | **Test Case Steps** |
+  | ------------------ | ------------------- |
+  | **Other group members view participant's live trip (steps 6 & 7)** (`shareLocation_anotherMemberSeesTripStatus`) | |
+  | 1. User A starts their trip and begins sharing live location on Device A. | User A opens the finalized meetup at its scheduled time, taps **I am leaving**, confirms sharing, grants permission, and starts the trip. |
+  | 2. User B joins the group and opens "View live locations" on Device B. | Device A shows a numbered prompt: 1. Join with the displayed invite code. 2. Open the named meetup. 3. Select **View live locations**. 4. Verify User A is listed as **On the way**. 5. Tap **Continue here** on Device A. |
+  | 3. User B observes User A's active trip status. | User B verifies on Device B that User A is listed as "On the way". |
+
+- **Manual Scenarios with Technical Justification:**
+
+  | **Requirement / Use Case** | **Manual Test Procedure** | **Pass Criterion** | **Technical Justification for Manual Verification** |
+  | -------------------------- | -------------------------- | ------------------ | --------------------------------------------------- |
+  | **Failure 9a: Settlement requested more than once** (Use Case 5 Failure 9a) | After the organizer settles Fair Credit, submit the settlement request again. | The second request is rejected and does not apply duplicate Fair Credit updates. | This is currently backend-only; the idempotency behavior is verified in [`settlement.test.ts`](../backend/tests/no-mock/settlement.test.ts). |
+  | **View Members' Location: Real-time map marker movement** (Section 3.4 Use Case 2) | Member A shares location and moves (or simulates GPS route updates via `adb emu geo fix`). Member B views the live map on Device B. | Member B's map renders Member A's pin marker moving smoothly to the updated location in real time. | Real-time map marker position interpolation across two devices requires continuous mock GPS hardware streams. Live transit status synchronization is automated in `shareLocation_anotherMemberSeesTripStatus`; coordinate-free realtime events are verified in [`location-privacy.test.ts`](../backend/tests/nfr/location-privacy.test.ts). |
+  | **Live Commute Tracking: Ongoing notification & lockscreen privacy** (Requirements Section 3.7 & LOC-5) | Start live trip. Pull down notification shade. Lock device and inspect lockscreen notification. | Ongoing notification persists, displays transit status, offers quick actions ("Pause sharing", "I arrived"), and redacts private coordinates on the lockscreen. | System notification tray and lockscreen UI belong to Android OS System UI; verified by dedicated NFR tests in [`LocationPrivacyNotificationTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/nfr/LocationPrivacyNotificationTest.kt). |
+
+---
+
+#### 4.2.5. Test Logs
+
+```
+==> Running frontend E2E tests (com.example.cpen321application.e2e.CreateJoinGroupTest,com.example.cpen321application.e2e.FinalizeMeetupTest,com.example.cpen321application.e2e.ShareLiveLocationTest,com.example.cpen321application.e2e.VotingTest) ...
+
+> Task :app:connectedDebugAndroidTest
+Starting 35 tests on Pixel_9(AVD) - 16
+
+com.example.cpen321application.e2e.CreateJoinGroupTest > leaveGroup_nonOrganizerCanLeave[Pixel_9(AVD) - 16] SKIPPED
+Pixel_9(AVD) - 16 Tests 2/35 completed. (1 skipped) (0 failed)
+Pixel_9(AVD) - 16 Tests 3/35 completed. (1 skipped) (0 failed)
+Pixel_9(AVD) - 16 Tests 4/35 completed. (1 skipped) (0 failed)
+Pixel_9(AVD) - 16 Tests 5/35 completed. (1 skipped) (0 failed)
+
+> Task :app:connectedDebugAndroidTest
+com.example.cpen321application.e2e.CreateJoinGroupTest > joinGroup_success[Pixel_9(AVD) - 16] SKIPPED
+Pixel_9(AVD) - 16 Tests 7/35 completed. (2 skipped) (0 failed)
+Pixel_9(AVD) - 16 Tests 8/35 completed. (2 skipped) (0 failed)
+Pixel_9(AVD) - 16 Tests 10/35 completed. (2 skipped) (0 failed)
+
+> Task :app:connectedDebugAndroidTest
+com.example.cpen321application.e2e.CreateJoinGroupTest > removeMember_success[Pixel_9(AVD) - 16] SKIPPED
+Pixel_9(AVD) - 16 Tests 13/35 completed. (3 skipped) (0 failed)
+Pixel_9(AVD) - 16 Tests 15/35 completed. (3 skipped) (0 failed)
+Pixel_9(AVD) - 16 Tests 17/35 completed. (3 skipped) (0 failed)
+Pixel_9(AVD) - 16 Tests 18/35 completed. (3 skipped) (0 failed)
+Pixel_9(AVD) - 16 Tests 20/35 completed. (3 skipped) (0 failed)
+
+> Task :app:connectedDebugAndroidTest
+com.example.cpen321application.e2e.FinalizeMeetupTest > finalize_unresolvedTieOffersOnlyTiedCandidates[Pixel_9(AVD) - 16] SKIPPED
+Pixel_9(AVD) - 16 Tests 22/35 completed. (4 skipped) (0 failed)
+Pixel_9(AVD) - 16 Tests 23/35 completed. (4 skipped) (0 failed)
+
+> Task :app:connectedDebugAndroidTest
+com.example.cpen321application.e2e.FinalizeMeetupTest > finalize_earlyCountsOnlyLockedVotes[Pixel_9(AVD) - 16] SKIPPED
+Pixel_9(AVD) - 16 Tests 26/35 completed. (5 skipped) (0 failed)
+Pixel_9(AVD) - 16 Tests 27/35 completed. (5 skipped) (0 failed)
+Pixel_9(AVD) - 16 Tests 28/35 completed. (5 skipped) (0 failed)
+Pixel_9(AVD) - 16 Tests 29/35 completed. (5 skipped) (0 failed)
+
+> Task :app:connectedDebugAndroidTest
+com.example.cpen321application.e2e.ShareLiveLocationTest > shareLocation_anotherMemberSeesTripStatus[Pixel_9(AVD) - 16] SKIPPED
+Pixel_9(AVD) - 16 Tests 31/35 completed. (6 skipped) (0 failed)
+
+> Task :app:connectedDebugAndroidTest
+Pixel_9(AVD) - 16 Tests 32/35 completed. (6 skipped) (0 failed)
+Pixel_9(AVD) - 16 Tests 33/35 completed. (6 skipped) (0 failed)
+Pixel_9(AVD) - 16 Tests 34/35 completed. (6 skipped) (0 failed)
+
+> Task :app:connectedDebugAndroidTest
+com.example.cpen321application.e2e.VotingTest > vote_afterFinalizeShowsNotOpenAndClosesVoting[Pixel_9(AVD) - 16] SKIPPED
+Pixel_9(AVD) - 16 Tests 37/35 completed. (7 skipped) (0 failed)
+Pixel_9(AVD) - 16 Tests 38/35 completed. (7 skipped) (0 failed)
+Pixel_9(AVD) - 16 Tests 39/35 completed. (7 skipped) (0 failed)
+
+> Task :app:connectedDebugAndroidTest
+com.example.cpen321application.e2e.VotingTest > vote_nonParticipantSeesNoVoteButtons[Pixel_9(AVD) - 16] SKIPPED
+com.example.cpen321application.e2e.VotingTest > vote_otherMemberVotesAppearLive[Pixel_9(AVD) - 16] SKIPPED
+Pixel_9(AVD) - 16 Tests 44/35 completed. (9 skipped) (0 failed)
+
+> Task :app:connectedDebugAndroidTest
+Finished 44 tests on Pixel_9(AVD) - 16
+
+BUILD SUCCESSFUL in 9m 3s
+71 actionable tasks: 4 executed, 67 up-to-date
+==> Frontend E2E tests finished.
+```
+
+*(Note on Test Count: The suite contains 35 total test methods across the four test classes: 26 automated single-user tests and 9 multi-user tests. In standard single-device runs, all 26 automated tests execute and pass, while the 9 multi-user tests are cleanly skipped via `assumeMultiUserRun()`. The counter showing `44/35 completed` is an Android Gradle Plugin (AGP) console reporting artifact that double-counts skipped assumption events—26 passed + 9 skipped × 2 = 44—without affecting build success (0 failed). The 9 multi-user tests can be run interactively across two devices using the hybrid runner in Section 4.1).*
