@@ -5,20 +5,17 @@ import android.app.AlertDialog
 import android.app.Activity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.ComposeTestRule
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.uiautomator.UiDevice
+import com.example.cpen321application.MeetFairApplication
+import com.example.cpen321application.data.ApiResult
 import com.example.cpen321application.ui.common.TestTags
 import org.junit.Assert.fail
 import org.junit.Assume.assumeTrue
+import kotlinx.coroutines.runBlocking
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -74,64 +71,28 @@ fun ComposeTestRule.assertSignedInOnGroupList() {
     }
 }
 
-/**
- * Best-effort cleanup for groups created by an E2E test. Cleanup errors are logged so they never
- * replace or fail the test's original result in tearDown.
- */
+/** Deletes every group created by an E2E test; deleting the group also removes its meetups and trips. */
 fun ComposeTestRule.cleanupCreatedGroups(names: Iterable<String>) {
+    val namesToDelete = names.toSet()
+    if (namesToDelete.isEmpty()) return
+
+    val container = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext
+        .let { it as MeetFairApplication }
+        .container
     try {
-        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-        val groupList = hasTestTag(TestTags.CREATE_GROUP_BUTTON)
-        val groupsToDelete = names.toList().distinct().asReversed()
-        if (groupsToDelete.isEmpty()) return
-
-        fun returnToGroupList() {
-            repeat(10) {
-                if (exists(groupList)) return
-                val clickedBack = runCatching {
-                    if (exists(hasTestTag(TestTags.BACK_BUTTON))) {
-                        onAllNodes(hasTestTag(TestTags.BACK_BUTTON))[0].performClick()
-                        true
-                    } else false
-                }.getOrDefault(false)
-
-                if (!clickedBack) {
-                    runCatching { device.pressBack() }
-                }
-                runCatching { waitUntil(2_000) { exists(groupList) } }
-            }
-            if (!exists(groupList)) {
-                runCatching { relaunchApp() }
-            }
-        }
-
-        runCatching { returnToGroupList() }
-
-        if (exists(groupList)) {
-            for (name in groupsToDelete) {
-                val groupMatcher = hasTestTag(TestTags.GROUP_ITEM) and hasText(name)
-                try {
-                    if (!exists(groupMatcher)) {
-                        runCatching { onNode(groupMatcher).performScrollTo() }
+        when (val groups = runBlocking { container.groupRepository.list() }) {
+            is ApiResult.Success -> groups.data
+                .filter { it.name in namesToDelete }
+                .forEach { group ->
+                    when (val result = runBlocking { container.groupRepository.delete(group.id) }) {
+                        is ApiResult.Success -> Log.i("ComposeE2E", "Deleted test group '${group.name}'")
+                        is ApiResult.Failure -> Log.e("ComposeE2E", "Could not delete test group '${group.name}': ${result.error.message}")
                     }
-                    if (!exists(groupMatcher)) continue
-
-                    onNode(groupMatcher).performScrollTo().performClick()
-                    waitUntil(NETWORK_TIMEOUT_MS) { exists(hasContentDescription("Options")) }
-                    onNodeWithContentDescription("Options").performClick()
-                    waitUntil(5_000) { exists(hasTestTag("delete_group")) }
-                    onNodeWithTag("delete_group").performClick()
-                    waitUntil(5_000) { exists(hasText("Delete group?")) }
-                    onNodeWithText("Delete").performClick()
-                    waitUntil(NETWORK_TIMEOUT_MS) { exists(groupList) && !exists(groupMatcher) }
-                } catch (error: Throwable) {
-                    Log.w("ComposeE2E", "Best-effort cleanup failed for group '$name': ${error.message}")
-                    runCatching { returnToGroupList() }
                 }
-            }
+            is ApiResult.Failure -> Log.e("ComposeE2E", "Could not load groups for test cleanup: ${groups.error.message}")
         }
-    } catch (e: Throwable) {
-        Log.w("ComposeE2E", "Best-effort cleanup failed: ${e.message}")
+    } catch (error: Throwable) {
+        Log.e("ComposeE2E", "Could not delete created test groups: ${error.message}", error)
     }
 }
 

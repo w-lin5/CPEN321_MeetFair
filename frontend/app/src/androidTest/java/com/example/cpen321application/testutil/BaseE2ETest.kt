@@ -40,8 +40,8 @@ abstract class BaseE2ETest {
     @After
     open fun tearDown() {
         val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
-        LiveLocationService.stop(targetContext)
         restoreNetwork()
+        LiveLocationService.stop(targetContext)
         compose.cleanupCreatedGroups(createdGroupNames)
     }
 
