@@ -49,19 +49,22 @@ abstract class BaseE2ETest {
         val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
         runCatching { device.executeShellCommand("cmd connectivity airplane-mode disable") }
-
         val cm = targetContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
-        fun isConnected(): Boolean {
-            val net = cm.activeNetwork ?: return false
-            val caps = cm.getNetworkCapabilities(net) ?: return false
-            return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-        }
-
-        if (isConnected()) {
+        if (hasInternetConnection(cm)) {
             Thread.sleep(500)
             return
         }
 
+        awaitInternetConnection(cm, timeoutMs)
+    }
+
+    private fun hasInternetConnection(manager: ConnectivityManager): Boolean {
+        val network = manager.activeNetwork ?: return false
+        val capabilities = manager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
+    private fun awaitInternetConnection(manager: ConnectivityManager, timeoutMs: Long) {
         val latch = CountDownLatch(1)
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onCapabilitiesChanged(network: android.net.Network, capabilities: NetworkCapabilities) {
@@ -74,13 +77,13 @@ abstract class BaseE2ETest {
             }
         }
         try {
-            cm.registerDefaultNetworkCallback(callback)
-            if (isConnected()) latch.countDown()
+            manager.registerDefaultNetworkCallback(callback)
+            if (hasInternetConnection(manager)) latch.countDown()
             latch.await(timeoutMs, TimeUnit.MILLISECONDS)
             Thread.sleep(1000)
         } catch (_: Exception) {
         } finally {
-            runCatching { cm.unregisterNetworkCallback(callback) }
+            runCatching { manager.unregisterNetworkCallback(callback) }
         }
     }
 }

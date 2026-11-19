@@ -13,37 +13,22 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isEnabled
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performTextInput
-import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.UiObject2
-import androidx.test.uiautomator.UiSelector
-import androidx.test.uiautomator.Until
-import com.example.cpen321application.MainActivity
-import com.example.cpen321application.testutil.assertSignedInOnGroupList
 import com.example.cpen321application.testutil.assumeMultiUserRun
-import com.example.cpen321application.testutil.cleanupCreatedGroups
-import com.example.cpen321application.testutil.dismissSnackbarNotices
+import com.example.cpen321application.testutil.candidatePlaceIds
+import com.example.cpen321application.testutil.createGroupAndMeetup
 import com.example.cpen321application.testutil.exists
 import com.example.cpen321application.testutil.manualStep
 import com.example.cpen321application.testutil.requireCreatedInviteCode
-import com.example.cpen321application.testutil.textOf
-import com.example.cpen321application.testutil.uniqueName
 import com.example.cpen321application.testutil.waitFor
+import com.example.cpen321application.testutil.startVotingFromMeetup
 import com.example.cpen321application.ui.common.TestTags
-import org.junit.Before
-import org.junit.After
-import org.junit.Rule
 import org.junit.Test
-import org.junit.runner.RunWith
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -296,23 +281,10 @@ class VotingTest : BaseE2ETest() {
 
     // Helper: Creates a uniquely named group and its first meetup, leaving the app on the meetup page
     private fun createGroupAndMeetup(): String {
-        val groupName = uniqueName("E2E Voting Group")
-        createdGroupName = groupName
-        createdGroupNames += groupName
-        val meetupTitle = uniqueName("E2E Voting Meetup")
-
-        compose.onNodeWithTag(TestTags.CREATE_GROUP_BUTTON).performClick()
-        compose.onNodeWithTag(TestTags.GROUP_NAME_INPUT).performTextInput(groupName)
-        compose.onNodeWithTag(TestTags.CREATE_GROUP_SUBMIT).performClick()
-        compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
-        createdInviteCode = compose.textOf(TestTags.INVITE_CODE_TEXT)
-
-        // Group creation opens the new group page. Create the meetup there.
-        compose.onNodeWithTag(TestTags.NEW_MEETUP_BUTTON).performClick()
-        compose.onNodeWithTag(TestTags.MEETUP_TITLE_INPUT).performTextInput(meetupTitle)
-        compose.onNodeWithTag(TestTags.CREATE_MEETUP_SUBMIT).performClick()
-        compose.waitFor(hasTestTag(TestTags.MEETUP_TITLE_TEXT) and hasText(meetupTitle))
-        return meetupTitle
+        val created = compose.createGroupAndMeetup(createdGroupNames, "E2E Voting Group", "E2E Voting Meetup")
+        createdGroupName = created.groupName
+        createdInviteCode = created.inviteCode
+        return created.title
     }
 
     // Helper: Creates a meetup, submits this user's starting location, and starts voting for it.
@@ -349,19 +321,11 @@ class VotingTest : BaseE2ETest() {
     }
 
     private fun startVotingFromMeetup() {
-        compose.waitFor(hasTestTag(TestTags.START_VOTING_BUTTON))
-        compose.onNodeWithTag(TestTags.START_VOTING_BUTTON).performClick()
-        compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT))
-        compose.onNodeWithTag(TestTags.VOTING_STATUS_TEXT).assertTextContains("Voting is open")
-        compose.dismissSnackbarNotices()
+        compose.startVotingFromMeetup()
     }
 
     private fun candidatePlaceIds(): List<String> {
-        val matcher = tagStartingWith("candidate_item_")
-        compose.waitFor(matcher)
-        return compose.onAllNodes(matcher).fetchSemanticsNodes().mapNotNull { node ->
-            node.config.getOrNull(SemanticsProperties.TestTag)?.removePrefix("candidate_item_")
-        }
+        return compose.candidatePlaceIds()
     }
 
     private fun awaitValidatedNetwork(timeoutMs: Long = 20_000) {

@@ -24,6 +24,7 @@ import com.example.cpen321application.testutil.BaseE2ETest
 import com.example.cpen321application.testutil.NETWORK_TIMEOUT_MS
 import com.example.cpen321application.testutil.assumeMultiUserRun
 import com.example.cpen321application.testutil.dismissSnackbarNotices
+import com.example.cpen321application.testutil.candidatePlaceIds
 import com.example.cpen321application.testutil.exists
 import com.example.cpen321application.testutil.manualStep
 import com.example.cpen321application.testutil.requireCreatedInviteCode
@@ -180,6 +181,14 @@ class ShareLiveLocationTest : BaseE2ETest() {
     }
 
     private fun openFinalizedMeetup(leadMinutes: Int): String {
+        val meetupTitle = createScheduledMeetup(leadMinutes)
+        submitParticipationDetails()
+        startVoting()
+        finalizeFirstCandidate()
+        return navigateBackToMeetup(meetupTitle)
+    }
+
+    private fun createScheduledMeetup(leadMinutes: Int): String {
         val groupName = uniqueName("E2E Location Group")
         createdGroupNames += groupName
         val meetupTitle = uniqueName("E2E Location Meetup")
@@ -197,8 +206,10 @@ class ShareLiveLocationTest : BaseE2ETest() {
         scheduleMeetupTime(leadMinutes)
         compose.onNodeWithTag(TestTags.CREATE_MEETUP_SUBMIT).performClick()
         compose.waitFor(hasTestTag(TestTags.MEETUP_TITLE_TEXT) and hasText(meetupTitle))
+        return meetupTitle
+    }
 
-        // Submit participation details
+    private fun submitParticipationDetails() {
         compose.waitFor(hasTestTag(TestTags.PARTICIPATION_BUTTON))
         compose.onNodeWithTag(TestTags.PARTICIPATION_BUTTON).performClick()
         compose.waitFor(hasTestTag(TestTags.LOCATION_PICKER_BUTTON))
@@ -207,18 +218,17 @@ class ShareLiveLocationTest : BaseE2ETest() {
         compose.onNodeWithTag(TestTags.LOCATION_CONFIRM).performClick()
         compose.waitFor(hasTestTag(TestTags.PARTICIPATION_SUBMIT) and isEnabled())
         compose.onNodeWithTag(TestTags.PARTICIPATION_SUBMIT).performClick()
+    }
 
-        // Start voting
+    private fun startVoting() {
         compose.waitFor(hasTestTag(TestTags.START_VOTING_BUTTON))
         compose.onNodeWithTag(TestTags.START_VOTING_BUTTON).performClick()
         compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT), timeoutMs = 30_000)
         compose.dismissSnackbarNotices()
+    }
 
-        // Vote on a candidate
-        val candidateMatcher = tagStartingWith("candidate_item_")
-        compose.waitFor(candidateMatcher, timeoutMs = 30_000)
-        val placeId = compose.onAllNodes(candidateMatcher).fetchSemanticsNodes().first()
-            .config.getOrNull(SemanticsProperties.TestTag)!!.removePrefix("candidate_item_")
+    private fun finalizeFirstCandidate() {
+        val placeId = compose.candidatePlaceIds(timeoutMs = 30_000).first()
         compose.onNodeWithTag(TestTags.voteButton(placeId)).performScrollTo().performClick()
         compose.waitFor(hasTestTag(TestTags.LOCK_VOTE_BUTTON) and isEnabled())
         compose.onNodeWithTag(TestTags.LOCK_VOTE_BUTTON).performScrollTo().performClick()
@@ -235,8 +245,9 @@ class ShareLiveLocationTest : BaseE2ETest() {
             compose.onNodeWithTag(TestTags.pickWinnerButton(placeId)).performScrollTo().performClick()
         }
         compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT) and hasText("Voting is closed"))
+    }
 
-        // Navigate back to meetup page
+    private fun navigateBackToMeetup(meetupTitle: String): String {
         compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
         compose.waitFor(hasTestTag(TestTags.MEETUP_TITLE_TEXT) and hasText(meetupTitle), timeoutMs = 30_000)
         compose.dismissSnackbarNotices()

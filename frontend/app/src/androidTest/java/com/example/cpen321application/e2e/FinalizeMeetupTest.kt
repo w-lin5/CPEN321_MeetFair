@@ -25,18 +25,19 @@ import com.example.cpen321application.MeetFairApplication
 import com.example.cpen321application.data.ApiResult
 import com.example.cpen321application.data.CalendarAuthResult
 import com.example.cpen321application.testutil.assumeMultiUserRun
+import com.example.cpen321application.testutil.candidatePlaceIds
+import com.example.cpen321application.testutil.createGroupAndMeetup
 import com.example.cpen321application.testutil.BaseE2ETest
 import com.example.cpen321application.testutil.NETWORK_TIMEOUT_MS
 import com.example.cpen321application.testutil.dismissSnackbarNotices
 import com.example.cpen321application.testutil.exists
 import com.example.cpen321application.testutil.manualStep
 import com.example.cpen321application.testutil.requireCreatedInviteCode
-import com.example.cpen321application.testutil.textOf
 import com.example.cpen321application.testutil.uniqueName
 import com.example.cpen321application.testutil.waitFor
+import com.example.cpen321application.testutil.startVotingFromMeetup
 import com.example.cpen321application.ui.common.TestTags
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.tasks.await
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -279,12 +280,19 @@ class FinalizeMeetupTest : BaseE2ETest() {
     }
 
     private fun openCalendarAndAssertEventExists(meetupTitle: String) {
+        val device = launchCalendarOrSkip()
+        if (device == null) return
+        searchCalendarForEvent(device, meetupTitle)
+        openCalendarEventDetails(device, meetupTitle)
+    }
+
+    private fun launchCalendarOrSkip(): UiDevice? {
         val calendarPackage = "com.google.android.calendar"
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
         val installedPackages = device.executeShellCommand("pm path $calendarPackage")
         if (!installedPackages.contains("package:")) {
             Log.i("FinalizeMeetupTest", "Skipping Calendar UI verification: Google Calendar is not installed")
-            return
+            return null
         }
         // Launch through the shell so Android package-visibility filtering on the test
         // app cannot hide an installed Calendar package from PackageManager.
@@ -293,10 +301,11 @@ class FinalizeMeetupTest : BaseE2ETest() {
             "Google Calendar did not open",
             device.wait(Until.hasObject(By.pkg(calendarPackage)), 15_000),
         )
-
-        // Allow Google Calendar 3 seconds to complete initial launch & sync
         Thread.sleep(3000)
+        return device
+    }
 
+    private fun searchCalendarForEvent(device: UiDevice, meetupTitle: String) {
         val searchButton = device.findObject(UiSelector().descriptionContains("Search")).takeIf { it.exists() }
             ?: device.findObject(UiSelector().textContains("Search")).takeIf { it.exists() }
             ?: throw AssertionError("Could not find Calendar's Search control")
@@ -332,7 +341,9 @@ class FinalizeMeetupTest : BaseE2ETest() {
         if (!foundEvent) {
             throw AssertionError("Event '$meetupTitle' was not found in Google Calendar search")
         }
+    }
 
+    private fun openCalendarEventDetails(device: UiDevice, meetupTitle: String) {
         // Click the search result event, re-fetching the node if it went stale during sync/render
         var openedDetails = false
         val clickDeadline = System.currentTimeMillis() + 15_000L
@@ -389,11 +400,7 @@ class FinalizeMeetupTest : BaseE2ETest() {
     }
 
     private fun candidatePlaceIds(): List<String> {
-        val matcher = tagStartingWith("candidate_item_")
-        compose.waitFor(matcher)
-        return compose.onAllNodes(matcher).fetchSemanticsNodes().mapNotNull { node ->
-            node.config.getOrNull(SemanticsProperties.TestTag)?.removePrefix("candidate_item_")
-        }
+        return compose.candidatePlaceIds()
     }
 
     private fun assertEarlyFinalizePrompt() {
@@ -468,21 +475,10 @@ class FinalizeMeetupTest : BaseE2ETest() {
 
     // Creates a uniquely named group and its first meetup, leaving the app on the meetup page.
     private fun createGroupAndMeetup(): String {
-        val groupName = uniqueName("E2E Finalize Group")
-        createdGroupName = groupName
-        createdGroupNames += groupName
-        val meetupTitle = uniqueName("E2E Finalize Meetup")
-
-        compose.onNodeWithTag(TestTags.CREATE_GROUP_BUTTON).performClick()
-        compose.onNodeWithTag(TestTags.GROUP_NAME_INPUT).performTextInput(groupName)
-        compose.onNodeWithTag(TestTags.CREATE_GROUP_SUBMIT).performClick()
-        compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
-        createdInviteCode = compose.textOf(TestTags.INVITE_CODE_TEXT)
-        compose.onNodeWithTag(TestTags.NEW_MEETUP_BUTTON).performClick()
-        compose.onNodeWithTag(TestTags.MEETUP_TITLE_INPUT).performTextInput(meetupTitle)
-        compose.onNodeWithTag(TestTags.CREATE_MEETUP_SUBMIT).performClick()
-        compose.waitFor(hasTestTag(TestTags.MEETUP_TITLE_TEXT) and hasText(meetupTitle))
-        return meetupTitle
+        val created = compose.createGroupAndMeetup(createdGroupNames, "E2E Finalize Group", "E2E Finalize Meetup")
+        createdGroupName = created.groupName
+        createdInviteCode = created.inviteCode
+        return created.title
     }
 
     // Creates a meetup, submits this user's starting location, and starts voting for it.
@@ -509,11 +505,7 @@ class FinalizeMeetupTest : BaseE2ETest() {
     }
 
     private fun startVoting() {
-        compose.waitFor(hasTestTag(TestTags.START_VOTING_BUTTON))
-        compose.onNodeWithTag(TestTags.START_VOTING_BUTTON).performClick()
-        compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT))
-        compose.onNodeWithTag(TestTags.VOTING_STATUS_TEXT).assertTextContains("Voting is open")
-        compose.dismissSnackbarNotices()
+        compose.startVotingFromMeetup()
     }
 
     private fun castAndLockVote(placeId: String) {

@@ -11,7 +11,9 @@ import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.cpen321application.MeetFairApplication
+import com.example.cpen321application.AppContainer
 import com.example.cpen321application.data.ApiResult
+import com.example.cpen321application.model.Group
 import com.example.cpen321application.ui.common.TestTags
 import org.junit.Assert.fail
 import org.junit.Assume.assumeTrue
@@ -80,19 +82,28 @@ fun ComposeTestRule.cleanupCreatedGroups(names: Iterable<String>) {
         .let { it as MeetFairApplication }
         .container
     try {
-        when (val groups = runBlocking { container.groupRepository.list() }) {
-            is ApiResult.Success -> groups.data
-                .filter { it.name in namesToDelete }
-                .forEach { group ->
-                    when (val result = runBlocking { container.groupRepository.delete(group.id) }) {
-                        is ApiResult.Success -> Log.i("ComposeE2E", "Deleted test group '${group.name}'")
-                        is ApiResult.Failure -> Log.e("ComposeE2E", "Could not delete test group '${group.name}': ${result.error.message}")
-                    }
-                }
+        val groups = runBlocking { container.groupRepository.list() }
+        when (groups) {
+            is ApiResult.Success -> deleteMatchingGroups(container, namesToDelete, groups.data)
             is ApiResult.Failure -> Log.e("ComposeE2E", "Could not load groups for test cleanup: ${groups.error.message}")
         }
     } catch (error: Throwable) {
         Log.e("ComposeE2E", "Could not delete created test groups: ${error.message}", error)
+    }
+}
+
+private fun deleteMatchingGroups(
+    container: AppContainer,
+    namesToDelete: Set<String>,
+    groups: List<Group>,
+) {
+    groups.filter { it.name in namesToDelete }.forEach { deleteTestGroup(container, it) }
+}
+
+private fun deleteTestGroup(container: AppContainer, group: Group) {
+    when (val result = runBlocking { container.groupRepository.delete(group.id) }) {
+        is ApiResult.Success -> Log.i("ComposeE2E", "Deleted test group '${group.name}'")
+        is ApiResult.Failure -> Log.e("ComposeE2E", "Could not delete test group '${group.name}': ${result.error.message}")
     }
 }
 

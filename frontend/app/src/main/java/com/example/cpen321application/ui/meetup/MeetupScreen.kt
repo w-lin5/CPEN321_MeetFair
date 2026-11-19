@@ -397,9 +397,8 @@ fun MeetupScreen(
 
     val currentMeetup = (state as? UiState.Success)?.data
     LaunchedEffect(currentMeetup?.id, currentMeetup?.scheduledAt, currentMeetup?.status) {
-        val meetup = currentMeetup ?: return@LaunchedEffect
-        if (meetup.status == MeetupStatus.FINALIZED) {
-            val scheduledInstant = runCatching { java.time.Instant.parse(meetup.scheduledAt) }.getOrNull()
+        if (currentMeetup != null && currentMeetup.status == MeetupStatus.FINALIZED) {
+            val scheduledInstant = runCatching { java.time.Instant.parse(currentMeetup.scheduledAt) }.getOrNull()
             if (scheduledInstant != null) {
                 val delayMs = scheduledInstant.toEpochMilli() - System.currentTimeMillis()
                 if (delayMs > 0) {

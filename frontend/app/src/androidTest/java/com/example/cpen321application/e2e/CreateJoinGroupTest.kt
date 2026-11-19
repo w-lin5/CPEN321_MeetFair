@@ -22,6 +22,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import com.example.cpen321application.testutil.NETWORK_TIMEOUT_MS
 import com.example.cpen321application.testutil.BaseE2ETest
+import com.example.cpen321application.testutil.createGroupAndMeetup as createGroupAndMeetupFlow
 import com.example.cpen321application.testutil.assumeMultiUserRun
 import com.example.cpen321application.testutil.manualStep
 import com.example.cpen321application.testutil.textOf
@@ -320,18 +321,8 @@ class CreateJoinGroupTest : BaseE2ETest() {
     }
 
     private fun createGroupAndMeetup(prefix: String): Pair<String, String> {
-        val groupName = uniqueName(prefix)
-        val meetupTitle = uniqueName("$prefix Meetup")
-        createdGroupNames += groupName
-        compose.onNodeWithTag(TestTags.CREATE_GROUP_BUTTON).performClick()
-        compose.onNodeWithTag(TestTags.GROUP_NAME_INPUT).performTextInput(groupName)
-        compose.onNodeWithTag(TestTags.CREATE_GROUP_SUBMIT).performClick()
-        compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
-        compose.onNodeWithTag(TestTags.NEW_MEETUP_BUTTON).performClick()
-        compose.onNodeWithTag(TestTags.MEETUP_TITLE_INPUT).performTextInput(meetupTitle)
-        compose.onNodeWithTag(TestTags.CREATE_MEETUP_SUBMIT).performClick()
-        compose.waitFor(hasTestTag(TestTags.MEETUP_TITLE_TEXT) and hasText(meetupTitle))
-        return groupName to meetupTitle
+        val created = compose.createGroupAndMeetupFlow(createdGroupNames, prefix)
+        return created.groupName to created.title
     }
 
     private fun submitParticipationDetails() {
