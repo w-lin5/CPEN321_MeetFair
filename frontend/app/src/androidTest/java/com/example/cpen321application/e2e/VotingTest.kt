@@ -3,10 +3,8 @@ package com.example.cpen321application.e2e
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
@@ -22,11 +20,14 @@ import androidx.test.uiautomator.UiDevice
 import com.example.cpen321application.testutil.assumeMultiUserRun
 import com.example.cpen321application.testutil.candidatePlaceIds
 import com.example.cpen321application.testutil.createGroupAndMeetup
+import com.example.cpen321application.testutil.nodeText
+import com.example.cpen321application.testutil.tagStartingWith
 import com.example.cpen321application.testutil.exists
 import com.example.cpen321application.testutil.manualStep
 import com.example.cpen321application.testutil.requireCreatedInviteCode
 import com.example.cpen321application.testutil.waitFor
 import com.example.cpen321application.testutil.startVotingFromMeetup
+import com.example.cpen321application.testutil.submitParticipation
 import com.example.cpen321application.ui.common.TestTags
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
@@ -215,7 +216,7 @@ class VotingTest : BaseE2ETest() {
     fun vote_otherMemberVotesAppearLive() {
         assumeMultiUserRun()
         val title = createGroupAndMeetup()
-        enterParticipationDetails()
+        compose.submitParticipation(expectedMemberCount = 1)
         val inviteCode = requireCreatedInviteCode(createdInviteCode)
         compose.activity.manualStep("On Device B, join with invite code $inviteCode, open meetup '$title', and enter/save participation details. Then tap Continue here on Device A.")
 
@@ -238,7 +239,7 @@ class VotingTest : BaseE2ETest() {
         assumeMultiUserRun()
         val title = createGroupAndMeetup()
         // Device A must be a participant; Device B is the member that deliberately skips details.
-        enterParticipationDetails()
+        compose.submitParticipation(expectedMemberCount = 1)
         val inviteCode = requireCreatedInviteCode(createdInviteCode)
         compose.activity.manualStep("On Device B, join with invite code $inviteCode and open meetup '$title'. Do not enter participation details. Then tap Continue here on Device A.")
         startVotingFromMeetup()
@@ -250,7 +251,7 @@ class VotingTest : BaseE2ETest() {
     fun vote_afterFinalizeShowsNotOpenAndClosesVoting() {
         assumeMultiUserRun()
         val title = createGroupAndMeetup()
-        enterParticipationDetails()
+        compose.submitParticipation(expectedMemberCount = 1)
         val inviteCode = requireCreatedInviteCode(createdInviteCode)
         compose.activity.manualStep("On Device B, join with invite code $inviteCode, open meetup '$title', and enter/save details. Then tap Continue here on Device A.")
 
@@ -290,34 +291,11 @@ class VotingTest : BaseE2ETest() {
     // Helper: Creates a meetup, submits this user's starting location, and starts voting for it.
     private fun createMeetupAndEnterDetailsToVoting(): String {
         val meetupTitle = createGroupAndMeetup()
-        enterParticipationDetails()
+        compose.submitParticipation(expectedMemberCount = 1)
 
         // Starting voting generates candidates and navigates directly to the voting screen.
         startVotingFromMeetup()
         return meetupTitle
-    }
-
-    private fun enterParticipationDetails() {
-        compose.waitFor(hasTestTag(TestTags.PARTICIPATION_BUTTON))
-        compose.onNodeWithTag(TestTags.PARTICIPATION_BUTTON).performClick()
-
-        compose.waitFor(hasTestTag(TestTags.LOCATION_PICKER_BUTTON))
-        compose.onNodeWithTag(TestTags.LOCATION_PICKER_BUTTON).performClick()
-
-        compose.waitFor(hasTestTag(TestTags.LOCATION_CONFIRM))
-        compose.onNodeWithTag(TestTags.LOCATION_CONFIRM).performClick()
-
-        compose.waitFor(hasTestTag(TestTags.PARTICIPATION_SUBMIT) and isEnabled())
-        compose.onNodeWithTag(TestTags.PARTICIPATION_SUBMIT).performClick()
-
-        // Do not start the Device B manual step until A's save has completed and is visible.
-        val submittedStatus = hasTestTag(TestTags.PARTICIPATION_STATUS_TEXT) and
-            hasText("Your details are in")
-        compose.waitFor(submittedStatus, timeoutMs = 60_000)
-        compose.onNodeWithTag(TestTags.PARTICIPATION_STATUS_TEXT)
-            .assertTextContains("Your details are in")
-        compose.onNodeWithText("1 member(s) have submitted their details", substring = true)
-            .assertExists()
     }
 
     private fun startVotingFromMeetup() {
@@ -357,10 +335,4 @@ class VotingTest : BaseE2ETest() {
         }
     }
 
-    private fun nodeText(node: SemanticsNode): String =
-        node.config.getOrElse(SemanticsProperties.Text) { emptyList() }.joinToString("") { it.text }
-
-    private fun tagStartingWith(prefix: String) = SemanticsMatcher("test tag starts with $prefix") { node ->
-        node.config.getOrNull(SemanticsProperties.TestTag)?.startsWith(prefix) == true
-    }
 }

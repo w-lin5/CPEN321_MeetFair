@@ -1,9 +1,6 @@
 package com.example.cpen321application.e2e
 
 import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
@@ -19,18 +16,24 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.UiSelector
 import com.example.cpen321application.testutil.BaseE2ETest
 import com.example.cpen321application.testutil.NETWORK_TIMEOUT_MS
 import com.example.cpen321application.testutil.assumeMultiUserRun
+import com.example.cpen321application.testutil.denyLocationPermissionIfRequested
+import com.example.cpen321application.testutil.grantLocationPermissionIfRequested
 import com.example.cpen321application.testutil.dismissSnackbarNotices
 import com.example.cpen321application.testutil.candidatePlaceIds
+import com.example.cpen321application.testutil.createGroup
+import com.example.cpen321application.testutil.navigateBackToMeetup
+import com.example.cpen321application.testutil.submitParticipation
+import com.example.cpen321application.testutil.tagStartingWith
 import com.example.cpen321application.testutil.exists
 import com.example.cpen321application.testutil.manualStep
 import com.example.cpen321application.testutil.requireCreatedInviteCode
 import com.example.cpen321application.testutil.textOf
 import com.example.cpen321application.testutil.uniqueName
 import com.example.cpen321application.testutil.waitFor
+import com.example.cpen321application.testutil.waitForLocationPermissionPrompt
 import com.example.cpen321application.ui.common.TestTags
 import org.junit.Test
 import java.time.LocalDateTime
@@ -112,8 +115,8 @@ class ShareLiveLocationTest : BaseE2ETest() {
         compose.waitFor(hasText("Share your live location?"))
         compose.onNodeWithText("Share your live location?").assertIsDisplayed()
         compose.onNodeWithTag(TestTags.SHARE_TRIP_CONFIRM).performClick()
-        waitForLocationPermissionPrompt(device)
-        denyLocationPermissionIfRequested(device)
+        device.waitForLocationPermissionPrompt()
+        device.denyLocationPermissionIfRequested()
 
         compose.waitFor(hasText("Location permission is required to share your trip. No trip was started."))
         compose.onNodeWithTag(TestTags.ERROR_TEXT)
@@ -182,23 +185,17 @@ class ShareLiveLocationTest : BaseE2ETest() {
 
     private fun openFinalizedMeetup(leadMinutes: Int): String {
         val meetupTitle = createScheduledMeetup(leadMinutes)
-        submitParticipationDetails()
+        compose.submitParticipation()
         startVoting()
         finalizeFirstCandidate()
-        return navigateBackToMeetup(meetupTitle)
+        compose.navigateBackToMeetup(meetupTitle)
+        return meetupTitle
     }
 
     private fun createScheduledMeetup(leadMinutes: Int): String {
-        val groupName = uniqueName("E2E Location Group")
-        createdGroupNames += groupName
+        val group = compose.createGroup(createdGroupNames, "E2E Location Group")
         val meetupTitle = uniqueName("E2E Location Meetup")
-
-        // Create group
-        compose.onNodeWithTag(TestTags.CREATE_GROUP_BUTTON).performClick()
-        compose.onNodeWithTag(TestTags.GROUP_NAME_INPUT).performTextInput(groupName)
-        compose.onNodeWithTag(TestTags.CREATE_GROUP_SUBMIT).performClick()
-        compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
-        createdInviteCode = compose.textOf(TestTags.INVITE_CODE_TEXT)
+        createdInviteCode = group.inviteCode
 
         // Create meetup with scheduled time
         compose.onNodeWithTag(TestTags.NEW_MEETUP_BUTTON).performClick()
@@ -207,17 +204,6 @@ class ShareLiveLocationTest : BaseE2ETest() {
         compose.onNodeWithTag(TestTags.CREATE_MEETUP_SUBMIT).performClick()
         compose.waitFor(hasTestTag(TestTags.MEETUP_TITLE_TEXT) and hasText(meetupTitle))
         return meetupTitle
-    }
-
-    private fun submitParticipationDetails() {
-        compose.waitFor(hasTestTag(TestTags.PARTICIPATION_BUTTON))
-        compose.onNodeWithTag(TestTags.PARTICIPATION_BUTTON).performClick()
-        compose.waitFor(hasTestTag(TestTags.LOCATION_PICKER_BUTTON))
-        compose.onNodeWithTag(TestTags.LOCATION_PICKER_BUTTON).performClick()
-        compose.waitFor(hasTestTag(TestTags.LOCATION_CONFIRM))
-        compose.onNodeWithTag(TestTags.LOCATION_CONFIRM).performClick()
-        compose.waitFor(hasTestTag(TestTags.PARTICIPATION_SUBMIT) and isEnabled())
-        compose.onNodeWithTag(TestTags.PARTICIPATION_SUBMIT).performClick()
     }
 
     private fun startVoting() {
@@ -245,13 +231,6 @@ class ShareLiveLocationTest : BaseE2ETest() {
             compose.onNodeWithTag(TestTags.pickWinnerButton(placeId)).performScrollTo().performClick()
         }
         compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT) and hasText("Voting is closed"))
-    }
-
-    private fun navigateBackToMeetup(meetupTitle: String): String {
-        compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
-        compose.waitFor(hasTestTag(TestTags.MEETUP_TITLE_TEXT) and hasText(meetupTitle), timeoutMs = 30_000)
-        compose.dismissSnackbarNotices()
-        return meetupTitle
     }
 
     private fun scheduleMeetupTime(leadMinutes: Int) {
@@ -314,70 +293,4 @@ class ShareLiveLocationTest : BaseE2ETest() {
         }
     }
 
-    private fun grantLocationPermissionIfRequested() {
-        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-        val options = listOf("While using the app", "Only this time", "Allow", "ALLOW", "While Using the App")
-        repeat(5) {
-            var clicked = false
-            for (option in options) {
-                val obj = device.findObject(UiSelector().text(option))
-                if (obj.exists()) {
-                    runCatching { obj.click() }
-                    clicked = true
-                    Thread.sleep(1000)
-                    break
-                }
-            }
-            if (!clicked) {
-                Thread.sleep(500)
-            }
-        }
-    }
-
-    private fun waitForLocationPermissionPrompt(device: UiDevice): Boolean {
-        val permissionChoices = listOf("While using the app", "Only this time", "Allow", "ALLOW", "While Using the App")
-        val deadline = System.currentTimeMillis() + 10_000
-        while (System.currentTimeMillis() < deadline) {
-            if (permissionChoices.any { device.findObject(UiSelector().text(it)).exists() }) return true
-            Thread.sleep(250)
-        }
-        return false
-    }
-
-    private fun denyLocationPermissionIfRequested(device: UiDevice): Boolean {
-        val options = listOf("Don't allow", "Deny", "DENY", "Don’t allow")
-        val deadline = System.currentTimeMillis() + 10_000
-        while (System.currentTimeMillis() < deadline) {
-            for (option in options) {
-                val obj = device.findObject(UiSelector().text(option))
-                if (obj.exists() && runCatching { obj.click() }.isSuccess) return true
-            }
-            Thread.sleep(250)
-        }
-        return false
-    }
-
-    private fun denyLocationPermissionIfRequested() {
-        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-        val options = listOf("Don't allow", "Deny", "DENY", "Don’t allow")
-        repeat(5) {
-            var clicked = false
-            for (option in options) {
-                val obj = device.findObject(UiSelector().text(option))
-                if (obj.exists()) {
-                    runCatching { obj.click() }
-                    clicked = true
-                    Thread.sleep(1000)
-                    break
-                }
-            }
-            if (!clicked) {
-                Thread.sleep(500)
-            }
-        }
-    }
-
-    private fun tagStartingWith(prefix: String) = SemanticsMatcher("test tag starts with $prefix") { node ->
-        node.config.getOrNull(SemanticsProperties.TestTag)?.startsWith(prefix) == true
-    }
 }

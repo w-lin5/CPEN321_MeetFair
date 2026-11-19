@@ -23,6 +23,8 @@ import androidx.test.uiautomator.UiDevice
 import com.example.cpen321application.testutil.NETWORK_TIMEOUT_MS
 import com.example.cpen321application.testutil.BaseE2ETest
 import com.example.cpen321application.testutil.createGroupAndMeetup as createGroupAndMeetupFlow
+import com.example.cpen321application.testutil.createGroupWithName
+import com.example.cpen321application.testutil.submitParticipation
 import com.example.cpen321application.testutil.assumeMultiUserRun
 import com.example.cpen321application.testutil.manualStep
 import com.example.cpen321application.testutil.textOf
@@ -63,7 +65,7 @@ class CreateJoinGroupTest : BaseE2ETest() {
     @Test
     fun participation_submitDetails() {
         val (_, meetupTitle) = createGroupAndMeetup("E2E Participation")
-        submitParticipationDetails()
+        compose.submitParticipation()
 
         compose.onNodeWithTag(TestTags.PARTICIPATION_STATUS_TEXT)
             .assertTextContains("Your details are in")
@@ -76,7 +78,7 @@ class CreateJoinGroupTest : BaseE2ETest() {
     @Test
     fun leaveMeetup_leave() {
         createGroupAndMeetup("E2E Leave Meetup")
-        submitParticipationDetails()
+        compose.submitParticipation()
 
         compose.onNodeWithContentDescription("Options").performClick()
         compose.onNodeWithTag("leave_meetup").performClick()
@@ -146,21 +148,11 @@ class CreateJoinGroupTest : BaseE2ETest() {
         assumeMultiUserRun()
         val groupName = uniqueName("E2E Join Success")
         val inviteCode = createGroupAndReadInviteCode(groupName)
-
-        compose.activity.manualStep(
-            "On Device B, select Join group, enter invite code $inviteCode, and tap Join group. Verify '$groupName' opens with two members, then tap Continue here on Device A.",
+        assertMemberCountAfterReload(
+            groupName,
+            expected = 2,
+            manualStep = "On Device B, select Join group, enter invite code $inviteCode, and tap Join group. Verify '$groupName' opens with two members, then tap Continue here on Device A.",
         )
-
-        // Reload the group detail so Device A verifies the membership added by Device B.
-        compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
-        val groupMatcher = hasTestTag(TestTags.GROUP_ITEM) and hasText(groupName)
-        compose.waitFor(groupMatcher)
-        compose.onNode(groupMatcher).performClick()
-        compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
-        compose.waitUntil(NETWORK_TIMEOUT_MS) {
-            compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).fetchSemanticsNodes().size == 2
-        }
-        compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).assertCountEquals(2)
     }
 
     // Multi-user: Feature 2, Use Case 6, success; User B leaves User A's group.
@@ -169,21 +161,11 @@ class CreateJoinGroupTest : BaseE2ETest() {
         assumeMultiUserRun()
         val groupName = uniqueName("E2E Leave Group")
         val inviteCode = createGroupAndReadInviteCode(groupName)
-
-        compose.activity.manualStep(
-            "On Device B, select Join group, enter invite code $inviteCode, and tap Join group. In '$groupName', open Options, select Leave group, and confirm Leave. Then tap Continue here on Device A.",
+        assertMemberCountAfterReload(
+            groupName,
+            expected = 1,
+            manualStep = "On Device B, select Join group, enter invite code $inviteCode, and tap Join group. In '$groupName', open Options, select Leave group, and confirm Leave. Then tap Continue here on Device A.",
         )
-
-        // Reload the group detail to verify User B left and the organizer's group remains.
-        compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
-        val groupMatcher = hasTestTag(TestTags.GROUP_ITEM) and hasText(groupName)
-        compose.waitFor(groupMatcher)
-        compose.onNode(groupMatcher).performClick()
-        compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
-        compose.waitUntil(NETWORK_TIMEOUT_MS) {
-            compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).fetchSemanticsNodes().size == 1
-        }
-        compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).assertCountEquals(1)
     }
 
     // Multi-user: Use Case 7, success; User A removes User B from the group.
@@ -192,29 +174,17 @@ class CreateJoinGroupTest : BaseE2ETest() {
         assumeMultiUserRun()
         val groupName = uniqueName("E2E Remove Member")
         val inviteCode = createGroupAndReadInviteCode(groupName)
-
-        compose.activity.manualStep(
-            "On Device B, select Join group, enter invite code $inviteCode, and tap Join group. Verify '$groupName' opens with two members, then tap Continue here on Device A.",
+        assertMemberCountAfterReload(
+            groupName,
+            expected = 2,
+            manualStep = "On Device B, select Join group, enter invite code $inviteCode, and tap Join group. Verify '$groupName' opens with two members, then tap Continue here on Device A.",
         )
-
-        // Reload the group detail so Device A can select the newly joined member.
-        compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
-        val groupMatcher = hasTestTag(TestTags.GROUP_ITEM) and hasText(groupName)
-        compose.waitFor(groupMatcher)
-        compose.onNode(groupMatcher).performClick()
-        compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
-        compose.waitUntil(NETWORK_TIMEOUT_MS) {
-            compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).fetchSemanticsNodes().size == 2
-        }
 
         compose.onNodeWithText("Remove").performClick()
         compose.waitFor(hasText("Remove member?"))
         compose.onNodeWithText("Remove member?").assertIsDisplayed()
         compose.onAllNodesWithText("Remove").onLast().performClick()
-        compose.waitUntil(NETWORK_TIMEOUT_MS) {
-            compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).fetchSemanticsNodes().size == 1
-        }
-        compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).assertCountEquals(1)
+        assertMemberCount(1)
     }
 
     // Create: failure scenario 2a, a blank group name
@@ -310,13 +280,8 @@ class CreateJoinGroupTest : BaseE2ETest() {
 
     // Creates a group through the UI and returns its invite code (the group page stays open)
     private fun createGroupAndReadInviteCode(name: String): String {
-        createdGroupNames += name
-        compose.onNodeWithTag(TestTags.CREATE_GROUP_BUTTON).performClick()
-        compose.onNodeWithTag(TestTags.GROUP_NAME_INPUT).performTextInput(name)
-        compose.onNodeWithTag(TestTags.CREATE_GROUP_SUBMIT).performClick()
-        compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
-
-        val match = INVITE_CODE_TEXT.matchEntire(compose.textOf(TestTags.INVITE_CODE_TEXT))
+        val created = compose.createGroupWithName(createdGroupNames, name)
+        val match = INVITE_CODE_TEXT.matchEntire(created.inviteCode)
         return checkNotNull(match) { "Group page shows no invite code" }.groupValues[1]
     }
 
@@ -325,15 +290,21 @@ class CreateJoinGroupTest : BaseE2ETest() {
         return created.groupName to created.title
     }
 
-    private fun submitParticipationDetails() {
-        compose.waitFor(hasTestTag(TestTags.PARTICIPATION_BUTTON))
-        compose.onNodeWithTag(TestTags.PARTICIPATION_BUTTON).performClick()
-        compose.waitFor(hasTestTag(TestTags.LOCATION_PICKER_BUTTON))
-        compose.onNodeWithTag(TestTags.LOCATION_PICKER_BUTTON).performClick()
-        compose.waitFor(hasTestTag(TestTags.LOCATION_CONFIRM))
-        compose.onNodeWithTag(TestTags.LOCATION_CONFIRM).performClick()
-        compose.waitFor(hasTestTag(TestTags.PARTICIPATION_SUBMIT) and isEnabled())
-        compose.onNodeWithTag(TestTags.PARTICIPATION_SUBMIT).performClick()
-        compose.waitFor(hasTestTag(TestTags.PARTICIPATION_STATUS_TEXT) and hasText("Your details are in"), timeoutMs = 60_000)
+    private fun assertMemberCountAfterReload(groupName: String, expected: Int, manualStep: String) {
+        compose.activity.manualStep(manualStep)
+        compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
+        val groupMatcher = hasTestTag(TestTags.GROUP_ITEM) and hasText(groupName)
+        compose.waitFor(groupMatcher)
+        compose.onNode(groupMatcher).performClick()
+        compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
+        assertMemberCount(expected)
     }
+
+    private fun assertMemberCount(expected: Int) {
+        compose.waitUntil(NETWORK_TIMEOUT_MS) {
+            compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).fetchSemanticsNodes().size == expected
+        }
+        compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).assertCountEquals(expected)
+    }
+
 }

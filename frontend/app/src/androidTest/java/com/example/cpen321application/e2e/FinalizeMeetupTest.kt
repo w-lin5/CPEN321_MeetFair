@@ -2,7 +2,6 @@ package com.example.cpen321application.e2e
 
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextContains
@@ -27,15 +26,20 @@ import com.example.cpen321application.data.CalendarAuthResult
 import com.example.cpen321application.testutil.assumeMultiUserRun
 import com.example.cpen321application.testutil.candidatePlaceIds
 import com.example.cpen321application.testutil.createGroupAndMeetup
+import com.example.cpen321application.testutil.createGroup
+import com.example.cpen321application.testutil.finalizeAndReturnToMeetup
+import com.example.cpen321application.testutil.navigateBackToMeetup
+import com.example.cpen321application.testutil.nodeText
+import com.example.cpen321application.testutil.tagStartingWith
 import com.example.cpen321application.testutil.BaseE2ETest
 import com.example.cpen321application.testutil.NETWORK_TIMEOUT_MS
 import com.example.cpen321application.testutil.dismissSnackbarNotices
 import com.example.cpen321application.testutil.exists
 import com.example.cpen321application.testutil.manualStep
 import com.example.cpen321application.testutil.requireCreatedInviteCode
-import com.example.cpen321application.testutil.uniqueName
 import com.example.cpen321application.testutil.waitFor
 import com.example.cpen321application.testutil.startVotingFromMeetup
+import com.example.cpen321application.testutil.submitParticipation
 import com.example.cpen321application.ui.common.TestTags
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -82,16 +86,10 @@ class FinalizeMeetupTest : BaseE2ETest() {
         dismissVotingStartedNotice()
 
         val winnerId = candidatePlaceIds().first()
-        val winnerText = compose.onNodeWithTag("candidate_map_$winnerId").fetchSemanticsNode()
-            .config.getOrNull(SemanticsProperties.Text).orEmpty()
-            .joinToString("") { it.text }
+        val winnerText = nodeText(compose.onNodeWithTag("candidate_map_$winnerId").fetchSemanticsNode())
         org.junit.Assert.assertTrue("Candidate should have a visible name", winnerText.isNotBlank())
 
-        compose.onNodeWithTag(TestTags.voteButton(winnerId)).performScrollTo().performClick()
-        compose.waitFor(hasTestTag(TestTags.voteButton(winnerId)) and hasText("Your vote"))
-        compose.waitFor(hasTestTag(TestTags.LOCK_VOTE_BUTTON) and isEnabled())
-        compose.onNodeWithTag(TestTags.LOCK_VOTE_BUTTON).performScrollTo().performClick()
-        compose.waitFor(hasTestTag(TestTags.VOTE_LOCKED_TEXT))
+        castAndLockVote(winnerId)
         compose.onNodeWithTag(TestTags.FINALIZE_BUTTON).performScrollTo().performClick()
         assertFinalizedOnVotingScreen(winnerId, winnerText)
         assertFinalizedOnMeetupScreen(title, winnerText)
@@ -142,7 +140,7 @@ class FinalizeMeetupTest : BaseE2ETest() {
     fun finalize_earlyCountsOnlyLockedVotes() {
         assumeMultiUserRun()
         val title = createGroupAndMeetup()
-        submitParticipationDetails()
+        compose.submitParticipation()
         val inviteCode = requireCreatedInviteCode(createdInviteCode)
         compose.activity.manualStep(
             "On Device B, join with invite code $inviteCode, open meetup '$title', and enter/save details. Then tap Continue here on Device A.",
@@ -173,7 +171,7 @@ class FinalizeMeetupTest : BaseE2ETest() {
     fun finalize_unresolvedTieOffersOnlyTiedCandidates() {
         assumeMultiUserRun()
         val title = createGroupAndMeetup()
-        submitParticipationDetails()
+        compose.submitParticipation()
         val inviteCode = requireCreatedInviteCode(createdInviteCode)
         compose.activity.manualStep(
             "On Device B, join with invite code $inviteCode, open meetup '$title', and enter/save details. Then tap Continue here on Device A.",
@@ -225,18 +223,9 @@ class FinalizeMeetupTest : BaseE2ETest() {
         val placeId = candidatePlaceIds().first()
 
         // Vote for and lock the first option so finalization chooses it automatically.
-        compose.onNodeWithTag(TestTags.voteButton(placeId)).performScrollTo().performClick()
-        compose.waitFor(hasTestTag(TestTags.voteButton(placeId)) and hasText("Your vote"))
-        compose.waitFor(hasTestTag(TestTags.LOCK_VOTE_BUTTON) and isEnabled())
-        compose.onNodeWithTag(TestTags.LOCK_VOTE_BUTTON).performScrollTo().performClick()
-        compose.waitFor(hasTestTag(TestTags.VOTE_LOCKED_TEXT))
+        castAndLockVote(placeId)
 
-        compose.onNodeWithTag(TestTags.FINALIZE_BUTTON).performScrollTo().performClick()
-        compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT) and hasText("Voting is closed"))
-
-        compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
-        compose.waitFor(hasTestTag(TestTags.MEETUP_TITLE_TEXT) and hasText(meetupTitle), timeoutMs = 30_000)
-        compose.dismissSnackbarNotices()
+        compose.finalizeAndReturnToMeetup(meetupTitle)
 
         val calendarSection = hasTestTag(TestTags.ADD_TO_CALENDAR_BUTTON) or hasTestTag(TestTags.CALENDAR_ADDED_TEXT)
         compose.waitFor(calendarSection)
@@ -366,11 +355,7 @@ class FinalizeMeetupTest : BaseE2ETest() {
     private fun openFinalizedMeetupPage(): String {
         val meetupTitle = openPreparedVotingScreen()
         castAndLockVote(candidatePlaceIds().first())
-        compose.onNodeWithTag(TestTags.FINALIZE_BUTTON).performScrollTo().performClick()
-        compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT) and hasText("Voting is closed"))
-        compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
-        compose.waitFor(hasTestTag(TestTags.MEETUP_TITLE_TEXT) and hasText(meetupTitle), timeoutMs = 30_000)
-        compose.dismissSnackbarNotices()
+        compose.finalizeAndReturnToMeetup(meetupTitle)
         return meetupTitle
     }
 
@@ -463,14 +448,9 @@ class FinalizeMeetupTest : BaseE2ETest() {
     private fun openPreparedVotingScreen(): String = createMeetupAndEnterDetailsToVoting()
 
     private fun createFairnessTestGroup(): String {
-        val groupName = uniqueName("E2E Fairness Group")
-        createdGroupNames += groupName
-        compose.onNodeWithTag(TestTags.CREATE_GROUP_BUTTON).performClick()
-        compose.onNodeWithTag(TestTags.GROUP_NAME_INPUT).performTextInput(groupName)
-        compose.onNodeWithTag(TestTags.CREATE_GROUP_SUBMIT).performClick()
-        compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
-        compose.onNodeWithText(groupName).assertIsDisplayed()
-        return groupName
+        val group = compose.createGroup(createdGroupNames, "E2E Fairness Group")
+        compose.onNodeWithText(group.name).assertIsDisplayed()
+        return group.name
     }
 
     // Creates a uniquely named group and its first meetup, leaving the app on the meetup page.
@@ -484,24 +464,9 @@ class FinalizeMeetupTest : BaseE2ETest() {
     // Creates a meetup, submits this user's starting location, and starts voting for it.
     private fun createMeetupAndEnterDetailsToVoting(): String {
         val meetupTitle = createGroupAndMeetup()
-        submitParticipationDetails()
+        compose.submitParticipation()
         startVoting()
         return meetupTitle
-    }
-
-    private fun submitParticipationDetails() {
-        compose.waitFor(hasTestTag(TestTags.PARTICIPATION_BUTTON))
-        compose.onNodeWithTag(TestTags.PARTICIPATION_BUTTON).performClick()
-        compose.waitFor(hasTestTag(TestTags.LOCATION_PICKER_BUTTON))
-        compose.onNodeWithTag(TestTags.LOCATION_PICKER_BUTTON).performClick()
-        compose.waitFor(hasTestTag(TestTags.LOCATION_CONFIRM))
-        compose.onNodeWithTag(TestTags.LOCATION_CONFIRM).performClick()
-        compose.waitFor(hasTestTag(TestTags.PARTICIPATION_SUBMIT) and isEnabled())
-        compose.onNodeWithTag(TestTags.PARTICIPATION_SUBMIT).performClick()
-
-        val submittedStatus = hasTestTag(TestTags.PARTICIPATION_STATUS_TEXT) and
-            hasText("Your details are in")
-        compose.waitFor(submittedStatus, timeoutMs = 60_000)
     }
 
     private fun startVoting() {
@@ -520,7 +485,4 @@ class FinalizeMeetupTest : BaseE2ETest() {
         compose.onNodeWithTag("candidate_map_$placeId").fetchSemanticsNode()
             .config.getOrNull(SemanticsProperties.Text).orEmpty().joinToString("") { it.text }
 
-    private fun tagStartingWith(prefix: String) = SemanticsMatcher("test tag starts with $prefix") { node ->
-        node.config.getOrNull(SemanticsProperties.TestTag)?.startsWith(prefix) == true
-    }
 }
