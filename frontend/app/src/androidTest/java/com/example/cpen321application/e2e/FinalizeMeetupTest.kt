@@ -4,6 +4,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -20,22 +21,33 @@ import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
+import com.example.cpen321application.MeetFairApplication
+import com.example.cpen321application.data.ApiResult
+import com.example.cpen321application.data.CalendarAuthResult
+import com.example.cpen321application.testutil.assumeMultiUserRun
 import com.example.cpen321application.testutil.BaseE2ETest
 import com.example.cpen321application.testutil.NETWORK_TIMEOUT_MS
 import com.example.cpen321application.testutil.dismissSnackbarNotices
 import com.example.cpen321application.testutil.exists
+import com.example.cpen321application.testutil.manualStep
+import com.example.cpen321application.testutil.requireCreatedInviteCode
+import com.example.cpen321application.testutil.textOf
 import com.example.cpen321application.testutil.uniqueName
 import com.example.cpen321application.testutil.waitFor
 import com.example.cpen321application.ui.common.TestTags
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.tasks.await
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * End-to-end tests for Use Case 4 "Voting and Fairness", focusing on finalizing meetups and fairness against
+ * End-to-end tests for Feature 4 "Voting and Fairness", focusing on finalizing meetups and fairness against
  * the back end. Voting candidates require Google Places/Routes data. Each test starts signed in on the group 
- * list and creates the meetup it needs. Multi-member weighted voting and Google Calendar OAuth/API outcomes need
- * additional accounts and device consent, so those remain manual checks (documentation/Testing.md).
+ * list and creates the meetup it needs. Multi-member finalization cases use the shared manual Device B flow.
  */
 class FinalizeMeetupTest : BaseE2ETest() {
+    private var createdInviteCode: String? = null
+    private var createdGroupName: String? = null
 
     // Use Case 5 (View Fairness History): the profile lists the user's groups.
     @Test
@@ -79,7 +91,6 @@ class FinalizeMeetupTest : BaseE2ETest() {
         compose.waitFor(hasTestTag(TestTags.LOCK_VOTE_BUTTON) and isEnabled())
         compose.onNodeWithTag(TestTags.LOCK_VOTE_BUTTON).performScrollTo().performClick()
         compose.waitFor(hasTestTag(TestTags.VOTE_LOCKED_TEXT))
-
         compose.onNodeWithTag(TestTags.FINALIZE_BUTTON).performScrollTo().performClick()
         assertFinalizedOnVotingScreen(winnerId, winnerText)
         assertFinalizedOnMeetupScreen(title, winnerText)
@@ -96,7 +107,7 @@ class FinalizeMeetupTest : BaseE2ETest() {
         compose.onNodeWithText("Keep voting").performClick()
         compose.onNodeWithTag(TestTags.VOTING_STATUS_TEXT).assertTextContains("Voting is open")
         compose.onNodeWithTag(TestTags.FINALIZE_BUTTON).assertIsDisplayed()
-        compose.onNodeWithText("Finalize early?").assertDoesNotExist()
+        compose.onAllNodes(hasText("Finalize early?")).assertCountEquals(0)
     }
 
     // Use Case 3 (Finalize Meetup), failure 2a: the organizer picks with no locked votes.
@@ -109,6 +120,13 @@ class FinalizeMeetupTest : BaseE2ETest() {
         assertEarlyFinalizePrompt()
         compose.onNodeWithTag(TestTags.CONFIRM_FINALIZE_BUTTON).performClick()
 
+        compose.waitFor(
+            hasTestTag(TestTags.ERROR_TEXT) and
+                hasText("Cannot finalize with no locked votes; pick a winner"),
+        )
+        compose.onNodeWithTag(TestTags.ERROR_TEXT)
+            .performScrollTo()
+            .assertTextContains("Cannot finalize with no locked votes; pick a winner")
         val candidates = manualPickCandidates()
         val winnerId = candidates.keys.first()
         val winnerName = candidates.getValue(winnerId)
@@ -116,6 +134,68 @@ class FinalizeMeetupTest : BaseE2ETest() {
 
         assertFinalizedOnVotingScreen(winnerId, winnerName)
         assertFinalizedOnMeetupScreen(title, winnerName)
+    }
+
+    // Multi-user: Use Case 3, failure 1a; User B's unlocked vote is excluded.
+    @Test
+    fun finalize_earlyCountsOnlyLockedVotes() {
+        assumeMultiUserRun()
+        val title = createGroupAndMeetup()
+        submitParticipationDetails()
+        val inviteCode = requireCreatedInviteCode(createdInviteCode)
+        compose.activity.manualStep(
+            "On Device B, join with invite code $inviteCode, open meetup '$title', and enter/save details. Then tap Continue here on Device A.",
+        )
+        startVoting()
+
+        val candidates = candidatePlaceIds()
+        val lockedWinnerId = candidates[0]
+        val unlockedVoteId = candidates[1]
+        castAndLockVote(lockedWinnerId)
+        compose.activity.manualStep(
+            "On Device B, open 'Vote on a spot', vote for the second place ($unlockedVoteId), verify the vote is recorded, and do not lock it. Then tap Continue here on Device A.",
+        )
+        compose.waitFor(hasText("1 of 2", substring = true), timeoutMs = 60_000)
+        compose.waitUntil(60_000) {
+            compose.onAllNodes(hasText("Picks: 1", substring = true)).fetchSemanticsNodes().size == 2
+        }
+
+        compose.onNodeWithTag(TestTags.FINALIZE_BUTTON).performScrollTo().performClick()
+        assertEarlyFinalizePrompt()
+        compose.onNodeWithTag(TestTags.CONFIRM_FINALIZE_BUTTON).performClick()
+        val winnerName = candidateName(lockedWinnerId)
+        assertFinalizedOnVotingScreen(lockedWinnerId, winnerName)
+    }
+
+    // Multi-user: Use Case 3, failure 2b2; only tied places are offered for manual selection.
+    @Test
+    fun finalize_unresolvedTieOffersOnlyTiedCandidates() {
+        assumeMultiUserRun()
+        val title = createGroupAndMeetup()
+        submitParticipationDetails()
+        val inviteCode = requireCreatedInviteCode(createdInviteCode)
+        compose.activity.manualStep(
+            "On Device B, join with invite code $inviteCode, open meetup '$title', and enter/save details. Then tap Continue here on Device A.",
+        )
+        startVoting()
+
+        val candidates = candidatePlaceIds()
+        val firstTiedId = candidates[0]
+        val secondTiedId = candidates[1]
+        castAndLockVote(firstTiedId)
+        compose.activity.manualStep(
+            "On Device B, open 'Vote on a spot', vote for the second place ($secondTiedId), lock the vote, and tap Continue here on Device A.",
+        )
+        compose.waitFor(hasText("2 of 2", substring = true), timeoutMs = 60_000)
+        compose.waitUntil(60_000) {
+            compose.onAllNodes(hasText("Picks: 1", substring = true)).fetchSemanticsNodes().size == 2
+        }
+
+        compose.onNodeWithTag(TestTags.FINALIZE_BUTTON).performScrollTo().performClick()
+        compose.waitFor(hasTestTag(TestTags.ERROR_TEXT) and hasText("Tie between candidates", substring = true))
+        compose.onNodeWithTag(TestTags.ERROR_TEXT).performScrollTo().assertTextContains("Tie between candidates", substring = true)
+        val choices = manualPickCandidates(expectedCount = 2)
+        assertEquals(setOf(firstTiedId, secondTiedId), choices.keys)
     }
 
     // Use Case 3 (Finalize Meetup), failure 1b: offline finalization reports an error.
@@ -161,43 +241,41 @@ class FinalizeMeetupTest : BaseE2ETest() {
         compose.waitFor(calendarSection)
 
         if (compose.exists(hasTestTag(TestTags.ADD_TO_CALENDAR_BUTTON))) {
-            compose.onNodeWithTag(TestTags.ADD_TO_CALENDAR_BUTTON).performScrollTo().performClick()
-
-            // A first-time authorization may show Google's consent UI. Accept it when
-            // present; with prior consent the app proceeds directly to the result.
-            val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-            val completed = hasTestTag(TestTags.CALENDAR_ADDED_TEXT) or hasTestTag(TestTags.ERROR_TEXT)
-            for (attempt in 0 until 90) {
-                if (compose.exists(completed)) break
-                val action = listOf("Allow", "Continue", "Next").firstNotNullOfOrNull { label ->
-                    device.findObject(UiSelector().text(label)).takeIf { it.exists() }
-                }
-                if (action != null) {
-                    action.click()
-                    Thread.sleep(500)
-                } else {
-                    Thread.sleep(1_000)
-                }
-            }
-
-            compose.waitFor(completed, timeoutMs = 5_000)
-            if (compose.exists(hasTestTag(TestTags.ERROR_TEXT))) {
-                val message = compose.onNodeWithTag(TestTags.ERROR_TEXT).fetchSemanticsNode()
-                    .config.getOrElse(SemanticsProperties.Text) { emptyList() }
-                    .joinToString("") { it.text }
-                org.junit.Assert.fail("Adding the finalized meetup to Google Calendar failed: $message")
-            }
+            addCalendarEventFromUi()
         }
 
-        compose.onNodeWithTag(TestTags.CALENDAR_ADDED_TEXT).assertIsDisplayed()
-        if (compose.exists(hasTestTag(TestTags.ERROR_TEXT))) {
-            val message = compose.onNodeWithTag(TestTags.ERROR_TEXT).fetchSemanticsNode()
-                .config.getOrElse(SemanticsProperties.Text) { emptyList() }
-                .joinToString("") { it.text }
-            org.junit.Assert.fail("Adding the finalized meetup to Google Calendar failed: $message")
-        }
         compose.onNodeWithTag(TestTags.CALENDAR_ADDED_TEXT).assertIsDisplayed()
         openCalendarAndAssertEventExists(meetupTitle)
+    }
+
+    // Use Case 4, failure 7b: a repeated client request is rejected after the first event was recorded.
+    @Test
+    fun calendar_duplicateEvent() {
+        val meetupTitle = openFinalizedMeetupPage()
+        addCalendarEventFromUi()
+        compose.onNodeWithTag(TestTags.CALENDAR_ADDED_TEXT).assertIsDisplayed()
+
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val container = (context.applicationContext as MeetFairApplication).container
+        val auth = runBlocking { container.calendarAuthorizer.requestCalendarAuthorization(compose.activity) }
+        val accessToken = when (auth) {
+            is CalendarAuthResult.Success -> auth.accessToken
+            is CalendarAuthResult.NeedsConsent -> throw AssertionError("Calendar consent should already be granted")
+            is CalendarAuthResult.Failure -> throw AssertionError("Could not get Calendar token: ${auth.error.message}")
+        }
+
+        val createdName = checkNotNull(createdGroupName)
+        val group = when (val groups = runBlocking { container.groupRepository.list() }) {
+            is ApiResult.Success -> groups.data.firstOrNull { it.name == createdName }
+            is ApiResult.Failure -> null
+        } ?: throw AssertionError("Could not find the test group '$createdName'")
+        val meetup = when (val meetups = runBlocking { container.meetupRepository.listForGroup(group.id) }) {
+            is ApiResult.Success -> meetups.data.firstOrNull { it.title == meetupTitle }
+            is ApiResult.Failure -> null
+        } ?: throw AssertionError("Could not find the test meetup '$meetupTitle'")
+
+        val duplicate = runBlocking { container.meetupRepository.addToCalendar(meetup.id, accessToken) }
+        assertEquals("This meetup is already in your calendar", (duplicate as? ApiResult.Failure)?.error?.message)
     }
 
     private fun openCalendarAndAssertEventExists(meetupTitle: String) {
@@ -274,6 +352,42 @@ class FinalizeMeetupTest : BaseE2ETest() {
         )
     }
 
+    private fun openFinalizedMeetupPage(): String {
+        val meetupTitle = openPreparedVotingScreen()
+        castAndLockVote(candidatePlaceIds().first())
+        compose.onNodeWithTag(TestTags.FINALIZE_BUTTON).performScrollTo().performClick()
+        compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT) and hasText("Voting is closed"))
+        compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
+        compose.waitFor(hasTestTag(TestTags.MEETUP_TITLE_TEXT) and hasText(meetupTitle), timeoutMs = 30_000)
+        compose.dismissSnackbarNotices()
+        return meetupTitle
+    }
+
+    private fun addCalendarEventFromUi() {
+        compose.onNodeWithTag(TestTags.ADD_TO_CALENDAR_BUTTON).performScrollTo().performClick()
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        val completed = hasTestTag(TestTags.CALENDAR_ADDED_TEXT) or hasText("Google Calendar", substring = true)
+        for (attempt in 0 until 90) {
+            if (compose.exists(completed)) break
+            val action = listOf("Allow", "Continue", "Next").firstNotNullOfOrNull { label ->
+                device.findObject(UiSelector().text(label)).takeIf { it.exists() }
+            }
+            if (action != null) {
+                action.click()
+                Thread.sleep(500)
+            } else {
+                Thread.sleep(1_000)
+            }
+        }
+        compose.waitFor(completed, timeoutMs = 5_000)
+        if (compose.exists(hasText("Google Calendar", substring = true))) {
+            val message = compose.onNode(hasText("Google Calendar", substring = true)).fetchSemanticsNode()
+                .config.getOrElse(SemanticsProperties.Text) { emptyList() }
+                .joinToString("") { it.text }
+            throw AssertionError("Adding the finalized meetup to Google Calendar failed: $message")
+        }
+    }
+
     private fun candidatePlaceIds(): List<String> {
         val matcher = tagStartingWith("candidate_item_")
         compose.waitFor(matcher)
@@ -304,8 +418,8 @@ class FinalizeMeetupTest : BaseE2ETest() {
         compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT) and hasText("Voting is closed"))
         compose.onNodeWithTag("candidate_map_$placeId").performScrollTo().assertTextContains(placeName)
         compose.onNodeWithTag(TestTags.WINNER_TEXT).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag(TestTags.voteButton(placeId)).assertDoesNotExist()
-        compose.onNodeWithTag(TestTags.LOCK_VOTE_BUTTON).assertDoesNotExist()
+        compose.onAllNodes(hasTestTag(TestTags.voteButton(placeId))).assertCountEquals(0)
+        compose.onAllNodes(hasTestTag(TestTags.LOCK_VOTE_BUTTON)).assertCountEquals(0)
     }
 
     private fun assertFinalizedOnMeetupScreen(title: String, winnerName: String) {
@@ -317,13 +431,13 @@ class FinalizeMeetupTest : BaseE2ETest() {
         compose.onNodeWithTag(TestTags.ADD_TO_CALENDAR_BUTTON).performScrollTo().assertIsDisplayed()
     }
 
-    private fun manualPickCandidates(): Map<String, String> {
+    private fun manualPickCandidates(expectedCount: Int = 3): Map<String, String> {
         val matcher = tagStartingWith("pick_winner_button_")
         compose.waitUntil(NETWORK_TIMEOUT_MS) {
-            compose.onAllNodes(matcher).fetchSemanticsNodes().size == 3
+            compose.onAllNodes(matcher).fetchSemanticsNodes().size == expectedCount
         }
         val rows = compose.onAllNodes(matcher).fetchSemanticsNodes()
-        org.junit.Assert.assertEquals("Manual pick should show exactly three candidates", 3, rows.size)
+        assertEquals("Manual pick should show exactly $expectedCount candidates", expectedCount, rows.size)
         return rows.associate { node ->
             val id = node.config.getOrNull(SemanticsProperties.TestTag)!!.removePrefix("pick_winner_button_")
             val name = node.config.getOrNull(SemanticsProperties.Text).orEmpty().joinToString("") { it.text }
@@ -355,6 +469,7 @@ class FinalizeMeetupTest : BaseE2ETest() {
     // Creates a uniquely named group and its first meetup, leaving the app on the meetup page.
     private fun createGroupAndMeetup(): String {
         val groupName = uniqueName("E2E Finalize Group")
+        createdGroupName = groupName
         createdGroupNames += groupName
         val meetupTitle = uniqueName("E2E Finalize Meetup")
 
@@ -362,6 +477,7 @@ class FinalizeMeetupTest : BaseE2ETest() {
         compose.onNodeWithTag(TestTags.GROUP_NAME_INPUT).performTextInput(groupName)
         compose.onNodeWithTag(TestTags.CREATE_GROUP_SUBMIT).performClick()
         compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
+        createdInviteCode = compose.textOf(TestTags.INVITE_CODE_TEXT)
         compose.onNodeWithTag(TestTags.NEW_MEETUP_BUTTON).performClick()
         compose.onNodeWithTag(TestTags.MEETUP_TITLE_INPUT).performTextInput(meetupTitle)
         compose.onNodeWithTag(TestTags.CREATE_MEETUP_SUBMIT).performClick()
@@ -372,6 +488,12 @@ class FinalizeMeetupTest : BaseE2ETest() {
     // Creates a meetup, submits this user's starting location, and starts voting for it.
     private fun createMeetupAndEnterDetailsToVoting(): String {
         val meetupTitle = createGroupAndMeetup()
+        submitParticipationDetails()
+        startVoting()
+        return meetupTitle
+    }
+
+    private fun submitParticipationDetails() {
         compose.waitFor(hasTestTag(TestTags.PARTICIPATION_BUTTON))
         compose.onNodeWithTag(TestTags.PARTICIPATION_BUTTON).performClick()
         compose.waitFor(hasTestTag(TestTags.LOCATION_PICKER_BUTTON))
@@ -384,14 +506,27 @@ class FinalizeMeetupTest : BaseE2ETest() {
         val submittedStatus = hasTestTag(TestTags.PARTICIPATION_STATUS_TEXT) and
             hasText("Your details are in")
         compose.waitFor(submittedStatus, timeoutMs = 60_000)
+    }
 
+    private fun startVoting() {
         compose.waitFor(hasTestTag(TestTags.START_VOTING_BUTTON))
         compose.onNodeWithTag(TestTags.START_VOTING_BUTTON).performClick()
         compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT))
         compose.onNodeWithTag(TestTags.VOTING_STATUS_TEXT).assertTextContains("Voting is open")
         compose.dismissSnackbarNotices()
-        return meetupTitle
     }
+
+    private fun castAndLockVote(placeId: String) {
+        compose.onNodeWithTag(TestTags.voteButton(placeId)).performScrollTo().performClick()
+        compose.waitFor(hasTestTag(TestTags.voteButton(placeId)) and hasText("Your vote"))
+        compose.waitFor(hasTestTag(TestTags.LOCK_VOTE_BUTTON) and isEnabled())
+        compose.onNodeWithTag(TestTags.LOCK_VOTE_BUTTON).performScrollTo().performClick()
+        compose.waitFor(hasTestTag(TestTags.VOTE_LOCKED_TEXT))
+    }
+
+    private fun candidateName(placeId: String): String =
+        compose.onNodeWithTag("candidate_map_$placeId").fetchSemanticsNode()
+            .config.getOrNull(SemanticsProperties.Text).orEmpty().joinToString("") { it.text }
 
     private fun tagStartingWith(prefix: String) = SemanticsMatcher("test tag starts with $prefix") { node ->
         node.config.getOrNull(SemanticsProperties.TestTag)?.startsWith(prefix) == true
