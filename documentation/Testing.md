@@ -180,6 +180,7 @@ npm test -- --runInBand tests/nfr
 `frontend/app/src/androidTest/java/com/example/cpen321application/e2e/`
 
 The frontend end-to-end (E2E) suite consists of four test classes covering the core user flows against the real back end and Google APIs:
+
 - [`CreateJoinGroupTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/CreateJoinGroupTest.kt): Feature 2: Groups and Meetups
 - [`VotingTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/VotingTest.kt): Feature 4: Voting and Fairness
 - [`FinalizeMeetupTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/FinalizeMeetupTest.kt): Feature 4: Voting and Fairness
