@@ -144,10 +144,10 @@ class FinalizeMeetupTest : BaseE2ETest() {
 
         val candidates = candidatePlaceIds()
         val lockedWinnerId = candidates[0]
-        val unlockedVoteId = candidates[1]
         compose.castAndLockVote(lockedWinnerId)
         compose.activity.manualStep(
-            "On Device B, open 'Vote on a spot', vote for the second place ($unlockedVoteId), verify the vote is recorded, and do not lock it. Then tap Continue here on Device A.",
+            "On Device B:\n1. Open 'Vote on a spot'.\n2. Vote for the second place in the list.\n" +
+                "3. Verify the vote is recorded. DO NOT LOCK IT.\n4. Tap Continue here on Device A.",
         )
         compose.waitFor(hasText("1 of 2", substring = true), timeoutMs = 60_000)
         compose.waitUntil(60_000) {
@@ -174,7 +174,8 @@ class FinalizeMeetupTest : BaseE2ETest() {
         val secondTiedId = candidates[1]
         compose.castAndLockVote(firstTiedId)
         compose.activity.manualStep(
-            "On Device B, open 'Vote on a spot', vote for the second place ($secondTiedId), lock the vote, and tap Continue here on Device A.",
+            "On Device B:\n1. Open 'Vote on a spot'.\n2. Vote for the second place in the list.\n" +
+                "3. Tap 'Submit vote' to lock it.\n4. Tap Continue here on Device A.",
         )
         compose.waitFor(hasText("2 of 2", substring = true), timeoutMs = 60_000)
         compose.waitUntil(60_000) {

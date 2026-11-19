@@ -160,7 +160,9 @@ class ShareLiveLocationTest : BaseE2ETest() {
         startSharingTripAndGrantPermission()
 
         val inviteCode = requireCreatedInviteCode(createdInviteCode)
-        compose.activity.manualStep("On Device B, join with invite code $inviteCode, open meetup '$title', and select 'View live locations'. Verify User A is listed as 'On the way'. Then tap Continue here on Device A.")
+        compose.activity.manualStep("On Device B:\n1. Join the group with invite code $inviteCode.\n2. Open meetup '$title'.\n" +
+            "3. Select 'View live locations'.\n4. Verify User A is listed as 'On the way'.\n" +
+            "5. Tap Continue here on Device A.")
     }
 
     private fun openFinalizedMeetup(leadMinutes: Int): String {

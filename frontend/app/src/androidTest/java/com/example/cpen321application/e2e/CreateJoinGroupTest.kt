@@ -151,7 +151,8 @@ class CreateJoinGroupTest : BaseE2ETest() {
         assertMemberCountAfterReload(
             groupName,
             expected = 2,
-            manualStep = "On Device B, select Join group, enter invite code $inviteCode, and tap Join group. Verify '$groupName' opens with two members, then tap Continue here on Device A.",
+            manualStep = "On Device B:\n1. Select Join group.\n2. Enter invite code $inviteCode.\n3. Tap Join group.\n" +
+                "4. Verify '$groupName' opens.\n5. Tap Continue here on Device A.",
         )
     }
 
@@ -164,7 +165,9 @@ class CreateJoinGroupTest : BaseE2ETest() {
         assertMemberCountAfterReload(
             groupName,
             expected = 1,
-            manualStep = "On Device B, select Join group, enter invite code $inviteCode, and tap Join group. In '$groupName', open Options, select Leave group, and confirm Leave. Then tap Continue here on Device A.",
+            manualStep = "On Device B:\n1. Select Join group.\n2. Enter invite code $inviteCode and tap Join group.\n" +
+                "3. In '$groupName', open Options.\n4. Select Leave group and confirm Leave.\n" +
+                "5. Tap Continue here on Device A.",
         )
     }
 
@@ -177,7 +180,8 @@ class CreateJoinGroupTest : BaseE2ETest() {
         assertMemberCountAfterReload(
             groupName,
             expected = 2,
-            manualStep = "On Device B, select Join group, enter invite code $inviteCode, and tap Join group. Verify '$groupName' opens with two members, then tap Continue here on Device A.",
+            manualStep = "On Device B:\n1. Select Join group.\n2. Enter invite code $inviteCode.\n3. Tap Join group.\n" +
+                "4. Verify '$groupName' opens.\n5. Tap Continue here on Device A.",
         )
 
         compose.onNodeWithText("Remove").performClick()

@@ -88,8 +88,8 @@ fun AndroidComposeTestRule<*, *>.setUpTwoMemberVoting(
 ) {
     submitParticipation(expectedMemberCount)
     activity.manualStep(
-        "On Device B, join with invite code $inviteCode, open meetup '$meetupTitle', and enter/save participation details. " +
-            "Then tap Continue here on Device A.",
+        "On Device B:\n1. Join the group with invite code $inviteCode.\n2. Open meetup '$meetupTitle'.\n" +
+            "3. Enter and save participation details.\n4. Tap Continue here on Device A.",
     )
     startVotingFromMeetup()
 }

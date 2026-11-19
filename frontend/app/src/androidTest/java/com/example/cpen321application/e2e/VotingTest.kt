@@ -219,10 +219,8 @@ class VotingTest : BaseE2ETest() {
         val title = createGroupAndMeetup()
         val inviteCode = requireCreatedInviteCode(createdInviteCode)
         compose.setUpTwoMemberVoting(title, inviteCode, expectedMemberCount = 1)
-        val candidates = candidatePlaceIds()
-        val first = candidates.first()
-        compose.activity.manualStep("On Device B, open 'Vote on a spot' and vote for the first place ($first). Then tap Continue here on Device A.")
-        compose.activity.manualStep("On Device B, tap 'Submit vote', then tap Continue here on Device A.")
+        compose.activity.manualStep("On Device B:\n1. Open 'Vote on a spot'.\n2. Vote for the first place in the list.\n3. Tap Continue here on Device A.")
+        compose.activity.manualStep("On Device B:\n1. Tap 'Submit vote' to lock your vote.\n2. Tap Continue here on Device A.")
         compose.waitFor(hasText("1 of 2", substring = true), timeoutMs = 60_000)
         val lockedWeightText = compose.onAllNodes(hasText("Locked weight:", substring = true))
             .fetchSemanticsNodes().firstOrNull()?.let(::nodeText).orEmpty()
@@ -239,9 +237,12 @@ class VotingTest : BaseE2ETest() {
         // Device A must be a participant; Device B is the member that deliberately skips details.
         compose.submitParticipation(expectedMemberCount = 1)
         val inviteCode = requireCreatedInviteCode(createdInviteCode)
-        compose.activity.manualStep("On Device B, join with invite code $inviteCode and open meetup '$title'. Do not enter participation details. Then tap Continue here on Device A.")
+        compose.activity.manualStep("On Device B:\n1. Join the group with invite code $inviteCode.\n2. Open meetup '$title'.\n" +
+            "3. Do not enter participation details.\n4. Tap Continue here on Device A.")
         startVotingFromMeetup()
-        compose.activity.manualStep("On Device B, open 'Vote on a spot'. Verify there are three places and tallies, no Vote or Submit vote buttons, and 'Only members who entered their details can vote.' is shown. Tap Continue here on Device A when done.")
+        compose.activity.manualStep("On Device B:\n1. Open 'Vote on a spot'.\n2. Verify there are three places and tallies.\n" +
+            "3. Verify there are no Vote or Submit vote buttons.\n4. Verify 'Only members who entered their details can vote.' is shown.\n" +
+            "5. Tap Continue here on Device A.")
     }
 
     // Multi-user: B keeps a stale voting screen offline while A finalizes; B retries after reconnecting.
@@ -251,7 +252,8 @@ class VotingTest : BaseE2ETest() {
         val title = createGroupAndMeetup()
         val inviteCode = requireCreatedInviteCode(createdInviteCode)
         compose.setUpTwoMemberVoting(title, inviteCode, expectedMemberCount = 1)
-        compose.activity.manualStep("On Device B, open 'Vote on a spot', turn on airplane mode, and leave the voting screen open. Then tap Continue here on Device A.")
+        compose.activity.manualStep("On Device B:\n1. Open 'Vote on a spot'.\n2. Turn on airplane mode.\n" +
+            "3. Leave the voting screen open.\n4. Tap Continue here on Device A.")
         val first = candidatePlaceIds().first()
 
         // A must have one locked vote so the server can choose the winner when voting closes.
@@ -266,7 +268,9 @@ class VotingTest : BaseE2ETest() {
         compose.onNodeWithTag(TestTags.CONFIRM_FINALIZE_BUTTON).performClick()
         compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT) and hasText("Voting is closed"))
 
-        compose.activity.manualStep("On Device B, turn airplane mode off and immediately tap Vote before the stale screen refreshes. If it refreshed already, repeat the scenario. Verify 'Voting is not open for this meetup', then closed status and no vote buttons. Tap Continue here on Device A when done.")
+        compose.activity.manualStep("On Device B:\n1. Turn airplane mode off.\n2. Immediately tap Vote before the stale screen refreshes.\n" +
+            "3. If the screen already refreshed, repeat the scenario.\n4. Verify 'Voting is not open for this meetup', closed status, and no vote buttons.\n" +
+            "5. Tap Continue here on Device A.")
         compose.onNodeWithTag(TestTags.WINNER_TEXT).assertIsDisplayed()
     }
 
