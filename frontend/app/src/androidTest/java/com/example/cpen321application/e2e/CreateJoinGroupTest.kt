@@ -10,17 +10,20 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
-import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
-import com.example.cpen321application.MainActivity
+import com.example.cpen321application.testutil.NETWORK_TIMEOUT_MS
 import com.example.cpen321application.testutil.BaseE2ETest
+import com.example.cpen321application.testutil.assumeMultiUserRun
+import com.example.cpen321application.testutil.manualStep
 import com.example.cpen321application.testutil.textOf
 import com.example.cpen321application.testutil.uniqueName
 import com.example.cpen321application.testutil.waitFor
@@ -134,6 +137,83 @@ class CreateJoinGroupTest : BaseE2ETest() {
         // The new group is listed on the main screen
         compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
         compose.waitFor(hasTestTag(TestTags.GROUP_ITEM) and hasText(name))
+    }
+
+    // Multi-user: Use Case 2, success; User B joins User A's group with its invite code.
+    @Test
+    fun joinGroup_success() {
+        assumeMultiUserRun()
+        val groupName = uniqueName("E2E Join Success")
+        val inviteCode = createGroupAndReadInviteCode(groupName)
+
+        compose.activity.manualStep(
+            "On Device B, select Join group, enter invite code $inviteCode, and tap Join group. Verify '$groupName' opens with two members, then tap Continue here on Device A.",
+        )
+
+        // Reload the group detail so Device A verifies the membership added by Device B.
+        compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
+        val groupMatcher = hasTestTag(TestTags.GROUP_ITEM) and hasText(groupName)
+        compose.waitFor(groupMatcher)
+        compose.onNode(groupMatcher).performClick()
+        compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
+        compose.waitUntil(NETWORK_TIMEOUT_MS) {
+            compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).fetchSemanticsNodes().size == 2
+        }
+        compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).assertCountEquals(2)
+    }
+
+    // Multi-user: Feature 2, Use Case 6, success; User B leaves User A's group.
+    @Test
+    fun leaveGroup_nonOrganizerCanLeave() {
+        assumeMultiUserRun()
+        val groupName = uniqueName("E2E Leave Group")
+        val inviteCode = createGroupAndReadInviteCode(groupName)
+
+        compose.activity.manualStep(
+            "On Device B, select Join group, enter invite code $inviteCode, and tap Join group. In '$groupName', open Options, select Leave group, and confirm Leave. Then tap Continue here on Device A.",
+        )
+
+        // Reload the group detail to verify User B left and the organizer's group remains.
+        compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
+        val groupMatcher = hasTestTag(TestTags.GROUP_ITEM) and hasText(groupName)
+        compose.waitFor(groupMatcher)
+        compose.onNode(groupMatcher).performClick()
+        compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
+        compose.waitUntil(NETWORK_TIMEOUT_MS) {
+            compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).fetchSemanticsNodes().size == 1
+        }
+        compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).assertCountEquals(1)
+    }
+
+    // Multi-user: Use Case 7, success; User A removes User B from the group.
+    @Test
+    fun removeMember_success() {
+        assumeMultiUserRun()
+        val groupName = uniqueName("E2E Remove Member")
+        val inviteCode = createGroupAndReadInviteCode(groupName)
+
+        compose.activity.manualStep(
+            "On Device B, select Join group, enter invite code $inviteCode, and tap Join group. Verify '$groupName' opens with two members, then tap Continue here on Device A.",
+        )
+
+        // Reload the group detail so Device A can select the newly joined member.
+        compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
+        val groupMatcher = hasTestTag(TestTags.GROUP_ITEM) and hasText(groupName)
+        compose.waitFor(groupMatcher)
+        compose.onNode(groupMatcher).performClick()
+        compose.waitFor(hasTestTag(TestTags.INVITE_CODE_TEXT))
+        compose.waitUntil(NETWORK_TIMEOUT_MS) {
+            compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).fetchSemanticsNodes().size == 2
+        }
+
+        compose.onNodeWithText("Remove").performClick()
+        compose.waitFor(hasText("Remove member?"))
+        compose.onNodeWithText("Remove member?").assertIsDisplayed()
+        compose.onAllNodesWithText("Remove").onLast().performClick()
+        compose.waitUntil(NETWORK_TIMEOUT_MS) {
+            compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).fetchSemanticsNodes().size == 1
+        }
+        compose.onAllNodesWithTag(TestTags.MEMBER_ITEM).assertCountEquals(1)
     }
 
     // Create: failure scenario 2a, a blank group name
