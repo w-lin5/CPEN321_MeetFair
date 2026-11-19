@@ -5,7 +5,6 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -24,15 +23,15 @@ import com.example.cpen321application.testutil.denyLocationPermissionIfRequested
 import com.example.cpen321application.testutil.grantLocationPermissionIfRequested
 import com.example.cpen321application.testutil.dismissSnackbarNotices
 import com.example.cpen321application.testutil.candidatePlaceIds
+import com.example.cpen321application.testutil.castAndLockVote
 import com.example.cpen321application.testutil.createGroup
-import com.example.cpen321application.testutil.navigateBackToMeetup
+import com.example.cpen321application.testutil.finalizeAndReturnToMeetup
+import com.example.cpen321application.testutil.startVotingFromMeetup
 import com.example.cpen321application.testutil.submitParticipation
-import com.example.cpen321application.testutil.tagStartingWith
 import com.example.cpen321application.testutil.exists
 import com.example.cpen321application.testutil.manualStep
 import com.example.cpen321application.testutil.requireCreatedInviteCode
 import com.example.cpen321application.testutil.retryUntil
-import com.example.cpen321application.testutil.textOf
 import com.example.cpen321application.testutil.uniqueName
 import com.example.cpen321application.testutil.waitFor
 import com.example.cpen321application.testutil.waitForLocationPermissionPrompt
@@ -112,11 +111,7 @@ class ShareLiveLocationTest : BaseE2ETest() {
         runCatching { device.executeShellCommand("pm grant ${context.packageName} android.permission.POST_NOTIFICATIONS") }
         openFinalizedMeetup(leadMinutes = 1)
 
-        waitForLeavingButton()
-        compose.onNodeWithTag(TestTags.LEAVING_BUTTON).performScrollTo().performClick()
-        compose.waitFor(hasText("Share your live location?"))
-        compose.onNodeWithText("Share your live location?").assertIsDisplayed()
-        compose.onNodeWithTag(TestTags.SHARE_TRIP_CONFIRM).performClick()
+        startSharingTrip()
         device.waitForLocationPermissionPrompt()
         device.denyLocationPermissionIfRequested()
 
@@ -128,12 +123,7 @@ class ShareLiveLocationTest : BaseE2ETest() {
         compose.onNodeWithTag(TestTags.LOCATION_SHARING_INDICATOR).assertDoesNotExist()
         compose.onNodeWithTag(TestTags.LEAVING_BUTTON).performScrollTo().assertIsDisplayed()
 
-        compose.onNodeWithTag(TestTags.LEAVING_BUTTON).performScrollTo().performClick()
-        compose.waitFor(hasText("Share your live location?"))
-        compose.onNodeWithTag(TestTags.SHARE_TRIP_CONFIRM).performClick()
-        grantLocationPermissionIfRequested()
-        openLiveLocationIfOnMeetupScreen()
-        compose.waitFor(hasTestTag(TestTags.LOCATION_SHARING_INDICATOR))
+        startSharingTripAndGrantPermission()
         compose.onNodeWithTag(TestTags.TRIP_STATUS_TEXT).assertIsDisplayed()
     }
 
@@ -141,13 +131,7 @@ class ShareLiveLocationTest : BaseE2ETest() {
     @Test
     fun shareLocation_networkLoss() {
         openFinalizedMeetup(leadMinutes = 1)
-        waitForLeavingButton()
-        compose.onNodeWithTag(TestTags.LEAVING_BUTTON).performScrollTo().performClick()
-        compose.waitFor(hasText("Share your live location?"))
-        compose.onNodeWithTag(TestTags.SHARE_TRIP_CONFIRM).performClick()
-        grantLocationPermissionIfRequested()
-        openLiveLocationIfOnMeetupScreen()
-        compose.waitFor(hasTestTag(TestTags.LOCATION_SHARING_INDICATOR))
+        startSharingTripAndGrantPermission()
 
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
         device.executeShellCommand("cmd connectivity airplane-mode enable")
@@ -173,13 +157,7 @@ class ShareLiveLocationTest : BaseE2ETest() {
     fun shareLocation_anotherMemberSeesTripStatus() {
         assumeMultiUserRun()
         val title = openFinalizedMeetup(leadMinutes = 1)
-        waitForLeavingButton()
-        compose.onNodeWithTag(TestTags.LEAVING_BUTTON).performScrollTo().performClick()
-        compose.waitFor(hasText("Share your live location?"))
-        compose.onNodeWithTag(TestTags.SHARE_TRIP_CONFIRM).performClick()
-        grantLocationPermissionIfRequested()
-        openLiveLocationIfOnMeetupScreen()
-        compose.waitFor(hasTestTag(TestTags.LOCATION_SHARING_INDICATOR))
+        startSharingTripAndGrantPermission()
 
         val inviteCode = requireCreatedInviteCode(createdInviteCode)
         compose.activity.manualStep("On Device B, join with invite code $inviteCode, open meetup '$title', and select 'View live locations'. Verify User A is listed as 'On the way'. Then tap Continue here on Device A.")
@@ -188,9 +166,9 @@ class ShareLiveLocationTest : BaseE2ETest() {
     private fun openFinalizedMeetup(leadMinutes: Int): String {
         val meetupTitle = createScheduledMeetup(leadMinutes)
         compose.submitParticipation()
-        startVoting()
-        finalizeFirstCandidate()
-        compose.navigateBackToMeetup(meetupTitle)
+        compose.startVotingFromMeetup(timeoutMs = 30_000)
+        compose.castAndLockVote(compose.candidatePlaceIds(timeoutMs = 30_000).first())
+        compose.finalizeAndReturnToMeetup(meetupTitle)
         return meetupTitle
     }
 
@@ -206,45 +184,6 @@ class ShareLiveLocationTest : BaseE2ETest() {
         compose.onNodeWithTag(TestTags.CREATE_MEETUP_SUBMIT).performClick()
         compose.waitFor(hasTestTag(TestTags.MEETUP_TITLE_TEXT) and hasText(meetupTitle))
         return meetupTitle
-    }
-
-    private fun startVoting() {
-        compose.waitFor(hasTestTag(TestTags.START_VOTING_BUTTON))
-        compose.onNodeWithTag(TestTags.START_VOTING_BUTTON).performClick()
-        compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT), timeoutMs = 30_000)
-        compose.dismissSnackbarNotices()
-    }
-
-    private fun finalizeFirstCandidate() {
-        val placeId = compose.candidatePlaceIds(timeoutMs = 30_000).first()
-        castAndLockVote(placeId)
-        finalizeWithWinner(placeId)
-    }
-
-    private fun castAndLockVote(placeId: String) {
-        compose.onNodeWithTag(TestTags.voteButton(placeId)).performScrollTo().performClick()
-        compose.waitFor(hasTestTag(TestTags.LOCK_VOTE_BUTTON) and isEnabled())
-        compose.onNodeWithTag(TestTags.LOCK_VOTE_BUTTON).performScrollTo().performClick()
-        compose.waitFor(hasTestTag(TestTags.VOTE_LOCKED_TEXT))
-    }
-
-    private fun finalizeWithWinner(placeId: String) {
-        compose.onNodeWithTag(TestTags.FINALIZE_BUTTON).performScrollTo().performClick()
-        confirmFinalizationIfPrompted()
-        chooseWinnerIfPrompted(placeId)
-        compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT) and hasText("Voting is closed"))
-    }
-
-    private fun confirmFinalizationIfPrompted() {
-        if (compose.exists(hasTestTag(TestTags.CONFIRM_FINALIZE_BUTTON))) {
-            compose.onNodeWithTag(TestTags.CONFIRM_FINALIZE_BUTTON).performClick()
-        }
-    }
-
-    private fun chooseWinnerIfPrompted(placeId: String) {
-        if (compose.exists(tagStartingWith("pick_winner_button_"))) {
-            compose.onNodeWithTag(TestTags.pickWinnerButton(placeId)).performScrollTo().performClick()
-        }
     }
 
     private fun scheduleMeetupTime(leadMinutes: Int) {
@@ -289,6 +228,20 @@ class ShareLiveLocationTest : BaseE2ETest() {
 
     private fun openLiveLocationIfOnMeetupScreen() {
         compose.waitUntil(NETWORK_TIMEOUT_MS) { liveLocationIsOpenOrCanBeOpened() }
+    }
+
+    private fun startSharingTrip() {
+        waitForLeavingButton()
+        compose.onNodeWithTag(TestTags.LEAVING_BUTTON).performScrollTo().performClick()
+        compose.waitFor(hasText("Share your live location?"))
+        compose.onNodeWithTag(TestTags.SHARE_TRIP_CONFIRM).performClick()
+    }
+
+    private fun startSharingTripAndGrantPermission() {
+        startSharingTrip()
+        grantLocationPermissionIfRequested()
+        openLiveLocationIfOnMeetupScreen()
+        compose.waitFor(hasTestTag(TestTags.LOCATION_SHARING_INDICATOR))
     }
 
     private fun liveLocationIsOpenOrCanBeOpened(): Boolean {

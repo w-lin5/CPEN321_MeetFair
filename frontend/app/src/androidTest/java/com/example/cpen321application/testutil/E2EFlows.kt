@@ -48,12 +48,20 @@ fun ComposeTestRule.createGroupAndMeetup(
     return CreatedMeetup(groupName, meetupTitle, group.inviteCode)
 }
 
-fun ComposeTestRule.startVotingFromMeetup() {
-    waitFor(hasTestTag(TestTags.START_VOTING_BUTTON))
+fun ComposeTestRule.startVotingFromMeetup(timeoutMs: Long = NETWORK_TIMEOUT_MS) {
+    waitFor(hasTestTag(TestTags.START_VOTING_BUTTON), timeoutMs)
     onNodeWithTag(TestTags.START_VOTING_BUTTON).performClick()
-    waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT))
+    waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT), timeoutMs)
     onNodeWithTag(TestTags.VOTING_STATUS_TEXT).assertTextContains("Voting is open")
     dismissSnackbarNotices()
+}
+
+fun ComposeTestRule.castAndLockVote(placeId: String) {
+    onNodeWithTag(TestTags.voteButton(placeId)).performScrollTo().performClick()
+    waitFor(hasTestTag(TestTags.voteButton(placeId)) and hasText("Your vote"))
+    waitFor(hasTestTag(TestTags.LOCK_VOTE_BUTTON) and isEnabled())
+    onNodeWithTag(TestTags.LOCK_VOTE_BUTTON).performScrollTo().performClick()
+    waitFor(hasTestTag(TestTags.VOTE_LOCKED_TEXT))
 }
 
 fun ComposeTestRule.submitParticipation(expectedMemberCount: Int? = null) {

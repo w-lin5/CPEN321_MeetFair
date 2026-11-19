@@ -7,12 +7,10 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performTextInput
 import android.util.Log
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
@@ -24,10 +22,10 @@ import com.example.cpen321application.data.ApiResult
 import com.example.cpen321application.data.CalendarAuthResult
 import com.example.cpen321application.testutil.assumeMultiUserRun
 import com.example.cpen321application.testutil.candidatePlaceIds
+import com.example.cpen321application.testutil.castAndLockVote
 import com.example.cpen321application.testutil.createGroupAndMeetup
 import com.example.cpen321application.testutil.createGroup
 import com.example.cpen321application.testutil.finalizeAndReturnToMeetup
-import com.example.cpen321application.testutil.navigateBackToMeetup
 import com.example.cpen321application.testutil.nodeText
 import com.example.cpen321application.testutil.tagStartingWith
 import com.example.cpen321application.testutil.BaseE2ETest
@@ -90,7 +88,7 @@ class FinalizeMeetupTest : BaseE2ETest() {
         val winnerText = nodeText(compose.onNodeWithTag("candidate_map_$winnerId").fetchSemanticsNode())
         org.junit.Assert.assertTrue("Candidate should have a visible name", winnerText.isNotBlank())
 
-        castAndLockVote(winnerId)
+        compose.castAndLockVote(winnerId)
         compose.onNodeWithTag(TestTags.FINALIZE_BUTTON).performScrollTo().performClick()
         assertFinalizedOnVotingScreen(winnerId, winnerText)
         assertFinalizedOnMeetupScreen(title, winnerText)
@@ -147,7 +145,7 @@ class FinalizeMeetupTest : BaseE2ETest() {
         val candidates = candidatePlaceIds()
         val lockedWinnerId = candidates[0]
         val unlockedVoteId = candidates[1]
-        castAndLockVote(lockedWinnerId)
+        compose.castAndLockVote(lockedWinnerId)
         compose.activity.manualStep(
             "On Device B, open 'Vote on a spot', vote for the second place ($unlockedVoteId), verify the vote is recorded, and do not lock it. Then tap Continue here on Device A.",
         )
@@ -174,7 +172,7 @@ class FinalizeMeetupTest : BaseE2ETest() {
         val candidates = candidatePlaceIds()
         val firstTiedId = candidates[0]
         val secondTiedId = candidates[1]
-        castAndLockVote(firstTiedId)
+        compose.castAndLockVote(firstTiedId)
         compose.activity.manualStep(
             "On Device B, open 'Vote on a spot', vote for the second place ($secondTiedId), lock the vote, and tap Continue here on Device A.",
         )
@@ -216,7 +214,7 @@ class FinalizeMeetupTest : BaseE2ETest() {
         val placeId = candidatePlaceIds().first()
 
         // Vote for and lock the first option so finalization chooses it automatically.
-        castAndLockVote(placeId)
+        compose.castAndLockVote(placeId)
 
         compose.finalizeAndReturnToMeetup(meetupTitle)
 
@@ -333,7 +331,7 @@ class FinalizeMeetupTest : BaseE2ETest() {
 
     private fun openFinalizedMeetupPage(): String {
         val meetupTitle = openPreparedVotingScreen()
-        castAndLockVote(candidatePlaceIds().first())
+        compose.castAndLockVote(candidatePlaceIds().first())
         compose.finalizeAndReturnToMeetup(meetupTitle)
         return meetupTitle
     }
@@ -450,14 +448,6 @@ class FinalizeMeetupTest : BaseE2ETest() {
 
     private fun startVoting() {
         compose.startVotingFromMeetup()
-    }
-
-    private fun castAndLockVote(placeId: String) {
-        compose.onNodeWithTag(TestTags.voteButton(placeId)).performScrollTo().performClick()
-        compose.waitFor(hasTestTag(TestTags.voteButton(placeId)) and hasText("Your vote"))
-        compose.waitFor(hasTestTag(TestTags.LOCK_VOTE_BUTTON) and isEnabled())
-        compose.onNodeWithTag(TestTags.LOCK_VOTE_BUTTON).performScrollTo().performClick()
-        compose.waitFor(hasTestTag(TestTags.VOTE_LOCKED_TEXT))
     }
 
     private fun candidateName(placeId: String): String =
