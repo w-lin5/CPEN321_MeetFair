@@ -84,7 +84,7 @@ class ShareLiveLocationTest : BaseE2ETest() {
 
     // Failure 1a: before scheduled time
     @Test
-    fun shareLocation_notOfferedBeforeMeetupTime() {
+    fun shareLocation_beforeMeetupTime() {
         openFinalizedMeetup(leadMinutes = 10)
 
         // Scheduled time has not arrived, so "I am leaving" is not offered.
