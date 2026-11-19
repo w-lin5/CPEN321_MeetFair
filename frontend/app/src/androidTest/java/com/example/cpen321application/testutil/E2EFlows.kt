@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import com.example.cpen321application.ui.common.TestTags
 
@@ -69,6 +70,20 @@ fun ComposeTestRule.submitParticipation(expectedMemberCount: Int? = null) {
         onNodeWithTag(TestTags.PARTICIPATION_STATUS_TEXT).assertTextContains("Your details are in")
         onNodeWithText("$expectedMemberCount member(s) have submitted their details", substring = true).assertExists()
     }
+}
+
+/** Creates the two-member voting setup shared by manual Device B E2E scenarios. */
+fun AndroidComposeTestRule<*, *>.setUpTwoMemberVoting(
+    meetupTitle: String,
+    inviteCode: String,
+    expectedMemberCount: Int? = null,
+) {
+    submitParticipation(expectedMemberCount)
+    activity.manualStep(
+        "On Device B, join with invite code $inviteCode, open meetup '$meetupTitle', and enter/save participation details. " +
+            "Then tap Continue here on Device A.",
+    )
+    startVotingFromMeetup()
 }
 
 fun ComposeTestRule.navigateBackToMeetup(title: String) {

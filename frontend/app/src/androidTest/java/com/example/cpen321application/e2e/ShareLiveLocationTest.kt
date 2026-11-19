@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isEnabled
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -30,6 +31,7 @@ import com.example.cpen321application.testutil.tagStartingWith
 import com.example.cpen321application.testutil.exists
 import com.example.cpen321application.testutil.manualStep
 import com.example.cpen321application.testutil.requireCreatedInviteCode
+import com.example.cpen321application.testutil.retryUntil
 import com.example.cpen321application.testutil.textOf
 import com.example.cpen321application.testutil.uniqueName
 import com.example.cpen321application.testutil.waitFor
@@ -215,22 +217,34 @@ class ShareLiveLocationTest : BaseE2ETest() {
 
     private fun finalizeFirstCandidate() {
         val placeId = compose.candidatePlaceIds(timeoutMs = 30_000).first()
+        castAndLockVote(placeId)
+        finalizeWithWinner(placeId)
+    }
+
+    private fun castAndLockVote(placeId: String) {
         compose.onNodeWithTag(TestTags.voteButton(placeId)).performScrollTo().performClick()
         compose.waitFor(hasTestTag(TestTags.LOCK_VOTE_BUTTON) and isEnabled())
         compose.onNodeWithTag(TestTags.LOCK_VOTE_BUTTON).performScrollTo().performClick()
         compose.waitFor(hasTestTag(TestTags.VOTE_LOCKED_TEXT))
+    }
 
-        // Finalize meetup
+    private fun finalizeWithWinner(placeId: String) {
         compose.onNodeWithTag(TestTags.FINALIZE_BUTTON).performScrollTo().performClick()
-        val confirmPrompt = hasTestTag(TestTags.CONFIRM_FINALIZE_BUTTON)
-        if (compose.exists(confirmPrompt)) {
+        confirmFinalizationIfPrompted()
+        chooseWinnerIfPrompted(placeId)
+        compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT) and hasText("Voting is closed"))
+    }
+
+    private fun confirmFinalizationIfPrompted() {
+        if (compose.exists(hasTestTag(TestTags.CONFIRM_FINALIZE_BUTTON))) {
             compose.onNodeWithTag(TestTags.CONFIRM_FINALIZE_BUTTON).performClick()
         }
-        val winnerMatcher = tagStartingWith("pick_winner_button_")
-        if (compose.exists(winnerMatcher)) {
+    }
+
+    private fun chooseWinnerIfPrompted(placeId: String) {
+        if (compose.exists(tagStartingWith("pick_winner_button_"))) {
             compose.onNodeWithTag(TestTags.pickWinnerButton(placeId)).performScrollTo().performClick()
         }
-        compose.waitFor(hasTestTag(TestTags.VOTING_STATUS_TEXT) and hasText("Voting is closed"))
     }
 
     private fun scheduleMeetupTime(leadMinutes: Int) {
@@ -259,38 +273,32 @@ class ShareLiveLocationTest : BaseE2ETest() {
 
     private fun waitForLeavingButton(timeoutMs: Long = 180_000) {
         val matcher = hasTestTag(TestTags.LEAVING_BUTTON)
-        val startTime = System.currentTimeMillis()
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            if (compose.exists(matcher)) {
-                compose.dismissSnackbarNotices()
-                return
-            }
-            runCatching {
-                compose.onNodeWithTag("pull_to_refresh").performTouchInput { swipeDown() }
-            }
-            if (compose.exists(matcher)) {
-                compose.dismissSnackbarNotices()
-                return
-            }
-            Thread.sleep(3000)
+        val available = retryUntil(timeoutMs, intervalMs = 3_000) {
+            compose.exists(matcher) || refreshMeetupAndCheckLeavingButton(matcher)
         }
-        compose.waitFor(matcher, timeoutMs = 1000)
         compose.dismissSnackbarNotices()
+        if (!available) compose.waitFor(matcher, timeoutMs = 1_000)
+    }
+
+    private fun refreshMeetupAndCheckLeavingButton(matcher: SemanticsMatcher): Boolean {
+        runCatching {
+            compose.onNodeWithTag("pull_to_refresh").performTouchInput { swipeDown() }
+        }
+        return compose.exists(matcher)
     }
 
     private fun openLiveLocationIfOnMeetupScreen() {
-        compose.waitUntil(NETWORK_TIMEOUT_MS) {
-            if (compose.exists(hasTestTag(TestTags.LOCATION_SHARING_INDICATOR))) {
-                true
-            } else if (compose.exists(hasTestTag(TestTags.VIEW_LIVE_LOCATION_BUTTON))) {
-                runCatching {
-                    compose.onNodeWithTag(TestTags.VIEW_LIVE_LOCATION_BUTTON).performScrollTo().performClick()
-                }
-                compose.exists(hasTestTag(TestTags.LOCATION_SHARING_INDICATOR))
-            } else {
-                false
-            }
+        compose.waitUntil(NETWORK_TIMEOUT_MS) { liveLocationIsOpenOrCanBeOpened() }
+    }
+
+    private fun liveLocationIsOpenOrCanBeOpened(): Boolean {
+        if (compose.exists(hasTestTag(TestTags.LOCATION_SHARING_INDICATOR))) return true
+        if (!compose.exists(hasTestTag(TestTags.VIEW_LIVE_LOCATION_BUTTON))) return false
+
+        runCatching {
+            compose.onNodeWithTag(TestTags.VIEW_LIVE_LOCATION_BUTTON).performScrollTo().performClick()
         }
+        return compose.exists(hasTestTag(TestTags.LOCATION_SHARING_INDICATOR))
     }
 
 }

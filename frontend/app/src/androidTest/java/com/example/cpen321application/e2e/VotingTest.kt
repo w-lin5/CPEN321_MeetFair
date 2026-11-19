@@ -28,6 +28,7 @@ import com.example.cpen321application.testutil.requireCreatedInviteCode
 import com.example.cpen321application.testutil.waitFor
 import com.example.cpen321application.testutil.startVotingFromMeetup
 import com.example.cpen321application.testutil.submitParticipation
+import com.example.cpen321application.testutil.setUpTwoMemberVoting
 import com.example.cpen321application.ui.common.TestTags
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
@@ -216,11 +217,8 @@ class VotingTest : BaseE2ETest() {
     fun vote_otherMemberVotesAppearLive() {
         assumeMultiUserRun()
         val title = createGroupAndMeetup()
-        compose.submitParticipation(expectedMemberCount = 1)
         val inviteCode = requireCreatedInviteCode(createdInviteCode)
-        compose.activity.manualStep("On Device B, join with invite code $inviteCode, open meetup '$title', and enter/save participation details. Then tap Continue here on Device A.")
-
-        startVotingFromMeetup()
+        compose.setUpTwoMemberVoting(title, inviteCode, expectedMemberCount = 1)
         val candidates = candidatePlaceIds()
         val first = candidates.first()
         compose.activity.manualStep("On Device B, open 'Vote on a spot' and vote for the first place ($first). Then tap Continue here on Device A.")
@@ -251,11 +249,8 @@ class VotingTest : BaseE2ETest() {
     fun vote_afterFinalizeShowsNotOpenAndClosesVoting() {
         assumeMultiUserRun()
         val title = createGroupAndMeetup()
-        compose.submitParticipation(expectedMemberCount = 1)
         val inviteCode = requireCreatedInviteCode(createdInviteCode)
-        compose.activity.manualStep("On Device B, join with invite code $inviteCode, open meetup '$title', and enter/save details. Then tap Continue here on Device A.")
-
-        startVotingFromMeetup()
+        compose.setUpTwoMemberVoting(title, inviteCode, expectedMemberCount = 1)
         compose.activity.manualStep("On Device B, open 'Vote on a spot', turn on airplane mode, and leave the voting screen open. Then tap Continue here on Device A.")
         val first = candidatePlaceIds().first()
 

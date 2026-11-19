@@ -16,7 +16,6 @@ import androidx.compose.ui.test.performTextInput
 import android.util.Log
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
-import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
@@ -37,6 +36,8 @@ import com.example.cpen321application.testutil.dismissSnackbarNotices
 import com.example.cpen321application.testutil.exists
 import com.example.cpen321application.testutil.manualStep
 import com.example.cpen321application.testutil.requireCreatedInviteCode
+import com.example.cpen321application.testutil.retryUntil
+import com.example.cpen321application.testutil.setUpTwoMemberVoting
 import com.example.cpen321application.testutil.waitFor
 import com.example.cpen321application.testutil.startVotingFromMeetup
 import com.example.cpen321application.testutil.submitParticipation
@@ -140,12 +141,8 @@ class FinalizeMeetupTest : BaseE2ETest() {
     fun finalize_earlyCountsOnlyLockedVotes() {
         assumeMultiUserRun()
         val title = createGroupAndMeetup()
-        compose.submitParticipation()
         val inviteCode = requireCreatedInviteCode(createdInviteCode)
-        compose.activity.manualStep(
-            "On Device B, join with invite code $inviteCode, open meetup '$title', and enter/save details. Then tap Continue here on Device A.",
-        )
-        startVoting()
+        compose.setUpTwoMemberVoting(title, inviteCode)
 
         val candidates = candidatePlaceIds()
         val lockedWinnerId = candidates[0]
@@ -171,12 +168,8 @@ class FinalizeMeetupTest : BaseE2ETest() {
     fun finalize_unresolvedTieOffersOnlyTiedCandidates() {
         assumeMultiUserRun()
         val title = createGroupAndMeetup()
-        compose.submitParticipation()
         val inviteCode = requireCreatedInviteCode(createdInviteCode)
-        compose.activity.manualStep(
-            "On Device B, join with invite code $inviteCode, open meetup '$title', and enter/save details. Then tap Continue here on Device A.",
-        )
-        startVoting()
+        compose.setUpTwoMemberVoting(title, inviteCode)
 
         val candidates = candidatePlaceIds()
         val firstTiedId = candidates[0]
@@ -302,28 +295,15 @@ class FinalizeMeetupTest : BaseE2ETest() {
 
         device.wait(Until.hasObject(By.clazz("android.widget.EditText")), 10_000)
 
-        // Search for the event, retrying if Google Calendar was still syncing cloud events when opened
-        var foundEvent = false
-        val deadline = System.currentTimeMillis() + 45_000L
-        while (System.currentTimeMillis() < deadline && !foundEvent) {
-            try {
-                val inputField = device.findObject(By.clazz("android.widget.EditText"))
-                if (inputField != null) {
-                    inputField.setText(meetupTitle)
-                    device.pressEnter()
-                }
-                val eventNode = device.wait(
-                    Until.findObject(By.text(meetupTitle)),
-                    5_000,
-                )
-                if (eventNode != null) {
-                    foundEvent = true
-                } else {
-                    device.findObject(By.clazz("android.widget.EditText"))?.setText("")
-                    Thread.sleep(2000)
-                }
-            } catch (_: StaleObjectException) {
-                Thread.sleep(1000)
+        // Retry the search while Calendar may still be syncing the new event.
+        val foundEvent = retryUntil(timeoutMs = 45_000, intervalMs = 2_000) {
+            val inputField = device.findObject(By.clazz("android.widget.EditText"))
+            if (inputField == null) {
+                false
+            } else {
+                inputField.setText(meetupTitle)
+                device.pressEnter()
+                device.wait(Until.findObject(By.text(meetupTitle)), 5_000) != null
             }
         }
 
@@ -333,22 +313,21 @@ class FinalizeMeetupTest : BaseE2ETest() {
     }
 
     private fun openCalendarEventDetails(device: UiDevice, meetupTitle: String) {
-        // Click the search result event, re-fetching the node if it went stale during sync/render
-        var openedDetails = false
-        val clickDeadline = System.currentTimeMillis() + 15_000L
-        while (System.currentTimeMillis() < clickDeadline && !openedDetails) {
-            try {
-                val target = device.findObject(By.text(meetupTitle))
-                target?.click()
-                openedDetails = device.wait(Until.hasObject(By.text(meetupTitle)), 3_000)
-            } catch (_: StaleObjectException) {
-                Thread.sleep(500)
+        // Retry only the click if the result node becomes stale; then verify a detail-screen action.
+        val clickedEvent = retryUntil(timeoutMs = 15_000) {
+            val target = device.findObject(By.text(meetupTitle))
+            if (target == null) false else {
+                target.click()
+                true
             }
         }
-
+        org.junit.Assert.assertTrue(
+            "The Google Calendar event could not be opened from search results",
+            clickedEvent,
+        )
         org.junit.Assert.assertTrue(
             "The Google Calendar event details did not open",
-            openedDetails,
+            device.wait(Until.hasObject(By.descContains("Edit")), 10_000),
         )
     }
 

@@ -42,7 +42,7 @@ abstract class BaseE2ETest {
         val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
         restoreNetwork()
         LiveLocationService.stop(targetContext)
-        compose.cleanupCreatedGroups(createdGroupNames)
+        cleanupCreatedGroups(createdGroupNames)
     }
 
     protected fun restoreNetwork(timeoutMs: Long = 15_000L) {
