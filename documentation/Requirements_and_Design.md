@@ -6,10 +6,7 @@
 | ----------------- | --------------------- | ------------- |
 | 2026-10-19 | All Sections | Initial submission for CP1 |
 | 2026-11-04 | 3.1-3.7, 4.1-4.7 | CP2: updated requirements, use cases, APIs, and architecture for group management, meetup scheduling and participation, Places/Routes recommendations, weighted voting, Fair Credit settlement, and live-trip tracking; clarified validation, permissions, privacy, refresh, notifications, and edge cases; added approximate screen mock-ups; documented the `settlements` collection; updated the dependency and sequence diagrams; and fixed a typo in feature 5. |
-| 2026-11-15 | 3.1, 3.5, 4.1, 4.6 | Addressed TA feedback: kept refresh and notifications under usability design rather than the feature list, selected Create Group as formal use case 2 with its corresponding sequence diagram, and removed Health Check from the business component decomposition. |
-| 2026-11-15 | 3.7, 4.7 | Replaced the open-ended accessibility validation plan with a viewport/font-scale matrix, TalkBack workflows and explicit pass/fail criteria. |
-| 2026-11-18 | 3.1, 3.5, 4.3 | Added venue-local opening-hours filtering before recommendation ranking, clear handling of insufficient confirmed-open venues and the Google field/billing implications. |
-| 2026-11-19 | 4.5 | Addressed TA feedback on the dependency diagram: removed the two-way Recommendation Engine / Voting & Fairness arrow by showing the Voting and Fair Credit modules, added the missing Users & Groups -> Realtime Gateway (Event Publisher) edge, and rearranged the layout to remove most arrow crossings. |
+| 2026-11-19 | 3.1-3.2, 3.5, 3.7, 4.1, 4.3, 4.5-4.7 | CP3: Addressed TA feedback by moving refresh and notifications to usability design, making Create Group Formal Use Case 2 and updating diagrams, and removing Health Check from the business component decomposition. Replaced the accessibility validation plan with a viewport/font-scale matrix, TalkBack workflows and explicit pass/fail criteria. Added venue-local opening-hours filtering before recommendation ranking, insufficient confirmed-open venue handling and Google field/billing implications |
 ---
 
 ## 2. Project Description

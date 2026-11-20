@@ -5,9 +5,7 @@
 | **Change Date**   | **Modified Sections** | **Rationale** |
 | ----------------- | --------------------- | ------------- |
 | 2026-11-04 | 2.1-2.4 | CP2 updates: documented the Codacy automated code review results, including the remaining unfixed issues per category and code pattern, with justifications. |
-| 2026-11-19 | 3.3 | Recorded fixes, regression tests and commit references for the two major faults reported by Ledger. |
-| 2026-11-19 | 3.1 | Recorded the review of Ledger, including scores and the two reported faults, from the supplied review report text. |
-| 2026-11-19 | 2.1-2.4 | Updated commit hash, new screenshots, and no more unfixed issues (in CP2, Codacy organization-level policies not correctly synced with repository-level analyzed code patterns)
+| 2026-11-19 | 2.1-2.4, 3.1, 3.3 | Updated the Codacy results, commit hash and screenshots. Recorded Peer Review with Ledger, its scores and reported faults, along with the fixes, regression tests and commit references.
 
 ---
 
@@ -37,7 +35,7 @@
 
 - **Peer group reviewed:** Ledger
 - **Commit SHA reviewed:** `01eb5991413990534a6c675b182d452e2bd7445e`
-- **Date the artifacts were exchanged:** 11/04
+- **Date the artifacts were exchanged:** 2026-11-04
 - **Review report submitted:** `CP3_Ledger_Review.pdf`
 
 | **Section**          | **Item**                                                                                                                                             | **Score** |
@@ -106,7 +104,7 @@
 **Major faults reported against your project**
 
 **Fault 1**
-- **Description:** A closed restaurant can be selected as the final meetup venue. MeetFair recommended a restaurant (in our example, Ding Tai Feng at 1132 Alberni St,vVancouver) for a meetup scheduled at 01:03 a.m. Vancouver Time, which would bevclosed at the time. Both participants were subsequently able to vote for the restaurantvand have it become the meetup venue. This is a functional expectation arising from MeetFair’s goal of recommending feasible
+- **Description:** A closed restaurant can be selected as the final meetup venue. MeetFair recommended a restaurant (in our example, Ding Tai Feng at 1132 Alberni St, Vancouver) for a meetup scheduled at 01:03 a.m. Vancouver Time, which would bevclosed at the time. Both participants were subsequently able to vote for the restaurantvand have it become the meetup venue. This is a functional expectation arising from MeetFair’s goal of recommending feasible
 meeting locations.
 - **Severity:** High (core functional requirement failure)
 
