@@ -7,10 +7,15 @@ import { meetupRoom, SERVER_EVENTS } from '../realtime/events';
 import { TripModel } from './models';
 import { SettlementModel } from '../voting-fairness/models';
 import { withMeetupLock } from './meetup-lock';
+import { TripUpdates } from './trip-updates';
+
+const updates = new TripUpdates(meetupId => {
+  publisher.publish(meetupRoom(meetupId), SERVER_EVENTS.tripUpdated, { meetupId });
+});
 
 function changed(meetupId: string) {
   // Invalidation only; REST rechecks membership before returning sensitive coordinates.
-  publisher.publish(meetupRoom(meetupId), SERVER_EVENTS.tripUpdated, { meetupId });
+  updates.state(meetupId);
 }
 
 async function participant(meetupId: string, userId: string) {
@@ -58,7 +63,7 @@ async function location(meetupId: string, userId: string, point: { lat: number; 
   const trip = await TripModel.findOneAndUpdate({ meetupId, userId, status: 'ACTIVE', sharing: true },
     { $set: { location: { ...point, updatedAt: new Date() } } }, { returnDocument: 'after' });
   if (!trip) throw new Conflict('Location sharing is not active');
-  changed(meetupId);
+  updates.position(meetupId);
   return trip;
 }
 
@@ -84,7 +89,8 @@ async function stop(meetupId: string, userId: string) {
 }
 
 async function list(meetupId: string, userId: string) {
-  const meetup = await meetupService.getForMember(meetupId, userId);
+  // Load the group once: it both authorizes this read and filters departed users.
+  const meetup = await meetupService.getById(meetupId);
   const group = await groupService.requireMembership(String(meetup.groupId), userId);
   const memberIds = group.members.map(m => String(m.userId));
   const trips = await TripModel.find({ meetupId, userId: { $in: memberIds } });

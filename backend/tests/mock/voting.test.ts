@@ -35,6 +35,14 @@ const app = (): Agent => request(createApp());
 
 // Interface PUT /api/meetups/:meetupId/vote
 describe('Mocked: PUT /api/meetups/:meetupId/vote', () => {
+  test('loads candidates only once for validation and the broadcast tally', async () => {
+    const { ada, meetup } = await setup();
+    const candidates = jest.spyOn(recommendationService, 'getByMeetupId');
+    const response = await app().put(`/api/meetups/${meetup.id}/vote`)
+      .set('Authorization', bearer(ada.id)).send({ placeId: PLACE_1 });
+    expect(response.status).toBe(200);
+    expect(candidates).toHaveBeenCalledTimes(1);
+  });
   // Input: valid vote from a participant
   // Expected status code: 500
   // Expected output: { error: "Internal Server Error" }

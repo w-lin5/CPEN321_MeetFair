@@ -51,6 +51,7 @@ export const tuning = {
   initialFairCredit: 0,
   // Upper bound on a single settled trip (one day), to reject obviously broken measurements
   maxTripSeconds: 24 * 60 * 60,
+  tripUpdateIntervalMs: 2000,
   // Mode normalization: raw seconds x multiplier [TBD: all 1.0 until the team decides otherwise]
   walkBurdenMultiplier: 1,
   transitBurdenMultiplier: 1,

@@ -35,30 +35,35 @@ async function candidatePlaceIds(meetupId: string): Promise<string[]> {
 }
 
 // The same tally goes to every member, over REST and as vote:updated
-async function buildTally(meetup: MeetupDoc) {
+async function buildTally(meetup: MeetupDoc, knownPlaceIds?: string[]) {
   const meetupId = String(meetup._id);
-  const votes = await VoteModel.find({ meetupId, userId: { $in: meetup.participants.map(p => p.userId) } });
+  const [votes, placeIds] = await Promise.all([
+    VoteModel.find({ meetupId, userId: { $in: meetup.participants.map(p => p.userId) } }),
+    knownPlaceIds ?? candidatePlaceIds(meetupId),
+  ]);
 
   return {
     meetupId,
-    ...tally(await candidatePlaceIds(meetupId), votes),
+    ...tally(placeIds, votes),
     participantCount: meetup.participants.length,
   };
 }
 
-async function broadcastTally(meetup: MeetupDoc): Promise<void> {
-  publisher.publish(meetupRoom(String(meetup._id)), SERVER_EVENTS.voteUpdated, await buildTally(meetup));
+async function broadcastTally(meetup: MeetupDoc, placeIds?: string[]): Promise<void> {
+  publisher.publish(meetupRoom(String(meetup._id)), SERVER_EVENTS.voteUpdated, await buildTally(meetup, placeIds));
 }
 
 // Create or change the caller's vote; 409 once it is locked
 async function castVote(meetupId: string, userId: string, placeId: string) {
   const meetup = await loadForVoting(meetupId, userId);
-  if (!(await candidatePlaceIds(meetupId)).includes(placeId)) {
+  const [placeIds, existing] = await Promise.all([
+    candidatePlaceIds(meetupId), VoteModel.findOne({ meetupId, userId }),
+  ]);
+  if (!placeIds.includes(placeId)) {
     throw new BadRequest('placeId is not one of this meetup\'s candidates');
   }
 
   // Re-sending the same choice changes nothing, so members are not notified
-  const existing = await VoteModel.findOne({ meetupId, userId });
   if (existing && !existing.locked && existing.placeId === placeId) return existing;
 
   let vote;
@@ -74,7 +79,7 @@ async function castVote(meetupId: string, userId: string, placeId: string) {
     throw err;
   }
 
-  await broadcastTally(meetup);
+  await broadcastTally(meetup, placeIds);
   return vote;
 }
 
@@ -100,8 +105,8 @@ async function lockVote(meetupId: string, userId: string) {
 // Tally for any member, plus the caller's own vote so the UI can highlight it
 async function getVotes(meetupId: string, userId: string) {
   const meetup = await meetupService.getForMember(meetupId, userId);
-  const mine = await VoteModel.findOne({ meetupId, userId });
-  return { ...(await buildTally(meetup)), myVote: mine };
+  const [mine, totals] = await Promise.all([VoteModel.findOne({ meetupId, userId }), buildTally(meetup)]);
+  return { ...totals, myVote: mine };
 }
 
 // Decide the winner; a manual pick is only accepted when nobody locked a vote or the tie cannot be broken
