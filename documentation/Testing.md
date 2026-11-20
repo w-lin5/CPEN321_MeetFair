@@ -145,6 +145,12 @@ npm test -- --runInBand tests/nfr
 
 ### 3.2. Test Verification and Logs
 
+#### Backend NFR Test Execution Log
+
+The recorded run of `npm test -- --runInBand tests/nfr` passed all **3 test suites and 25 tests** for Security and Access Control and Location Privacy. 
+
+![Backend NFR test log showing three passing suites, 25 passing tests and coverage results](images/NFR_Test_Log.png)
+
 - **Security and Access Control**
 
   | **Requirement** | **Test and procedure** | **Pass criterion** |
