@@ -302,7 +302,7 @@ private fun LeaveGroupDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (voting) "Cannot leave group" else "Leave group?") },
         text = { Text(if (voting) "A meetup you joined is still voting. Wait until its voting ends before leaving."
-            else "Your details in meetups that have not started voting will be deleted. Completed voting and Fair Credit history will remain.") },
+            else "Your details in meetups that have not started voting will be deleted. Any unfinished trips in this group will be cancelled and location sharing will stop. Unfinished trips use estimated travel time for settlement. Completed trips, voting and Fair Credit history will remain.") },
         confirmButton = { TextButton(onClick = {
             onDismiss()
             if (!voting) onLeave()

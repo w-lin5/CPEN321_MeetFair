@@ -7,10 +7,11 @@ const tripSchema = new Schema({
   meetupId: { type: Schema.Types.ObjectId, required: true, index: true },
   userId: { type: Schema.Types.ObjectId, required: true },
   travelMode: { type: String, enum: [...TRAVEL_MODES], required: true },
-  status: { type: String, enum: ['ACTIVE', 'ARRIVED'], default: 'ACTIVE', required: true },
+  status: { type: String, enum: ['ACTIVE', 'ARRIVED', 'CANCELLED'], default: 'ACTIVE', required: true },
   sharing: { type: Boolean, default: true, required: true },
   startedAt: { type: Date, required: true },
   arrivedAt: { type: Date, default: null },
+  cancelledAt: { type: Date, default: null },
   actualSeconds: { type: Number, default: null },
   source: { type: String, enum: ['TRACKED'], default: 'TRACKED' },
   location: { type: new Schema({

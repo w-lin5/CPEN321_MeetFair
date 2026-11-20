@@ -2,7 +2,7 @@ import request from 'supertest';
 import { createApp } from '../../src/app';
 import { TripModel } from '../../src/live-location/models';
 import { RecommendationModel } from '../../src/recommendation/models';
-import { MeetupModel } from '../../src/users-groups/models';
+import { GroupModel, MeetupModel } from '../../src/users-groups/models';
 import { FairCreditEntryModel, FairCreditModel, SettlementModel } from '../../src/voting-fairness/models';
 import { fairCreditService } from '../../src/voting-fairness/fair-credit.service';
 import * as routes from '../../src/integrations/routes.client';
@@ -80,6 +80,50 @@ test('concurrent settlement requests apply each balance change once', async () =
   expect(results.map(result => result.status)).toEqual([200, 200, 200]);
   expect(await FairCreditEntryModel.countDocuments()).toBe(2);
   expect(await fairCreditService.getBalance(organizer.id, group.id)).toBe(600);
+});
+
+test.each([true, false])('leaving with an active trip (sharing=%s) permits settlement using an estimate, not a false arrival', async sharing => {
+  const { organizer, member, group, meetup, settle } = await setup();
+  const arrivedAt = new Date();
+  await TripModel.create({ meetupId: meetup.id, userId: organizer.id, travelMode: 'TRANSIT',
+    startedAt: new Date(Date.now() - 1800000), arrivedAt, status: 'ARRIVED', sharing: false, actualSeconds: 1800 });
+  const unfinished = await TripModel.create({ meetupId: meetup.id, userId: member.id, travelMode: 'TRANSIT',
+    startedAt: new Date(Date.now() - 300000), status: 'ACTIVE', sharing,
+    location: sharing ? { lat: 49.26, lng: -123.25, accuracyM: 8, updatedAt: new Date() } : null });
+  const blocked = await settle();
+  expect(blocked.status).toBe(409);
+  expect(blocked.body.error).toBe('Wait for all started trips to arrive before settling Fair Credit');
+  expect((await request(app).post(`/api/groups/${group.id}/leave`).set('Authorization', bearer(member.id))).status).toBe(204);
+  const cancelled = await TripModel.findById(unfinished.id).orFail();
+  expect(cancelled.toObject()).toMatchObject({ status: 'CANCELLED', sharing: false, location: null,
+    arrivedAt: null, actualSeconds: null, startedAt: unfinished.startedAt });
+  expect(cancelled.cancelledAt).toBeInstanceOf(Date);
+  expect(await TripModel.findOne({ meetupId: meetup.id, userId: organizer.id }).lean())
+    .toMatchObject({ status: 'ARRIVED', arrivedAt, actualSeconds: 1800 });
+  expect((await request(app).post(`/api/meetups/${meetup.id}/trip/arrive`).set('Authorization', bearer(member.id))).status).toBe(403);
+  expect((await settle()).status).toBe(200);
+  expect(await FairCreditEntryModel.findOne({ meetupId: meetup.id, userId: member.id }).lean())
+    .toMatchObject({ source: 'ESTIMATED', actualSeconds: 600 });
+  expect(await FairCreditEntryModel.findOne({ meetupId: meetup.id, userId: organizer.id }).lean())
+    .toMatchObject({ source: 'TRACKED', actualSeconds: 1800 });
+  expect((await settle()).status).toBe(200);
+  expect(await FairCreditEntryModel.countDocuments({ meetupId: meetup.id })).toBe(2);
+});
+
+test('settlement repairs legacy active trips of departed members but still waits for current members', async () => {
+  const { organizer, member, group, meetup, settle } = await setup();
+  await TripModel.create({ meetupId: meetup.id, userId: member.id, travelMode: 'TRANSIT',
+    startedAt: new Date(), status: 'ACTIVE', sharing: false });
+  // Simulate the old leave behavior: membership gone, paused ACTIVE trip retained.
+  await GroupModel.updateOne({ _id: group.id }, { $pull: { members: { userId: member.id } } });
+  await TripModel.create({ meetupId: meetup.id, userId: organizer.id, travelMode: 'TRANSIT',
+    startedAt: new Date(), status: 'ACTIVE', sharing: false });
+  expect((await settle()).status).toBe(409);
+  expect(await TripModel.findOne({ meetupId: meetup.id, userId: member.id }).lean())
+    .toMatchObject({ status: 'CANCELLED', sharing: false, location: null, actualSeconds: null });
+  expect(await SettlementModel.countDocuments()).toBe(0);
+  expect((await request(app).post(`/api/meetups/${meetup.id}/trip/arrive`).set('Authorization', bearer(organizer.id))).status).toBe(200);
+  expect((await settle()).status).toBe(200);
 });
 
 test('rejects invalid commute durations without freezing the meetup', async () => {

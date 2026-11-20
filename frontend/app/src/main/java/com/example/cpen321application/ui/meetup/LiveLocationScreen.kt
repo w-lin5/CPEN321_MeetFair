@@ -153,7 +153,7 @@ private class LiveTripsState(
         val joined = current.participants.any { it.userId == userId }
         val due = current.status == MeetupStatus.FINALIZED &&
             runCatching { !Instant.parse(current.scheduledAt).isAfter(now) }.getOrDefault(false)
-        return joined && due && own?.status != "ARRIVED"
+        return joined && due && (own == null || own.status == "ACTIVE")
     }
 }
 
@@ -308,6 +308,8 @@ private fun LiveTripDetails(
             ActiveTripCard(own, live.now, live.busy, canPause = own.sharing || sharingHere, onArrive, onPause)
         } else if (own?.status == "ARRIVED") {
             ArrivedCard(own.actualSeconds ?: 0)
+        } else if (own?.status == "CANCELLED") {
+            Text("Trip cancelled when you left the group. No completed commute duration was recorded.")
         }
 
         if (live.canStartTrip(userId, own) && !sharingHere) {
@@ -586,6 +588,7 @@ private fun MemberTripRow(trip: MeetupTrip) {
             Text(
                 text = when {
                     trip.status == "ARRIVED" -> "Arrived (${formatTripDuration(trip.actualSeconds ?: 0)})"
+                    trip.status == "CANCELLED" -> "Trip cancelled"
                     trip.sharing -> "On the way"
                     else -> "On the way · sharing paused"
                 },

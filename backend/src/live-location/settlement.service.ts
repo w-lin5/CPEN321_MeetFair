@@ -5,7 +5,7 @@ import { RecommendationModel } from '../recommendation/models';
 import { meetupRoom, SERVER_EVENTS } from '../realtime/events';
 import { publisher } from '../realtime/publisher';
 import { meetupService } from '../users-groups/meetup.service';
-import { MeetupModel } from '../users-groups/models';
+import { GroupModel, MeetupModel } from '../users-groups/models';
 import { fairCreditService, type SettlementTrip } from '../voting-fairness/fair-credit.service';
 import { SettlementModel } from '../voting-fairness/models';
 import { TripModel } from './models';
@@ -23,6 +23,13 @@ async function settle(meetupId: string, userId: string) {
   if (meetup.status !== 'FINALIZED' || !meetup.winner) throw new Conflict('The meetup must have a finalized destination');
   if (meetup.scheduledAt.getTime() > Date.now()) throw new Conflict('Fair Credit can be settled after the meetup time arrives');
   if (meetup.participants.length === 0) throw new BadRequest('There are no participants to settle');
+
+  // Also repair ACTIVE trips left by the old leave implementation (or a failed
+  // cleanup). Departed users cannot mark arrival; do not invent a tracked duration.
+  const group = await GroupModel.findById(meetup.groupId).orFail();
+  await TripModel.updateMany({ meetupId, status: 'ACTIVE', userId: { $nin: group.members.map(member => member.userId) } }, {
+    $set: { status: 'CANCELLED', cancelledAt: new Date(), sharing: false, location: null },
+  });
 
   let snapshot = await SettlementModel.findOne({ meetupId });
   if (!snapshot) {

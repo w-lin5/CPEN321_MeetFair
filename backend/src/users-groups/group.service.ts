@@ -134,6 +134,17 @@ async function leave(groupId: string, userId: string) {
   }
   const setupMeetups = await MeetupModel.find({ groupId, status: 'SETUP' }).select('_id');
   const allMeetups = await MeetupModel.find({ groupId }).select('_id');
+  // Revoke access before cleaning trips. A racing start must fail its membership
+  // recheck, rather than create an ACTIVE trip after cleanup has finished.
+  const result = await GroupModel.updateOne({ _id: groupId, 'members.userId': userId }, { $pull: { members: { userId } } });
+  if (result.modifiedCount === 0) throw new Conflict('Group membership changed. Please refresh and try again.');
+  publisher.revokeUser(userId);
+  const activeTripMeetups = await TripModel.distinct('meetupId', {
+    meetupId: { $in: allMeetups.map(m => m._id) }, userId, status: 'ACTIVE',
+  });
+  await TripModel.updateMany({ meetupId: { $in: allMeetups.map(m => m._id) }, userId, status: 'ACTIVE' }, {
+    $set: { status: 'CANCELLED', cancelledAt: new Date(), sharing: false, location: null },
+  });
   await TripModel.updateMany({ meetupId: { $in: allMeetups.map(m => m._id) }, userId }, { $set: { sharing: false, location: null } });
   const setupIds = setupMeetups.map(meetup => meetup._id);
   await MeetupModel.updateMany({ groupId, status: 'SETUP' }, { $pull: { participants: { userId } } });
@@ -142,10 +153,10 @@ async function leave(groupId: string, userId: string) {
     { groupId, organizerId: userId, status: { $ne: 'SETTLED' } },
     { $set: { organizerId: group.organizerId } },
   );
-  const result = await GroupModel.updateOne({ _id: groupId, 'members.userId': userId }, { $pull: { members: { userId } } });
-  if (result.modifiedCount === 0) throw new Conflict('Group membership changed. Please refresh and try again.');
-  publisher.revokeUser(userId);
   // Silent refresh only: leaving is not a deletion notification.
+  for (const meetupId of activeTripMeetups) {
+    publisher.publish(meetupRoom(String(meetupId)), SERVER_EVENTS.tripUpdated, { meetupId: String(meetupId) });
+  }
   for (const meetupId of setupIds) {
     publisher.publish(meetupRoom(String(meetupId)), SERVER_EVENTS.meetupUpdated, { meetupId: String(meetupId) });
   }

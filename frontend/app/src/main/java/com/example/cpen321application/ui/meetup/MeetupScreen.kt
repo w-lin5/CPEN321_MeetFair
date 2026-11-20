@@ -655,7 +655,16 @@ private fun MeetupVotingStatusCard(votes: VotesSnapshot?) {
 
 @Composable
 private fun MeetupTripStatusCard(trip: MeetupTrip) {
-    if (trip.status == "ARRIVED") MeetupTripArrivedCard(trip) else MeetupTripOnWayCard()
+    when (trip.status) {
+        "ARRIVED" -> MeetupTripArrivedCard(trip)
+        "CANCELLED" -> StatusInfoCard(
+            icon = LockIcon,
+            title = "Trip cancelled",
+            subtitle = "You left the group before arrival. No completed commute duration was recorded.",
+            titleTag = "trip_cancelled_text",
+        )
+        else -> MeetupTripOnWayCard()
+    }
 }
 
 @Composable

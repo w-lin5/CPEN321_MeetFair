@@ -209,7 +209,7 @@ describe('Unmocked: DELETE /api/groups/:groupId/members/:memberId', () => {
     const google = jest.spyOn(placesClient, 'searchNearby').mockResolvedValue([]);
     expect((await remove(group.id, member.id, organizer.id)).status).toBe(204);
     await placeSearchService.search(meetup.id, organizer.id);
-    expect(google).toHaveBeenCalledWith({ lat: 40, lng: -74 }, ['restaurant']);
+    expect(google).toHaveBeenCalledWith({ lat: 40, lng: -74 }, ['restaurant'], expect.any(Date));
     await request(createApp()).post('/api/groups/join').set('Authorization', bearer(member.id)).send({ inviteCode: group.inviteCode });
     expect((await MeetupModel.findById(meetup.id).orFail()).participants.map(p => String(p.userId))).toEqual([organizer.id]);
   });

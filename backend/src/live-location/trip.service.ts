@@ -27,6 +27,7 @@ async function start(meetupId: string, userId: string) {
   const entry = await participant(meetupId, userId);
   const existing = await TripModel.findOne({ meetupId, userId });
   if (existing?.status === 'ARRIVED') throw new Conflict('You have already arrived for this meetup');
+  if (existing?.status === 'CANCELLED') throw new Conflict('This trip was cancelled when you left the group');
   try {
     // First insert sets server time once; retries and resuming sharing preserve it.
     await TripModel.updateOne({ meetupId, userId, status: 'ACTIVE' }, {
@@ -43,7 +44,9 @@ async function start(meetupId: string, userId: string) {
     await participant(meetupId, userId);
   } catch (error) {
     // An in-flight leave/delete must not leave a sharing flag active after the access recheck.
-    await TripModel.updateOne({ meetupId, userId }, { $set: { sharing: false, location: null } });
+    await TripModel.updateOne({ meetupId, userId, status: 'ACTIVE' }, {
+      $set: { status: 'CANCELLED', cancelledAt: new Date(), sharing: false, location: null },
+    });
     throw error;
   }
   changed(meetupId);
@@ -64,6 +67,7 @@ async function arrive(meetupId: string, userId: string) {
   const trip = await TripModel.findOne({ meetupId, userId });
   if (!trip) throw new Conflict('Start your trip before marking arrival');
   if (trip.status === 'ARRIVED') return trip;
+  if (trip.status === 'CANCELLED') throw new Conflict('This trip was cancelled when you left the group');
   const arrivedAt = new Date();
   await TripModel.updateOne({ _id: trip._id, status: 'ACTIVE' }, { $set: {
     status: 'ARRIVED', sharing: false, location: null, arrivedAt,

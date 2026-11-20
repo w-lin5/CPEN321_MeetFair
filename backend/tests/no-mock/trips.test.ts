@@ -138,16 +138,56 @@ describe('Unmocked: GET /api/meetups/:meetupId/trips', () => {
 describe('Unmocked: POST /api/groups/:groupId/leave', () => {
   // Input: participant sharing their location leaves the group, then lists trips
   // Expected status code: 204; then 403
-  // Expected behavior: the trip stops sharing and its location is cleared
+  // Expected behavior: the unfinished trip is cancelled and its location is cleared
   // Expected output: None
   test('leaving the group clears shared location and denies later access', async () => {
-    const { group, meetup, member, auth, call } = await setup();
+    const { group, meetup, organizer, member, auth, call } = await setup();
+    expect((await call('start', organizer.id)).status).toBe(200);
+    const otherGroup = await createGroup(member.id, { inviteCode: 'XYZ234' });
+    const otherMeetup = await createFinalizedMeetup(otherGroup.id, member.id, [member.id]);
+    const otherTrip = await TripModel.create({ meetupId: otherMeetup.id, userId: member.id, travelMode: 'TRANSIT',
+      status: 'ACTIVE', sharing: false, startedAt: new Date() });
     await call('start');
     await request(app).put(`/api/meetups/${meetup.id}/trip/location`).set('Authorization', auth(member.id))
       .send({ lat: 49, lng: -123, accuracyM: 8 });
     expect((await request(app).post(`/api/groups/${group.id}/leave`).set('Authorization', auth(member.id))).status).toBe(204);
-    expect(await TripModel.findOne({ meetupId: meetup.id }).lean()).toMatchObject({ sharing: false, location: null });
+    expect(await TripModel.findOne({ meetupId: meetup.id, userId: member.id }).lean())
+      .toMatchObject({ status: 'CANCELLED', sharing: false, location: null, actualSeconds: null });
+    expect(await TripModel.findOne({ meetupId: meetup.id, userId: organizer.id }).lean())
+      .toMatchObject({ status: 'ACTIVE', sharing: true });
+    expect(await TripModel.findById(otherTrip.id).lean()).toMatchObject({ status: 'ACTIVE', sharing: false });
     expect((await request(app).get(`/api/meetups/${meetup.id}/trips`).set('Authorization', auth(member.id))).status).toBe(403);
+  });
+
+  test('rejoining does not resume or mark arrival on a cancelled trip', async () => {
+    const { group, member, auth, call } = await setup();
+    expect((await call('start')).status).toBe(200);
+    expect((await request(app).post(`/api/groups/${group.id}/leave`).set('Authorization', auth(member.id))).status).toBe(204);
+    expect((await request(app).post('/api/groups/join').set('Authorization', auth(member.id)).send({ inviteCode: group.inviteCode })).status).toBe(200);
+    for (const action of ['start', 'arrive']) {
+      const response = await call(action);
+      expect(response.status).toBe(409);
+      expect(response.body.error).toBe('This trip was cancelled when you left the group');
+    }
+  });
+
+  test('a start racing after leave cleanup cannot leave an orphan active trip', async () => {
+    const { group, meetup, member, auth, call } = await setup();
+    const original = TripModel.updateOne.bind(TripModel);
+    const update = jest.spyOn(TripModel, 'updateOne').mockImplementationOnce((...args: Parameters<typeof original>) => {
+      // Delay the insertion until the leave request has revoked membership and cleaned trips.
+      return (async () => {
+        expect((await request(app).post(`/api/groups/${group.id}/leave`).set('Authorization', auth(member.id))).status).toBe(204);
+        return original(...args);
+      })() as ReturnType<typeof original>;
+    });
+    try {
+      expect((await call('start')).status).toBe(403);
+      expect(await TripModel.findOne({ meetupId: meetup.id, userId: member.id }).lean())
+        .toMatchObject({ status: 'CANCELLED', sharing: false, location: null, actualSeconds: null });
+    } finally {
+      update.mockRestore();
+    }
   });
 });
 
