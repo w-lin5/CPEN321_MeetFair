@@ -116,6 +116,7 @@ describe('Mocked: POST /api/meetups/:meetupId/places/search', () => {
   test('requires authentication', async () => {
     const res = await request(createApp()).post(`/api/meetups/${meetupId}/places/search`);
     expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'Missing bearer token' });
     expect(searchMock).not.toHaveBeenCalled();
   });
 
@@ -125,7 +126,9 @@ describe('Mocked: POST /api/meetups/:meetupId/places/search', () => {
   // Expected behavior: Google is not called
   // Expected output: None
   test('rejects an invalid meetup id before calling Google', async () => {
-    expect((await search(organizerId, 'invalid')).status).toBe(400);
+    const res = await search(organizerId, 'invalid');
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'Invalid request', details: ['meetupId must be a 24-hex ObjectId'] });
     expect(searchMock).not.toHaveBeenCalled();
   });
 
@@ -135,7 +138,9 @@ describe('Mocked: POST /api/meetups/:meetupId/places/search', () => {
   // Expected behavior: Google is not called
   // Expected output: None
   test('requires the organizer', async () => {
-    expect((await search('507f1f77bcf86cd799439013')).status).toBe(403);
+    const res = await search('507f1f77bcf86cd799439013');
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: 'Only the meetup organizer can search for places' });
     expect(searchMock).not.toHaveBeenCalled();
   });
 
@@ -146,7 +151,9 @@ describe('Mocked: POST /api/meetups/:meetupId/places/search', () => {
   // Expected output: None
   test.each([new Forbidden(), new NotFound()])('respects membership and existence checks: %s', async (error) => {
     memberMock.mockRejectedValue(error);
-    expect((await search()).status).toBe(error.status);
+    const res = await search();
+    expect(res.status).toBe(error.status);
+    expect(res.body).toEqual({ error: error.message });
     expect(searchMock).not.toHaveBeenCalled();
   });
 
@@ -157,7 +164,9 @@ describe('Mocked: POST /api/meetups/:meetupId/places/search', () => {
   // Expected output: None
   test.each(['VOTING', 'FINALIZED', 'SETTLED'])('rejects status %s', async (status) => {
     memberMock.mockResolvedValue({ scheduledAt, organizerId, status } as unknown as Awaited<ReturnType<typeof meetupService.getForMember>>);
-    expect((await search()).status).toBe(409);
+    const res = await search();
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: 'Places can only be searched while the meetup is in SETUP' });
     expect(searchMock).not.toHaveBeenCalled();
   });
 
@@ -192,6 +201,9 @@ describe('Mocked: POST /api/meetups/:meetupId/recommendations/from-places', () =
       .post(`/api/meetups/${meetupId}/recommendations/from-places`)
       .set('Authorization', bearer(organizerId));
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: participants.length === 0
+      ? 'At least one member must submit their starting location before searching for places.'
+      : 'A member has an invalid starting location. Please submit it again.' });
     expect(searchMock).not.toHaveBeenCalled();
     expect(recommendationService.generate).not.toHaveBeenCalled();
     expect(meetupService.transitionStatus).not.toHaveBeenCalled();
@@ -275,14 +287,16 @@ describe('Mocked: POST /api/meetups/:meetupId/recommendations/from-places', () =
       .post(`/api/meetups/${meetupId}/recommendations/from-places`)
       .set('Authorization', bearer(organizerId));
     expect(res.status).toBe(502);
+    expect(res.body).toEqual({ error: 'Unable to estimate travel times. Please try again later.' });
     expect(recommendationService.generate).not.toHaveBeenCalled();
+    expect(meetupService.transitionStatus).not.toHaveBeenCalled();
   });
 
   // Mocked behavior: searchNearby returns 0, 1 or 2 places
   // Input: organizer generates recommendations
   // Expected status code: 400
   // Expected behavior: generate and transitionStatus are not called
-  // Expected output: error mentioning "At least 3"
+  // Expected output: error explaining that fewer than 3 places are confirmed open
   test.each([0, 1, 2])('does not start voting with only %i places', async count => {
     searchMock.mockResolvedValue(Array.from({ length: count }, (_, i) => ({
       placeId: String(i), name: 'Cafe', address: '', location: { lat: 49.26, lng: -123.25 },
@@ -302,12 +316,14 @@ describe('Mocked: POST /api/meetups/:meetupId/recommendations/from-places', () =
   // Expected behavior: generate is not called
   // Expected output: None
   test('does not generate when Google fails', async () => {
-    searchMock.mockRejectedValue(new UpstreamError('Place search unavailable'));
+    searchMock.mockRejectedValue(new UpstreamError('Unable to retrieve nearby places. Please try again later.'));
     const res = await request(createApp())
       .post(`/api/meetups/${meetupId}/recommendations/from-places`)
       .set('Authorization', bearer(organizerId));
     expect(res.status).toBe(502);
+    expect(res.body).toEqual({ error: 'Unable to retrieve nearby places. Please try again later.' });
     expect(recommendationService.generate).not.toHaveBeenCalled();
+    expect(meetupService.transitionStatus).not.toHaveBeenCalled();
   });
 });
 
@@ -324,6 +340,7 @@ describe('Mocked: POST /api/meetups/:meetupId/recommendations', () => {
       .set('Authorization', bearer(organizerId))
       .send({ candidates: [] });
     expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'Not Found' });
     expect(searchMock).not.toHaveBeenCalled();
     expect(recommendationService.generate).not.toHaveBeenCalled();
   });

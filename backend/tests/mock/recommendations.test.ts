@@ -55,6 +55,8 @@ describe('Mocked: POST /api/meetups/:meetupId/recommendations/from-places', () =
     const res = await generate(meetup.id, organizer.id);
 
     expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Internal Server Error' });
+    expect(await RecommendationModel.countDocuments({ meetupId: meetup.id })).toBe(0);
     expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
   });
 
@@ -70,6 +72,8 @@ describe('Mocked: POST /api/meetups/:meetupId/recommendations/from-places', () =
     const res = await generate(meetup.id, organizer.id);
 
     expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: 'This meetup already has recommendations' });
+    expect(await RecommendationModel.countDocuments({ meetupId: meetup.id })).toBe(0);
     expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
   });
 });
@@ -121,6 +125,42 @@ async function setupThreeMembers() {
 
 // Interface POST /api/meetups/:meetupId/recommendations/from-places, GET /api/meetups/:meetupId/recommendations
 describe('Mocked: fairness-ranked recommendations end to end', () => {
+  // Input: two organizer requests begin while SETUP; both wait at the Routes boundary.
+  // Mock: release both successful route responses together after both requests arrive.
+  // Expected: one 201, one exact 409; one stored recommendation and one pair of success events.
+  test('concurrent HTTP generations persist and announce exactly one winner', async () => {
+    const { a, meetup } = await setupThreeMembers();
+    const events: { room: string; event: string; payload: unknown }[] = [];
+    setTransport((room, event, payload) => events.push({ room, event, payload }));
+    let entered = 0;
+    let bothEntered!: () => void;
+    let release!: () => void;
+    const waiting = new Promise<void>(resolve => { bothEntered = resolve; });
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    jest.spyOn(routesClient, 'travelSeconds').mockImplementation(async (origins, destinations) => {
+      entered += 1;
+      if (entered === 2) bothEntered();
+      await gate;
+      return origins.map(() => destinations.map(() => 600));
+    });
+    const requests = [generate(meetup.id, a.id).then(result => result), generate(meetup.id, a.id).then(result => result)];
+    try { await waiting; } finally { release(); }
+    const results = await Promise.all(requests);
+    expect(results.map(result => result.status).sort()).toEqual([201, 409]);
+    const rejected = results.find(result => result.status === 409)!;
+    expect(rejected.body).toEqual({ error: 'Recommendations can only be generated while the meetup is in SETUP' });
+    const accepted = results.find(result => result.status === 201)!;
+    const stored = await RecommendationModel.findOne({ meetupId: meetup.id }).orFail();
+    expect(await RecommendationModel.countDocuments({ meetupId: meetup.id })).toBe(1);
+    expect(stored.id).toBe(accepted.body.id);
+    expect(stored.candidates.map(candidate => candidate.placeId)).toEqual(accepted.body.candidates.map((candidate: { placeId: string }) => candidate.placeId));
+    expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('VOTING');
+    expect(events).toEqual([
+      { room: `meetup:${meetup.id}`, event: 'recommendations:ready', payload: { meetupId: meetup.id } },
+      { room: `meetup:${meetup.id}`, event: 'meetup:status', payload: { meetupId: meetup.id, status: 'VOTING' } },
+    ]);
+  });
+
   // Mocked behavior: Google returns 4 places; travel times as in SPREAD_MINUTES; nobody has Fair Credit
   // Input: organizer a generates, then member b loads the recommendations
   // Expected status code: 201; 200

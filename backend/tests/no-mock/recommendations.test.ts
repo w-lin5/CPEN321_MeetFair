@@ -3,6 +3,7 @@ import request, { type Test } from 'supertest';
 import { createApp } from '../../src/app';
 import { setTransport } from '../../src/realtime/publisher';
 import { recommendationService } from '../../src/recommendation/recommendation.service';
+import { RecommendationModel } from '../../src/recommendation/models';
 import { MeetupModel } from '../../src/users-groups/models';
 import { bearer } from '../helpers/auth';
 import { clearDb, startDb, stopDb } from '../helpers/db';
@@ -58,8 +59,9 @@ describe('Unmocked: server-selected recommendation persistence', () => {
   // Expected output: None
   test('rejects non-organizers and missing meetups', async () => {
     const { member, meetup } = await setup();
-    await expect(recommendationService.generate(meetup.id, member.id, CANDIDATES)).rejects.toMatchObject({ status: 403 });
-    await expect(recommendationService.generate(MISSING_ID, member.id, CANDIDATES)).rejects.toMatchObject({ status: 404 });
+    await expect(recommendationService.generate(meetup.id, member.id, CANDIDATES)).rejects.toMatchObject({ status: 403, message: 'Only the meetup organizer can generate recommendations' });
+    await expect(recommendationService.generate(MISSING_ID, member.id, CANDIDATES)).rejects.toMatchObject({ status: 404, message: 'Meetup not found' });
+    expect(await RecommendationModel.countDocuments()).toBe(0);
     expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
   });
 
@@ -68,8 +70,13 @@ describe('Unmocked: server-selected recommendation persistence', () => {
   // Expected output: None
   test('rejects a second generation', async () => {
     const { organizer, meetup } = await setup();
-    await recommendationService.generate(meetup.id, organizer.id, CANDIDATES);
-    await expect(recommendationService.generate(meetup.id, organizer.id, CANDIDATES)).rejects.toMatchObject({ status: 409 });
+    const original = await recommendationService.generate(meetup.id, organizer.id, CANDIDATES);
+    await expect(recommendationService.generate(meetup.id, organizer.id, CANDIDATES)).rejects.toMatchObject({
+      status: 409, message: 'Recommendations can only be generated while the meetup is in SETUP',
+    });
+    expect(await RecommendationModel.countDocuments({ meetupId: meetup.id })).toBe(1);
+    expect((await RecommendationModel.findOne({ meetupId: meetup.id }).orFail()).id).toBe(original.id);
+    expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('VOTING');
   });
 });
 
@@ -98,6 +105,8 @@ function rejectionTests(action: string): void {
     const unknownMeetup = await post(MISSING_ID, organizer.id);
     expect(unknownMeetup.status).toBe(404);
     expect(unknownMeetup.body).toEqual({ error: 'Meetup not found' });
+    expect(await RecommendationModel.countDocuments()).toBe(0);
+    expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
   });
 
   // Input: group member who is not the organizer; user outside the group
@@ -126,6 +135,8 @@ function rejectionTests(action: string): void {
     const result = await post(meetup.id, organizer.id);
     expect(result.status).toBe(409);
     expect(result.body).toEqual({ error: 'Places can only be searched while the meetup is in SETUP' });
+    expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('VOTING');
+    expect(await RecommendationModel.countDocuments({ meetupId: meetup.id })).toBe(1);
   });
 
   // Input: organizer when nobody has submitted details; organizer when only another member has
@@ -165,7 +176,7 @@ describe('Unmocked: recommendationService.getByMeetupId', () => {
     const voting = await createVotingMeetup(group.id, organizer.id, [organizer.id]);
     const found = await recommendationService.getByMeetupId(voting.id);
     expect(found.candidates.map(c => c.placeId)).toEqual(CANDIDATES.map(c => c.placeId));
-    await expect(recommendationService.getByMeetupId(meetup.id)).rejects.toMatchObject({ status: 404 });
+    await expect(recommendationService.getByMeetupId(meetup.id)).rejects.toMatchObject({ status: 404, message: 'No recommendations for this meetup yet' });
   });
 });
 
@@ -195,7 +206,13 @@ describe('Unmocked: GET /api/meetups/:meetupId/recommendations', () => {
       .get(`/api/meetups/${meetup.id}/recommendations`)
       .set('Authorization', bearer(userId));
 
-    expect((await get(organizer.id)).status).toBe(404);
-    expect((await get(outsider.id)).status).toBe(403);
+    const missing = await get(organizer.id);
+    expect(missing.status).toBe(404);
+    expect(missing.body).toEqual({ error: 'No recommendations for this meetup yet' });
+    const denied = await get(outsider.id);
+    expect(denied.status).toBe(403);
+    expect(denied.body).toEqual({ error: 'Not a member of this group' });
+    expect(await RecommendationModel.countDocuments({ meetupId: meetup.id })).toBe(0);
+    expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
   });
 });
