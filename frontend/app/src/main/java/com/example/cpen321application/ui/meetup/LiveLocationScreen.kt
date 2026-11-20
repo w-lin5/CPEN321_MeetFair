@@ -76,6 +76,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.channels.Channel
+
+private const val TRIP_REFRESH_INTERVAL_MS = 2_000L
+private const val TRIP_POLL_INTERVAL_MS = 15_000L
 
 /** Meetup, member trips and transient UI state of the live-location screen, plus the calls that refresh them. */
 private class LiveTripsState(
@@ -84,6 +88,15 @@ private class LiveTripsState(
     private val appContext: Context,
 ) {
     private val mutex = Mutex()
+    private val refreshRequests = Channel<Unit>(Channel.CONFLATED)
+    fun requestRefresh() { refreshRequests.trySend(Unit) }
+
+    suspend fun refreshOnChanges() {
+        for (ignored in refreshRequests) {
+            reload()
+            delay(TRIP_REFRESH_INTERVAL_MS)
+        }
+    }
     var meetup by mutableStateOf<Meetup?>(null)
         private set
     var trips by mutableStateOf<List<MeetupTrip>>(emptyList())
@@ -122,7 +135,7 @@ private class LiveTripsState(
     }
 
     suspend fun refreshPeriodically() {
-        while (true) { reload(); delay(15000) }
+        while (true) { requestRefresh(); delay(TRIP_POLL_INTERVAL_MS) }
     }
 
     suspend fun runClock() {
@@ -211,11 +224,13 @@ private fun LiveTripUpdates(container: AppContainer, live: LiveTripsState, onDel
     LaunchedEffect(live.meetupId, lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             live.loadMeetup()
+            launch { live.refreshOnChanges() }
             launch { live.refreshPeriodically() }
             launch { live.runClock() }
             container.realtimeClient.meetupEvents(live.meetupId).collect { event ->
                 when (event) {
-                    MeetupEvent.Joined, MeetupEvent.TripUpdated -> live.reload()
+                    MeetupEvent.Joined -> live.reload()
+                    MeetupEvent.TripUpdated -> live.requestRefresh()
                     is MeetupEvent.Deleted -> {
                         live.stopSharingHere()
                         if (event.notifyParticipant) notify("This meetup has been deleted by its organizer.")

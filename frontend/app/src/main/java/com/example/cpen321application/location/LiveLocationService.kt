@@ -31,6 +31,9 @@ class LiveLocationService : Service(), LocationListener {
     private var sessionTask: Job? = null
     private var latest: Location? = null
     private var meetupId: String? = null
+    private var lastUploaded: Location? = null
+    private var lastUploadMs: Long? = null
+    private var lastStatusCheckMs: Long? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -48,7 +51,7 @@ class LiveLocationService : Service(), LocationListener {
         task = scope.launch {
             while (isActive) {
                 if (!shareOnce(id)) { stopSelf(); break }
-                delay(5000)
+                delay(LocationSharingPolicy.UPDATE_INTERVAL_MS)
             }
         }
         return START_NOT_STICKY
@@ -64,7 +67,8 @@ class LiveLocationService : Service(), LocationListener {
             var requested = false
             for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
                 if (locations.isProviderEnabled(provider)) {
-                    locations.requestLocationUpdates(provider, 5000L, 0f, this, Looper.getMainLooper())
+                    locations.requestLocationUpdates(provider, LocationSharingPolicy.UPDATE_INTERVAL_MS,
+                        LocationSharingPolicy.PROVIDER_MIN_DISTANCE_METERS, this, Looper.getMainLooper())
                     requested = true
                 }
             }
@@ -87,7 +91,12 @@ class LiveLocationService : Service(), LocationListener {
             mutableStatus.value = SharingStatus(message = "Location is off. Turn it on and resume sharing.")
             return false
         }
-        val point = latest?.takeIf { SystemClock.elapsedRealtimeNanos() - it.elapsedRealtimeNanos < 90_000_000_000L }
+        val nowMs = SystemClock.elapsedRealtime()
+        val point = latest?.takeIf { SystemClock.elapsedRealtimeNanos() - it.elapsedRealtimeNanos < LocationSharingPolicy.MAX_FIX_AGE_NANOS }
+        if (point != null && !LocationSharingPolicy.shouldUpload(lastUploadMs, nowMs,
+                lastUploaded?.distanceTo(point) ?: 0f,
+                lastUploaded?.let { point.accuracy < it.accuracy / 2 } ?: false)) return true
+        if (point == null && lastStatusCheckMs?.let { nowMs - it < LocationSharingPolicy.HEARTBEAT_INTERVAL_MS } == true) return true
         val response = if (point == null) container.tripRepository.list(id)
             else container.tripRepository.location(id, point.latitude, point.longitude, point.accuracy)
         return when (response) {
@@ -96,6 +105,8 @@ class LiveLocationService : Service(), LocationListener {
                 response.error.httpCode !in listOf(401, 403, 404, 409)
             }
             is ApiResult.Success -> {
+                lastStatusCheckMs = nowMs
+                if (point != null) { lastUploaded = Location(point); lastUploadMs = nowMs }
                 val keepSharing = point != null || ownTripStillSharing(response.data)
                 if (keepSharing) {
                     mutableStatus.value = SharingStatus(id, if (point == null) "Waiting for a fresh location fix..." else "Sharing your live location")
