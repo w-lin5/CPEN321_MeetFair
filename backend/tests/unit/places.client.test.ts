@@ -1,9 +1,12 @@
 import { searchNearby } from '../../src/integrations/places.client';
+import { freezeDate } from '../helpers/clock';
 import { UpstreamError } from '../../src/common/errors';
 
 const place = {
   id: 'cafe-1', displayName: { text: 'Campus Cafe' }, formattedAddress: 'UBC',
   location: { latitude: 49.26, longitude: -123.25 }, types: ['cafe', 7, 'food'],
+  businessStatus: 'OPERATIONAL', timeZone: { id: 'America/Vancouver' },
+  regularOpeningHours: { periods: [{ open: { day: 0, hour: 0, minute: 0 } }] },
 };
 
 // Interface searchNearby (integrations/places.client)
@@ -12,10 +15,12 @@ describe('Mocked: searchNearby', () => {
   let fetchMock: jest.SpiedFunction<typeof fetch>;
 
   beforeEach(() => {
+    freezeDate(new Date('2025-02-03T20:00:00Z'));
     process.env.GOOGLE_PLACES_API_KEY = 'test-places-secret';
     fetchMock = jest.spyOn(globalThis, 'fetch');
   });
   afterEach(() => {
+    jest.useRealTimers();
     jest.restoreAllMocks();
     if (originalKey === undefined) delete process.env.GOOGLE_PLACES_API_KEY;
     else process.env.GOOGLE_PLACES_API_KEY = originalKey;
@@ -27,7 +32,7 @@ describe('Mocked: searchNearby', () => {
 
   // Mocked behavior: fetch returns 200 with the same place twice
   // Input: center (40.75, -73.98), default types
-  // Expected behavior: one POST to places:searchNearby with the API key, the 5-field mask, includedTypes ["cafe"],
+  // Expected behavior: one POST with identity/location/types plus only the availability fields needed for filtering,
   //   10 results within 10000 m of the center, and an abort signal
   // Expected output: the place once, as { placeId, name, address, location, types } with non-string types dropped
   test('requests only the needed fields and searches cafes around the supplied center', async () => {
@@ -42,7 +47,8 @@ describe('Mocked: searchNearby', () => {
     expect(options?.headers).toEqual({
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': 'test-places-secret',
-      'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.types',
+      'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.types,'
+        + 'places.businessStatus,places.timeZone.id,places.regularOpeningHours.periods,places.currentOpeningHours.periods',
     });
     expect(JSON.parse(String(options?.body))).toEqual({
       includedTypes: ['cafe'], maxResultCount: 10,
@@ -69,6 +75,22 @@ describe('Mocked: searchNearby', () => {
     await searchNearby({ lat: 40, lng: -74 }, ['park', 'library']);
     const options = fetchMock.mock.calls[0]?.[1];
     expect(JSON.parse(String(options?.body)).includedTypes).toEqual(['park', 'library']);
+  });
+
+  test('filters a daytime restaurant at the scheduled 01:03 Vancouver time before returning candidates', async () => {
+    const daytime = { ...place, id: 'closed-restaurant', regularOpeningHours: { periods: [
+      { open: { day: 2, hour: 9 }, close: { day: 2, hour: 22 } },
+    ] } };
+    respond({ places: [daytime, place, { ...place, id: 'unknown-hours', regularOpeningHours: undefined }] });
+    const candidates = await searchNearby({ lat: 49.26, lng: -123.25 }, ['restaurant'], new Date('2025-02-04T09:03:00Z'));
+    expect(candidates.map(candidate => candidate.placeId)).toEqual(['cafe-1']);
+  });
+
+  test('uses the frozen request date for special closures instead of depending on the actual calendar', async () => {
+    respond({ places: [{ ...place, currentOpeningHours: { periods: [] } }] });
+    // Within seven days of the frozen request date: the closure overrides regular 24-hour hours.
+    await expect(searchNearby({ lat: 49.26, lng: -123.25 }, ['cafe'], new Date('2025-02-04T09:03:00Z')))
+      .resolves.toEqual([]);
   });
 
   // Mocked behavior: fetch returns null, {}, a place with latitude 200, and a valid place without an address

@@ -2,6 +2,7 @@ import type { LatLng } from '../common/types';
 import { UpstreamError } from '../common/errors';
 import { tuning } from '../config';
 import type { CandidateInput } from '../recommendation/schemas';
+import { isPlaceOpenAt } from './place-opening-hours';
 
 const SEARCH = {
   radiusMeters: 10000,
@@ -37,10 +38,11 @@ function parsePlace(value: unknown): CandidateInput | undefined {
   };
 }
 
-/** Places matching any included type within 10 km of the supplied group center. */
-export async function searchNearby(center: LatLng, includedTypes: readonly string[] = ['cafe']): Promise<CandidateInput[]> {
+/** Matching places within 10 km, confirmed open at the scheduled instant using venue-local hours. */
+export async function searchNearby(center: LatLng, includedTypes: readonly string[] = ['cafe'], scheduledAt = new Date()): Promise<CandidateInput[]> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) throw new Error('Missing required env var GOOGLE_PLACES_API_KEY');
+  const requestedAt = new Date();
 
   try {
     const response = await fetch(
@@ -51,7 +53,8 @@ export async function searchNearby(center: LatLng, includedTypes: readonly strin
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': apiKey,
         'X-Goog-FieldMask':
-          'places.id,places.displayName,places.formattedAddress,places.location,places.types',
+          'places.id,places.displayName,places.formattedAddress,places.location,places.types,'
+          + 'places.businessStatus,places.timeZone.id,places.regularOpeningHours.periods,places.currentOpeningHours.periods',
       },
       body: JSON.stringify({
         includedTypes,
@@ -81,7 +84,7 @@ export async function searchNearby(center: LatLng, includedTypes: readonly strin
     const candidates = new Map<string, CandidateInput>();
     for (const value of places) {
       const place = parsePlace(value);
-      if (place && !candidates.has(place.placeId)) candidates.set(place.placeId, place);
+      if (place && isPlaceOpenAt(value, scheduledAt, requestedAt) && !candidates.has(place.placeId)) candidates.set(place.placeId, place);
     }
     return [...candidates.values()];
   } catch {

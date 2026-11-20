@@ -17,6 +17,8 @@ jest.mock('../../src/recommendation/recommendation.service');
 
 const organizerId = '507f1f77bcf86cd799439011';
 const meetupId = '507f1f77bcf86cd799439012';
+// A service mock fixture used only to assert forwarding; no creation-time validation runs here.
+const scheduledAt = new Date('2025-02-04T09:03:00Z');
 const searchMock = jest.mocked(searchNearby);
 const travelMock = jest.mocked(travelSeconds);
 const balancesMock = jest.mocked(fairCreditService.getBalances);
@@ -24,7 +26,7 @@ const memberMock = jest.mocked(meetupService.getForMember);
 
 beforeEach(() => {
   jest.resetAllMocks();
-  memberMock.mockResolvedValue({ organizerId, status: 'SETUP', participants: [{ userId: organizerId, preferences: [], startLocation: { lat: 49.2, lng: -123.1 } }, { userId: 'other', preferences: ['FOOD'], startLocation: { lat: 49.4, lng: -123.3 } }] } as unknown as Awaited<ReturnType<typeof meetupService.getForMember>>);
+  memberMock.mockResolvedValue({ scheduledAt, organizerId, status: 'SETUP', participants: [{ userId: organizerId, preferences: [], startLocation: { lat: 49.2, lng: -123.1 } }, { userId: 'other', preferences: ['FOOD'], startLocation: { lat: 49.4, lng: -123.3 } }] } as unknown as Awaited<ReturnType<typeof meetupService.getForMember>>);
   searchMock.mockResolvedValue([]);
 });
 
@@ -49,6 +51,7 @@ describe('Mocked: POST /api/meetups/:meetupId/places/search', () => {
     expect(searchMock).toHaveBeenCalledTimes(1);
     expect(searchMock.mock.calls[0]?.[0].lat).toBeCloseTo(49.3);
     expect(searchMock.mock.calls[0]?.[0].lng).toBeCloseTo(-123.2);
+    expect(searchMock.mock.calls[0]?.[2]).toBe(scheduledAt);
     expect(meetupService.transitionStatus).not.toHaveBeenCalled();
   });
 
@@ -56,11 +59,11 @@ describe('Mocked: POST /api/meetups/:meetupId/places/search', () => {
   // Input: organizer searches
   // Expected status code: 200
   // Expected behavior: the empty result is reported, not treated as an error
-  // Expected output: { candidates: [], message: "No nearby places found." }
+  // Expected output: { candidates: [], message: "No nearby places could be confirmed open at the meetup time." }
   test('returns a clear empty-result message', async () => {
     const res = await search();
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ candidates: [], message: 'No nearby places found.' });
+    expect(res.body).toEqual({ candidates: [], message: 'No nearby places could be confirmed open at the meetup time.' });
   });
 
   // Mocked behavior: getForMember returns a member (COFFEE, 40/-74) and the organizer (OUTDOORS + FOOD, 42/-72)
@@ -69,12 +72,12 @@ describe('Mocked: POST /api/meetups/:meetupId/places/search', () => {
   // Expected behavior: Google is called with center (41, -73) and every participant's types ["cafe", "park", "restaurant"]
   // Expected output: None
   test('searches every participant\'s preferences around every submitted location', async () => {
-    memberMock.mockResolvedValue({ organizerId, status: 'SETUP', participants: [
+    memberMock.mockResolvedValue({ scheduledAt, organizerId, status: 'SETUP', participants: [
       { userId: 'other', preferences: ['COFFEE'], startLocation: { lat: 40, lng: -74 } },
       { userId: organizerId, preferences: ['OUTDOORS', 'FOOD'], startLocation: { lat: 42, lng: -72 } },
     ] } as unknown as Awaited<ReturnType<typeof meetupService.getForMember>>);
     expect((await search()).status).toBe(200);
-    expect(searchMock).toHaveBeenCalledWith({ lat: 41, lng: -73 }, ['cafe', 'park', 'restaurant']);
+    expect(searchMock).toHaveBeenCalledWith({ lat: 41, lng: -73 }, ['cafe', 'park', 'restaurant'], scheduledAt);
   });
 
   // Mocked behavior: getForMember returns a meetup where only a non-organizer member submitted details
@@ -83,7 +86,7 @@ describe('Mocked: POST /api/meetups/:meetupId/places/search', () => {
   // Expected behavior: Google is not called
   // Expected output: error mentioning that the organizer must submit
   test('requires organizer participation even when another member submitted', async () => {
-    memberMock.mockResolvedValue({ organizerId, status: 'SETUP', participants: [
+    memberMock.mockResolvedValue({ scheduledAt, organizerId, status: 'SETUP', participants: [
       { userId: 'other', preferences: ['FOOD'], startLocation: { lat: 40, lng: -74 } },
     ] } as unknown as Awaited<ReturnType<typeof meetupService.getForMember>>);
     const res = await search();
@@ -98,11 +101,11 @@ describe('Mocked: POST /api/meetups/:meetupId/places/search', () => {
   // Expected behavior: Google is called at exactly (0, 0) with the default ["cafe"] type
   // Expected output: None
   test('a single participant searches around their exact chosen location', async () => {
-    memberMock.mockResolvedValue({ organizerId, status: 'SETUP', participants: [
+    memberMock.mockResolvedValue({ scheduledAt, organizerId, status: 'SETUP', participants: [
       { userId: organizerId, preferences: [], startLocation: { lat: 0, lng: 0 } },
     ] } as unknown as Awaited<ReturnType<typeof meetupService.getForMember>>);
     expect((await search()).status).toBe(200);
-    expect(searchMock).toHaveBeenCalledWith({ lat: 0, lng: 0 }, ['cafe']);
+    expect(searchMock).toHaveBeenCalledWith({ lat: 0, lng: 0 }, ['cafe'], scheduledAt);
   });
 
   // Mocked behavior: getForMember returns a SETUP meetup with the organizer and one other participant; searchNearby returns []
@@ -153,7 +156,7 @@ describe('Mocked: POST /api/meetups/:meetupId/places/search', () => {
   // Expected behavior: Google is not called
   // Expected output: None
   test.each(['VOTING', 'FINALIZED', 'SETTLED'])('rejects status %s', async (status) => {
-    memberMock.mockResolvedValue({ organizerId, status } as unknown as Awaited<ReturnType<typeof meetupService.getForMember>>);
+    memberMock.mockResolvedValue({ scheduledAt, organizerId, status } as unknown as Awaited<ReturnType<typeof meetupService.getForMember>>);
     expect((await search()).status).toBe(409);
     expect(searchMock).not.toHaveBeenCalled();
   });
@@ -184,7 +187,7 @@ describe('Mocked: POST /api/meetups/:meetupId/recommendations/from-places', () =
     { participants: [{ startLocation: { lat: 91, lng: 0 } }] },
     { participants: [{ startLocation: { lat: 0, lng: Number.NaN } }] },
   ])('rejects missing or invalid member locations before calling Google: %j', async ({ participants }) => {
-    memberMock.mockResolvedValue({ organizerId, status: 'SETUP', participants } as unknown as Awaited<ReturnType<typeof meetupService.getForMember>>);
+    memberMock.mockResolvedValue({ scheduledAt, organizerId, status: 'SETUP', participants } as unknown as Awaited<ReturnType<typeof meetupService.getForMember>>);
     const res = await request(createApp())
       .post(`/api/meetups/${meetupId}/recommendations/from-places`)
       .set('Authorization', bearer(organizerId));
@@ -203,7 +206,7 @@ describe('Mocked: POST /api/meetups/:meetupId/recommendations/from-places', () =
   // Expected output: candidates b, c, d, best first, each with its score breakdown and per-member travel
   test('ranks Google places by score and generates the best three', async () => {
     const groupId = '507f1f77bcf86cd799439014';
-    memberMock.mockResolvedValue({ organizerId, groupId, status: 'SETUP', participants: [
+    memberMock.mockResolvedValue({ scheduledAt, organizerId, groupId, status: 'SETUP', participants: [
       { userId: organizerId, travelMode: 'WALK', preferences: [], startLocation: { lat: 49.2, lng: -123.1 } },
       { userId: 'other', travelMode: 'DRIVE', preferences: [], startLocation: { lat: 49.4, lng: -123.3 } },
     ] } as unknown as Awaited<ReturnType<typeof meetupService.getForMember>>);
@@ -288,7 +291,7 @@ describe('Mocked: POST /api/meetups/:meetupId/recommendations/from-places', () =
       .post(`/api/meetups/${meetupId}/recommendations/from-places`)
       .set('Authorization', bearer(organizerId));
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain('At least 3');
+    expect(res.body.error).toContain('Fewer than 3 nearby places could be confirmed open at the meetup time');
     expect(recommendationService.generate).not.toHaveBeenCalled();
     expect(meetupService.transitionStatus).not.toHaveBeenCalled();
   });

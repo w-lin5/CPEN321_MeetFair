@@ -8,6 +8,7 @@
 | 2026-11-04 | 3.1-3.7, 4.1-4.7 | CP2: updated requirements, use cases, APIs, and architecture for group management, meetup scheduling and participation, Places/Routes recommendations, weighted voting, Fair Credit settlement, and live-trip tracking; clarified validation, permissions, privacy, refresh, notifications, and edge cases; added approximate screen mock-ups; documented the `settlements` collection; updated the dependency and sequence diagrams; and fixed a typo in feature 5. |
 | 2026-11-15 | 3.1, 3.5, 4.1, 4.6 | Addressed TA feedback: kept refresh and notifications under usability design rather than the feature list, selected Create Group as formal use case 2 with its corresponding sequence diagram, and removed Health Check from the business component decomposition. |
 | 2026-11-15 | 3.7, 4.7 | Replaced the open-ended accessibility validation plan with a viewport/font-scale matrix, TalkBack workflows and explicit pass/fail criteria. |
+| 2026-11-18 | 3.1, 3.5, 4.3 | Added venue-local opening-hours filtering before recommendation ranking, clear handling of insufficient confirmed-open venues and the Google field/billing implications. |
 ---
 
 ## 2. Project Description
@@ -22,7 +23,7 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
 1. **Sign in with Google**: Users sign in with their Google account. The back end verifies the Google ID token and issues a MeetFair session that lasts 7 days or until the user signs out.
 2. **Groups and meetups**: Any user can create a group and invite others with its 6-character invite code. Any member can create a meetup with a title and a future time selected using a calendar followed by hour and minute wheels. Joining a group does not automatically join its meetups: a member participates by submitting their starting location, travel mode (walk, transit or drive) and preferences. Starting locations are selected on a map rather than entered as coordinates. Members can leave eligible meetups or groups; organizers can remove eligible members and delete the groups or meetups they manage, with confirmation before deletion.
-3. **Fair spot recommendation**: The back end collects candidate places (Google Places API), gets each member's travel time to each candidate (Google Routes API), then scores every candidate with our own fairness and preference algorithm and returns the top 3. Voting does not start if fewer than 3 usable places are found.
+3. **Fair spot recommendation**: The back end collects candidate places (Google Places API), excludes businesses that are not operational or cannot be confirmed open at the scheduled meetup time in the venue's timezone, gets each member's travel time to each remaining candidate (Google Routes API), then scores every candidate with our own fairness and preference algorithm and returns the top 3. Voting does not start if fewer than 3 usable places are found.
 4. **Weighted voting**: Members vote on the top 3 and lock their vote. A locked vote is weighted by the member's Fair Credit in the group (how much more than the group average they travelled in past meetups): 1 + 0.1 per 30 minutes of credit, between 1 and 1.5. Votes appear live; the organizer finalizes the vote, and each member can add the meetup at the winning place to their own Google Calendar.
 5. **Live commute tracking**: From the scheduled meetup time, participants tap "I am leaving" and share live location; the group sees who is on the way. The commute ends when they tap "I arrived", which records their actual commute time.
 
@@ -53,7 +54,7 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 3. **Join Group**: A member uses a code to associate their account with an existing group.
 4. **Enter Start Location & Preferences**: A member submits their start location, travel mode and meetup preferences for a meetup in SETUP. The supported preference options are `COFFEE`, `FOOD`, `OUTDOORS` and `SOCIAL`. The map supports panning, zooming, tapping a location or named place, and dragging the marker. Confirming applies the position; cancelling preserves the previous selection. A place name or resolved address is displayed when available. Submitting or changing details updates connected meetup pages without requiring manual refresh.
 5. **Leave Meetup**: A participant may leave only while the meetup is in SETUP. After confirmation, their participation details are removed and are no longer available to subsequent place generation or voting. Connected meetup pages refresh silently; no Snackbar is shown for leaving.
-6. **Leave Group**: A member other than the group organizer may leave unless a meetup they have joined is in VOTING. Unrelated voting meetups do not block leaving; joined meetups in FINALIZED or SETTLED do not block it either. After confirmation, membership and participation details in SETUP meetups are removed, while completed voting history is retained. Leaving does not display Snackbars to the departing member or others.
+6. **Leave Group**: A member other than the group organizer may leave unless a meetup they have joined is in VOTING. Unrelated voting meetups do not block leaving; joined meetups in FINALIZED or SETTLED do not block it either. After confirmation, membership and participation details in SETUP meetups are removed, while completed voting history is retained. Any ACTIVE trips in this group, including paused sharing, become CANCELLED and their latest locations are cleared. Cancellation does not record an arrival or a completed commute duration; settlement uses the existing estimated travel-time fallback for these participants. Previously completed ARRIVED trips retain their actual durations. A cancelled trip cannot be resumed after rejoining. Leaving does not display Snackbars to the departing member or others.
 7. **Remove Member**: Only the group organizer can remove another member. Removal is blocked if that member submitted details for any meetup in VOTING or FINALIZED; those meetups must first reach SETTLED. Otherwise, after confirmation, the system removes membership and that member's participation entries and votes within the group. Unrelated
 8. **Delete Meetup**: Only the meetup organizer can delete the meetup, in any status. A confirmation dialog includes an additional warning when the meetup is in VOTING. The system removes the meetup, its recommendations and votes. Existing Google Calendar events are not removed.
 9. **Delete Group**: Only the group organizer can delete the group, in any status. A confirmation dialog includes an additional warning if any meetup in the group is in VOTING. The system removes the group and its associated meetup data. Connected group members receive a deletion notice, and deleted pages are closed or refreshed.
@@ -149,7 +150,7 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
 1. The organizer opens a meetup in SETUP and selects "Start voting".
 2. The system loads participants' starting locations, travel modes, preferences, and group-specific Fair Credit.
-3. The system searches for suitable candidate places using Google Places.
+3. The system searches for suitable candidate places using Google Places and filters them by operational status and opening hours at the scheduled meetup instant in each venue's timezone. When available, dated current hours take priority within Google's seven-day window; otherwise the regular weekly schedule is used. Missing or invalid availability data is excluded.
 4. The system obtains estimated travel times for the participants and candidates using Google Routes.
 5. The system evaluates feasible candidates using the fairness and preference scoring rules.
 6. The system selects the three highest-ranked candidates.
@@ -174,8 +175,8 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 - 2c. A participant's starting location is invalid.
   - 2c1. The system displays "A member has an invalid starting location. Please submit it again." and does not generate recommendations.
 
-- 3a. The place search returns fewer than three places.
-  - 3a1. The system displays "Not enough nearby places found. At least 3 are needed to start voting."
+- 3a. Fewer than three nearby places can be confirmed open at the meetup time.
+  - 3a1. The system displays "Fewer than 3 nearby places could be confirmed open at the meetup time. Try a different time, starting location or preference."
   - 3a2. The meetup remains in SETUP so participants can revise their inputs.
 
 - 3b. Google Places fails.
@@ -411,7 +412,7 @@ The following mock-ups are visual references for selected group and meetup scree
     - **Purpose**: Owns the `trips` collection: each participant's commute timing and latest shared location for a finalized meetup. It stores only the latest coordinate, which is cleared when sharing stops. Locations are sent over REST, so every update and every read goes through the session and membership checks.
     - **Interfaces**:
         1. `POST /api/meetups/:meetupId/trip/start` -> `200 Trip`
-            - **Purpose**: Starts the caller's trip, or resumes sharing on an active one; the server sets the start time once. Allowed for participants of a FINALIZED meetup from its scheduled time.
+            - **Purpose**: Starts the caller's trip, or resumes sharing on an active one; the server sets the start time once. Allowed for participants of a FINALIZED meetup from its scheduled time. A trip cancelled by leaving the group cannot be restarted, even after rejoining.
         2. `PUT /api/meetups/:meetupId/trip/location` — body `{ lat: Number, lng: Number, accuracyM: Number }` -> `200 Trip`
             - **Purpose**: Saves the caller's latest position while their sharing is active.
         3. `POST /api/meetups/:meetupId/trip/arrive` -> `200 Trip`
@@ -421,7 +422,7 @@ The following mock-ups are visual references for selected group and meetup scree
         5. `GET /api/meetups/:meetupId/trips` -> `200 List<Trip>`
             - **Purpose**: Lists the meetup's trips for group members, with a location only for members who are actively sharing.
         6. `POST /api/meetups/:meetupId/settle` -> `200 Meetup`
-            - **Purpose**: Meetup organizer only; settles Fair Credit after the finalized meetup time has arrived and all started trips have ended. Uses tracked commute durations when available and stored or calculated travel estimates otherwise, saves those durations as a settlement snapshot so a retry uses the same values, then moves the meetup to SETTLED. Repeated successful requests are harmless.
+            - **Purpose**: Meetup organizer only; settles Fair Credit after the finalized meetup time has arrived and all started trips have ended. Before checking active trips, it cancels legacy ACTIVE trips whose users are no longer group members, preventing an unreachable arrival action from blocking settlement. Current members' ACTIVE trips still block settlement, including paused sharing. Uses tracked commute durations when available and stored or calculated travel estimates otherwise, saves those durations as a settlement snapshot so a retry uses the same values, then moves the meetup to SETTLED. Repeated successful requests are harmless.
 
 ### **4.2. Databases**
 
@@ -434,6 +435,7 @@ The following mock-ups are visual references for selected group and meetup scree
     - **Purpose**: Signs users in. The Android Credential Manager returns a Google ID token, which the back end verifies with `google-auth-library`. The Identity `AuthorizationClient` also gives the app a short-lived `calendar.events` access token. We use Google because every target user has a Google account and we need the same account for Google Calendar.
 2. **Google Maps Platform (Places API (New), Routes API)**
     - **Purpose**: Nearby Search finds candidate places that match the meetup type; Routes `computeRouteMatrix` returns every member's travel time to every candidate in one batched request per travel mode. It provides travel times for all three modes, including transit.
+    - **Opening-hours filtering**: The Places field mask additionally requests business status, timezone ID, and regular/current opening periods. The backend checks the meetup's stored instant in the place-local timezone, including overnight periods and exclusive closing times; it does not substitute `openNow` for the scheduled time. Opening-hours fields trigger the [Nearby Search Enterprise SKU](https://developers.google.com/maps/documentation/places/web-service/nearby-search). Availability is based on Google's published data, not a guarantee of actual access. Dates beyond the current-hours window use the regular schedule and cannot account for unpublished future exceptions. Previously stored recommendations are not automatically regenerated by this change.
 3. **Google Calendar API**
     - **Purpose**: `events.insert` adds the finalized meetup to the member's own primary calendar, using the member's token, so MeetFair never needs calendar credentials of its own.
 4. **Google Maps SDK for Android and Android Geocoder**

@@ -40,7 +40,7 @@ async function findPlaces(meetupId: string, userId: string) {
   }
   // Every participant's categories, so the scoring has places that can satisfy each of them
   const includedTypes = placeTypesForPreferences(meetup.participants.flatMap(participant => participant.preferences));
-  const candidates = await searchNearby(center, includedTypes);
+  const candidates = await searchNearby(center, includedTypes, meetup.scheduledAt);
   return { meetup, members, candidates };
 }
 
@@ -49,7 +49,7 @@ async function search(meetupId: string, userId: string) {
   const { candidates } = await findPlaces(meetupId, userId);
   return {
     candidates,
-    message: candidates.length === 0 ? 'No nearby places found.' : null,
+    message: candidates.length === 0 ? 'No nearby places could be confirmed open at the meetup time.' : null,
   };
 }
 
@@ -59,7 +59,9 @@ function notEnoughPlaces(): BadRequest {
 
 async function generate(meetupId: string, userId: string) {
   const { meetup, members, candidates } = await findPlaces(meetupId, userId);
-  if (candidates.length < tuning.recommendationCount) throw notEnoughPlaces();
+  if (candidates.length < tuning.recommendationCount) {
+    throw new BadRequest(`Fewer than ${tuning.recommendationCount} nearby places could be confirmed open at the meetup time. Try a different time, starting location or preference.`);
+  }
 
   const [balances, seconds] = await Promise.all([
     fairCreditService.getBalances(String(meetup.groupId), members.map(member => member.userId)),
