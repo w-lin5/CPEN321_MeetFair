@@ -51,7 +51,7 @@ All mocked recommendation HTTP interface tests now reside in `backend/tests/mock
 
 #### 2.1.2. Commit Hash Where Tests Run
 
-`a298307574df79a49bead9d4145e6b480927c81f`
+Tested backend source revision: `a25c3263efae8e20dc4be53fbd7f6aab29001146`.
 
 #### 2.1.3. Explanation on How to Run the Tests
 
@@ -81,10 +81,10 @@ All mocked recommendation HTTP interface tests now reside in `backend/tests/mock
        ./scripts/run-backend-interface-tests.sh
        ```
 
-   - The script does not run `backend/tests/unit/`, which holds the mocked `places/search` and `from-places` tests. Run them separately:
+   - The script includes the mocked `places/search` and `from-places` interface tests in `backend/tests/mock/`. It does not run pure unit tests in `backend/tests/unit/` or the dedicated NFR suites in `backend/tests/nfr/`. To run every backend test with coverage, execute:
      ```bash
      cd backend
-     npx jest tests/unit
+     npm test -- --runInBand --coverage
      ```
 
 4. **Alternative: Run Manually via npm / Jest**:
@@ -97,7 +97,7 @@ All mocked recommendation HTTP interface tests now reside in `backend/tests/mock
      ```bash
      npm test
      ```
-   - Run only unit tests with mocks:
+   - Run only mocked interface tests:
      ```bash
      npx jest tests/mock --coverage --coverageDirectory=coverage/mock
      ```
@@ -114,12 +114,13 @@ All mocked recommendation HTTP interface tests now reside in `backend/tests/mock
 
 ### 2.2. GitHub Actions Configuration Location
 
-(*not yet implemented*)
-`.github/workflows/backend-tests.yml`
+[.github/workflows/backend-tests.yml](../.github/workflows/backend-tests.yml)
+
+The workflow runs on pushes, pull requests and manual dispatch. It uses Node.js 22, installs dependencies with `npm ci`, runs TypeScript type checking and the backend build, checks OpenSSL availability for TLS tests, and runs the complete Jest suite with `npm test -- --ci --runInBand`.
 
 ### 2.3. Jest Coverage Report Screenshots With Mocks
 
-![Coverage with mocks](images/Coverage_With_Mocks.png)
+![Coverage with mocks](images/Coverage_With_Mocks1.png)
 
 ### 2.4. Jest Coverage Report Screenshots Without Mocks
 
