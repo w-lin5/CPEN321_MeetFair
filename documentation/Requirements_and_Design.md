@@ -9,6 +9,7 @@
 | 2026-11-15 | 3.1, 3.5, 4.1, 4.6 | Addressed TA feedback: kept refresh and notifications under usability design rather than the feature list, selected Create Group as formal use case 2 with its corresponding sequence diagram, and removed Health Check from the business component decomposition. |
 | 2026-11-15 | 3.7, 4.7 | Replaced the open-ended accessibility validation plan with a viewport/font-scale matrix, TalkBack workflows and explicit pass/fail criteria. |
 | 2026-11-18 | 3.1, 3.5, 4.3 | Added venue-local opening-hours filtering before recommendation ranking, clear handling of insufficient confirmed-open venues and the Google field/billing implications. |
+| 2026-11-19 | 4.5 | Addressed TA feedback on the dependency diagram: removed the two-way Recommendation Engine / Voting & Fairness arrow by showing the Voting and Fair Credit modules, added the missing Users & Groups -> Realtime Gateway (Event Publisher) edge, and rearranged the layout to remove most arrow crossings. |
 ---
 
 ## 2. Project Description
@@ -490,7 +491,12 @@ The following mock-ups are visual references for selected group and meetup scree
 
 ![Dependencies diagram](images/Dependency_Diagram.png)
 
-The Mermaid source is [`res/Dependency_Diagram.mmd`](res/Dependency_Diagram.mmd).
+An arrow A -> B means A calls B's interface. No two back-end components depend on each other, so every arrow points one way:
+
+- **Voting & Fairness** is shown as its two modules. **Fair Credit** (balances, ledger, settlement, vote weight) depends only on Users & Groups, and the Recommendation Engine reads balances from it. **Voting** reads the candidates from the Recommendation Engine. So the Recommendation Engine never depends on Voting.
+- **Realtime Gateway** is also shown as its two modules. Users & Groups, the Recommendation Engine, Voting & Fairness and Live Location only call the **Event Publisher**, which has no dependencies. Users & Groups calls it when members leave or are removed, participation is withdrawn, or groups and meetups are deleted. The **Socket.IO server** registers itself with the publisher (`setTransport`) and uses Users & Groups to check room membership, so Users & Groups never depends on the socket layer.
+
+The SVG source is [`res/Dependency_Diagram.svg`](res/Dependency_Diagram.svg).
 
 ### **4.6. Use Case Sequence Diagram (5 Most Major Use Cases)**
 

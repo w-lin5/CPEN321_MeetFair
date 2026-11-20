@@ -7,6 +7,7 @@
 | 2026-11-04 | 2.1-2.4 | CP2 updates: documented the Codacy automated code review results, including the remaining unfixed issues per category and code pattern, with justifications. |
 | 2026-11-19 | 3.3 | Recorded fixes, regression tests and commit references for the two major faults reported by Ledger. |
 | 2026-11-19 | 3.1 | Recorded the review of Ledger, including scores and the two reported faults, from the supplied review report text. |
+| 2026-11-19 | 2.1-2.4 | Updated commit hash, new screenshots, and no more unfixed issues (in CP2, Codacy organization-level policies not correctly synced with repository-level analyzed code patterns)
 
 ---
 
@@ -14,7 +15,7 @@
 
 ### 2.1. Commit Hash Where Codacy Ran
 
-`789779cac6ca121d2a434ce1f6286205c6793b98`
+`007f4557c6db951b38db8e6599a6d03a48c1b761`
 
 ### 2.2. Unfixed Issues per Codacy Category
 
@@ -26,22 +27,7 @@
 
 ### 2.4. Justifications for Unfixed Issues
 
-- **Markdown issues in Section 3 onwards**
-
-  - **Code Patterns:** No empty links (MD042), Emphasis used instead of a heading (MD036)
-  - **Location in Git:**
-    - MD042: [`documentation/Code_Review.md#L53`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/documentation/Code_Review.md#L53), [`documentation/Code_Review.md#L78`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/documentation/Code_Review.md#L78), [`documentation/Code_Review.md#L101`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/documentation/Code_Review.md#L101)
-    - MD036: [`documentation/Code_Review.md#L67`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/documentation/Code_Review.md#L67), [`documentation/Code_Review.md#L92`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/documentation/Code_Review.md#L92)
-  - **Justification:** These issues are in Section 3 (Manual Code Review Results) onwards. The Checkpoint 2 deliverable does not require us to edit those sections, and they are left as provided in the course template version.
-
-- **PowerShell script issues**
-
-  - **Code Patterns:** Avoid Using Write-Host, Use Approved Verbs, Avoid Using Positional Parameters
-  - **Location in Git:**
-    - Avoid Using Write-Host: [`scripts/lib/frontend-instrumented-test-common.ps1#L17`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/lib/frontend-instrumented-test-common.ps1#L17), [`scripts/lib/frontend-instrumented-test-common.ps1#L18`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/lib/frontend-instrumented-test-common.ps1#L18), [`scripts/lib/frontend-instrumented-test-common.ps1#L19`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/lib/frontend-instrumented-test-common.ps1#L19), [`scripts/run-backend-interface-tests.ps1#L33`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-backend-interface-tests.ps1#L33), [`scripts/run-backend-interface-tests.ps1#L34`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-backend-interface-tests.ps1#L34), [`scripts/run-backend-interface-tests.ps1#L35`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-backend-interface-tests.ps1#L35), [`scripts/run-backend-interface-tests.ps1#L52`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-backend-interface-tests.ps1#L52), [`scripts/run-backend-nfr-tests.ps1#L22`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-backend-nfr-tests.ps1#L22), [`scripts/run-backend-nfr-tests.ps1#L23`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-backend-nfr-tests.ps1#L23), [`scripts/run-backend-nfr-tests.ps1#L24`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-backend-nfr-tests.ps1#L24), [`scripts/run-backend-nfr-tests.ps1#L74`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-backend-nfr-tests.ps1#L74), [`scripts/run-backend.ps1#L18`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-backend.ps1#L18), [`scripts/run-backend.ps1#L19`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-backend.ps1#L19), [`scripts/run-backend.ps1#L56`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-backend.ps1#L56), [`scripts/run-frontend.ps1#L26`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-frontend.ps1#L26), [`scripts/run-frontend.ps1#L27`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-frontend.ps1#L27), [`scripts/run-frontend.ps1#L145`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-frontend.ps1#L145)
-    - Use Approved Verbs: [`scripts/lib/frontend-instrumented-test-common.ps1#L21`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/lib/frontend-instrumented-test-common.ps1#L21), [`scripts/lib/frontend-instrumented-test-common.ps1#L46`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/lib/frontend-instrumented-test-common.ps1#L46), [`scripts/lib/frontend-instrumented-test-common.ps1#L84`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/lib/frontend-instrumented-test-common.ps1#L84), [`scripts/lib/frontend-instrumented-test-common.ps1#L93`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/lib/frontend-instrumented-test-common.ps1#L93), [`scripts/lib/frontend-instrumented-test-common.ps1#L111`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/lib/frontend-instrumented-test-common.ps1#L111), [`scripts/run-backend-interface-tests.ps1#L48`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-backend-interface-tests.ps1#L48)
-    - Avoid Using Positional Parameters: [`scripts/run-backend-interface-tests.ps1#L123`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-backend-interface-tests.ps1#L123), [`scripts/run-backend-interface-tests.ps1#L127`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-backend-interface-tests.ps1#L127), [`scripts/run-backend-interface-tests.ps1#L131`](https://github.com/w-lin5/CPEN321_MeetFair/blob/main/scripts/run-backend-interface-tests.ps1#L131)
-  - **Justification:** These scripts were provided by the course in the template repository (the `scripts/` folder is course-owned), so we did not modify them.
+- **No unfixed issues**
 
 ---
 
@@ -50,7 +36,7 @@
 ### 3.1. Review You Performed
 
 - **Peer group reviewed:** Ledger
-- **Commit SHA reviewed:** 761ad4dca5d56e874f47987992abf02ed576d6d1
+- **Commit SHA reviewed:** `01eb5991413990534a6c675b182d452e2bd7445e`
 - **Date the artifacts were exchanged:** 11/04
 - **Review report submitted:** `CP3_Ledger_Review.pdf`
 
