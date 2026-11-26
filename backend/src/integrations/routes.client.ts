@@ -45,7 +45,8 @@ function planRequests(origins: RouteOrigin[], rows: (number | null)[][], destina
   const perRequest = Math.max(1, Math.floor(MATRIX.maxElements / destinationCount));
   const byMode = new Map<TravelMode, MatrixRequest['origins']>();
   origins.forEach(({ location, mode }, index) => {
-    byMode.set(mode, [...(byMode.get(mode) ?? []), { location, row: rows.at(index) ?? [] }]);
+    // rows is created from this same origins array, so every visited index exists.
+    byMode.set(mode, [...(byMode.get(mode) ?? []), { location, row: rows[index]! }]);
   });
   const requests: MatrixRequest[] = [];
   for (const [mode, modeOrigins] of byMode) {
@@ -95,7 +96,8 @@ export async function travelSeconds(origins: RouteOrigin[], destinations: LatLng
     const requests = planRequests(origins, result, destinations.length);
     const responses = await Promise.all(requests.map(request => computeMatrix(apiKey, request, destinations)));
     requests.forEach((request, requestIndex) => {
-      for (const element of responses.at(requestIndex) ?? []) {
+      // Promise.all preserves one validated array response for every planned request.
+      for (const element of responses[requestIndex]!) {
         if (!isRecord(element) || element.condition !== 'ROUTE_EXISTS') continue;
         const originIndex = parseIndex(element.originIndex, request.origins.length);
         const origin = originIndex === null ? undefined : request.origins.at(originIndex);

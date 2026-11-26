@@ -10,8 +10,8 @@ function integer(value: unknown, maximum: number): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= maximum;
 }
 
-function clock(point: unknown): number | undefined {
-  if (!record(point)) return undefined;
+// Both callers validate the point object before reading its clock fields.
+function clock(point: Record<string, unknown>): number | undefined {
   // Protobuf JSON can omit zero-valued hour/minute/day fields.
   const hour = point.hour ?? 0;
   const minute = point.minute ?? 0;

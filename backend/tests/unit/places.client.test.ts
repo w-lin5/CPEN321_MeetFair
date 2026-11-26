@@ -30,6 +30,13 @@ describe('Mocked: searchNearby', () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify(data), { status }));
   }
 
+  test.each([42, 'x'.repeat(301)])('drops invalid or oversized addresses while retaining a valid nearby place: %j', formattedAddress => {
+    respond({ places: [{ ...place, id: 'invalid-address', formattedAddress }, place] });
+    return expect(searchNearby({ lat: 49.26, lng: -123.25 })).resolves.toEqual([
+      expect.objectContaining({ placeId: 'cafe-1', address: 'UBC' }),
+    ]);
+  });
+
   // Mocked behavior: fetch returns 200 with the same place twice
   // Input: center (40.75, -73.98), default types
   // Expected behavior: one POST with identity/location/types plus only the availability fields needed for filtering,

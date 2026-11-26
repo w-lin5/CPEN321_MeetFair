@@ -5,6 +5,7 @@ import {
   isoDate,
   numberInRange,
   objectId,
+  objectList,
   oneOf,
   oneOfMany,
   optionalText,
@@ -14,6 +15,24 @@ import {
 
 const COLORS = ['red', 'green', 'blue'] as const;
 const OBJECT_ID = '507f1f77bcf86cd799439011';
+
+describe('Unmocked: objectList', () => {
+  test('returns fields for exactly the requested number of objects, including an empty list', () => {
+    expect(objectList(fields({ rows: [{ label: 'one' }, { label: 'two' }] }), 'rows', 2))
+      .toEqual([new Map([['label', 'one']]), new Map([['label', 'two']])]);
+    expect(objectList(fields({ rows: [] }), 'rows', 0)).toEqual([]);
+  });
+
+  test.each([undefined, null, {}, 'rows', [], [{}, {}, {}]])('rejects a missing, non-array or wrong-length list: %j', rows => {
+    expect(() => objectList(fields({ rows }), 'rows', 2)).toThrow(
+      expect.objectContaining({ details: ['rows must contain exactly 2 items'] }));
+  });
+
+  test('reports the index of a malformed entry instead of silently dropping it', () => {
+    expect(() => objectList(fields({ rows: [{ label: 'valid' }, null] }), 'rows', 2)).toThrow(
+      expect.objectContaining({ details: ['rows[1] must be an object'] }));
+  });
+});
 
 function f(entries: Record<string, unknown>) {
   return fields(entries);

@@ -132,7 +132,8 @@ function pickWinner(
     return decision.placeId;
   }
   if (manualPick === undefined || !decision.placeIds.includes(manualPick)) {
-    const tiedNames = decision.placeIds.map((placeId) => candidateNames.get(placeId) ?? placeId);
+    // Both decision IDs and names come from the same stored candidate list.
+    const tiedNames = decision.placeIds.map((placeId) => candidateNames.get(placeId)!);
     throw new Conflict(`Tie between candidates ${tiedNames.join(', ')}; pick one of them as the winner`);
   }
   return manualPick;
