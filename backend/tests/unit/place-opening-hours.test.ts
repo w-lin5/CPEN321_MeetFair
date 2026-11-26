@@ -1,4 +1,5 @@
 import { isPlaceOpenAt } from '../../src/integrations/place-opening-hours';
+import { freezeDate } from '../helpers/clock';
 
 const requestedAt = new Date('2025-02-03T20:00:00Z');
 const daytime = {
@@ -11,6 +12,24 @@ const aroundTheClock = { ...daytime, regularOpeningHours: { periods: [{ open: { 
 const openAt = (place: unknown, instant: string) => isPlaceOpenAt(place, new Date(instant), requestedAt);
 
 describe('venue opening hours at the scheduled instant', () => {
+  test.each([null, { open: null }, { open: { day: 2, hour: 9 }, close: null }])('rejects malformed regular periods without inventing opening hours: %j', period => {
+    expect(openAt({ ...daytime, regularOpeningHours: { periods: [period] } }, '2025-02-04T18:00:00Z')).toBe(false);
+  });
+
+  test.each([null, { open: null }, { open: { date: { year: 2025, month: 2, day: 4 } }, close: null }])('rejects malformed dated periods without falling back to a regular schedule: %j', period => {
+    expect(openAt({ ...aroundTheClock, currentOpeningHours: { periods: [period] } }, '2025-02-04T09:03:00Z')).toBe(false);
+  });
+
+  test('accepts the provider always-open marker in current hours', () => {
+    expect(openAt({ ...daytime, currentOpeningHours: { periods: [{ open: { day: 0 } }] } }, '2025-02-04T09:03:00Z')).toBe(true);
+  });
+
+  test('uses the controlled current date when the request date is omitted', () => {
+    freezeDate(requestedAt);
+    try {
+      expect(isPlaceOpenAt({ ...aroundTheClock, currentOpeningHours: { periods: [] } }, new Date('2025-02-04T09:03:00Z'))).toBe(false);
+    } finally { jest.useRealTimers(); }
+  });
   test('regression: 01:03 Vancouver is closed even when the server UTC clock reads 09:03', () => {
     expect(openAt(daytime, '2025-02-04T09:03:00Z')).toBe(false);
   });

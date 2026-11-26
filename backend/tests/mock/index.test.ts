@@ -119,6 +119,25 @@ afterEach(() => {
 
 // Interface: server bootstrap (src/index.ts)
 describe('Mocked: index bootstrap', () => {
+  test('startup preserves its failure status when database cleanup also fails', async () => {
+    const h = boot({ connectDb: jest.fn().mockRejectedValue(new Error('startup failed')),
+      disconnectDb: jest.fn().mockRejectedValue(new Error('cleanup failed')) });
+    await flush();
+    expect(h.listen).not.toHaveBeenCalled();
+    expect(h.disconnectDb).toHaveBeenCalledTimes(1);
+    expect(h.consoleError).toHaveBeenCalledWith('Fatal startup error:', 'startup failed');
+    expect(process.exitCode).toBe(1);
+  });
+
+  test('a rejected Socket.IO shutdown sets a failing exit status instead of an unhandled rejection', async () => {
+    const h = boot();
+    await flush();
+    h.io.close.mockRejectedValueOnce(new Error('adapter shutdown failed'));
+    h.handlers.get('SIGTERM')?.();
+    await flush();
+    expect(h.io.close).toHaveBeenCalledTimes(1);
+    expect(process.exitCode).toBe(1);
+  });
   // Mocked behavior: app, config, DB, Socket.IO gateway, fs, https, process.on and console are fakes; connectDb resolves; fs reports no PEM files
   // Input: normal startup, no certificate files in backend/certs/
   // Expected behavior: DB connected with the configured URI, app listens over plain HTTP on the configured port,

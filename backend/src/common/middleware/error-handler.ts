@@ -6,7 +6,9 @@ import { HttpError, ValidationError } from '../errors';
 export function asyncHandler(handler: (req: Request, res: Response) => Promise<void>): RequestHandler {
   return (req, res, next) => {
     handler(req, res).catch((err: unknown) => {
-      next(err);
+      // Express treats falsy next() values as success; a rejected handler must
+      // still reach the safe 500 handler even when a dependency rejects null.
+      next(err || new Error('Async handler rejected without an error'));
     });
   };
 }

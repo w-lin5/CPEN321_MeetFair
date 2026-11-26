@@ -38,7 +38,7 @@ async function settle(meetupId: string, userId: string) {
       throw new Conflict('Wait for all started trips to arrive before settling Fair Credit');
     }
     const recommendation = await RecommendationModel.findOne({ meetupId });
-    const winner = recommendation?.candidates.find(candidate => candidate.placeId === meetup.winner?.placeId);
+    const winner = recommendation?.candidates.find(candidate => candidate.placeId === meetup.winner!.placeId);
     const inputs: SettlementTrip[] = [];
     const missing = [];
     for (const member of meetup.participants) {
@@ -55,10 +55,13 @@ async function settle(meetupId: string, userId: string) {
     // Older recommendations may not have stored travel estimates.
     if (missing.length) {
       const winnerLocation = meetup.winner.location;
-      if (!winnerLocation) throw new BadRequest('The destination has no valid location');
+      if (!winnerLocation || !Number.isFinite(winnerLocation.lat) || !Number.isFinite(winnerLocation.lng)) {
+        throw new BadRequest('The destination has no valid location');
+      }
       const estimates = await travelSeconds(missing.map(member => ({ location: member.startLocation!, mode: member.travelMode })), [winnerLocation]);
       missing.forEach((member, index) => {
-        const seconds = estimates[index]?.[0];
+        // travelSeconds returns one row per supplied origin, including unreachable routes.
+        const seconds = estimates[index]![0];
         if (seconds == null) throw new Conflict('A participant has no usable travel estimate; ask them to complete a tracked trip');
         inputs.push({ userId: String(member.userId), mode: member.travelMode, actualSeconds: seconds, source: 'ESTIMATED' });
       });

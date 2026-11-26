@@ -13,6 +13,17 @@ function place(placeId: string, types: string[] = []) {
 
 const minutes = (value: number): number => value * 60;
 
+test('equal-score duplicate place IDs keep their input order and associated travel data', () => {
+  const first = { ...place('same-id'), name: 'First provider entry' };
+  const second = { ...place('same-id'), name: 'Second provider entry' };
+  const ranked = rankCandidates([member('a')], [first, second], [[600, 600]]);
+  expect(ranked.map(candidate => candidate.name)).toEqual(['First provider entry', 'Second provider entry']);
+  expect(ranked.map(candidate => candidate.travel)).toEqual([
+    [{ userId: 'a', mode: 'WALK', seconds: 600, normalizedSeconds: 600 }],
+    [{ userId: 'a', mode: 'WALK', seconds: 600, normalizedSeconds: 600 }],
+  ]);
+});
+
 // Interface scorePlace (pure)
 describe('recommendation score formula', () => {
   // Input: burdens [10, 20, 30] minutes, weights [1, 1, 1.5], mismatches [0, 1, 1]

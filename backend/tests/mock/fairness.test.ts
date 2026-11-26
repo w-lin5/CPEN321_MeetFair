@@ -2,9 +2,9 @@ import request from 'supertest';
 
 import { createApp } from '../../src/app';
 import { userService } from '../../src/users-groups/user.service';
-import * as fairCreditRule from '../../src/voting-fairness/fair-credit';
+import { MeetupModel } from '../../src/users-groups/models';
 import { fairCreditService } from '../../src/voting-fairness/fair-credit.service';
-import { FairCreditEntryModel, FairCreditModel } from '../../src/voting-fairness/models';
+import { FairCreditEntryModel, FairCreditModel, SettlementModel } from '../../src/voting-fairness/models';
 import { bearer } from '../helpers/auth';
 import { clearDb, startDb, stopDb } from '../helpers/db';
 import { addMember, createGroup, createMeetup, createUserN } from '../helpers/factories';
@@ -74,6 +74,71 @@ describe('Mocked: fairCreditService.settleMeetup', () => {
     return { group, meetup, trips };
   }
 
+  test('deleting a settled meetup preserves ledger values and renders missing historical names as null', async () => {
+    const { group, meetup, trips } = await setup();
+    await fairCreditService.settleMeetup(group.id, meetup.id, trips);
+    const before = await FairCreditEntryModel.find({ meetupId: meetup.id }).lean();
+    await MeetupModel.deleteOne({ _id: meetup.id });
+    const history = await fairCreditService.getGroupFairness(group.id, trips[0]!.userId);
+    expect(history.ledger).toHaveLength(2);
+    expect(history.ledger.every(entry => entry.meetupTitle === null && entry.placeName === null)).toBe(true);
+    expect(await FairCreditEntryModel.find({ meetupId: meetup.id }).lean()).toEqual(before);
+    expect(history.members.map(member => member.balance)).toEqual([-300, 300]);
+  });
+
+  test.each([null, 'connection lost', {}, { code: 123 }])('a resume ledger write failure propagates without applying balances: %p', async failure => {
+    const { group, meetup, trips } = await setup();
+    jest.spyOn(FairCreditEntryModel, 'updateOne').mockRejectedValueOnce(failure);
+    await expect(fairCreditService.settleMeetup(group.id, meetup.id, trips, true)).rejects.toBe(failure);
+    expect(await FairCreditEntryModel.countDocuments()).toBe(0);
+    expect(await FairCreditModel.countDocuments()).toBe(0);
+  });
+
+  test.each(['ledger', 'balance'] as const)('a committed %s insert followed by a duplicate-key response is safe to resume', async stage => {
+    const { group, meetup, trips } = await setup();
+    const model = stage === 'ledger' ? FairCreditEntryModel : FairCreditModel;
+    // Both model update methods share the updateOne boundary; retain each real write.
+    if (stage === 'ledger') {
+      const original = FairCreditEntryModel.updateOne.bind(FairCreditEntryModel);
+      jest.spyOn(FairCreditEntryModel, 'updateOne').mockImplementationOnce((...args: Parameters<typeof original>) => {
+        const query = original(...args);
+        const execute = query.exec.bind(query);
+        jest.spyOn(query, 'exec').mockImplementationOnce(async () => {
+          await execute(); throw Object.assign(new Error('duplicate ledger'), { code: 11000 });
+        });
+        return query;
+      });
+    } else {
+      const original = FairCreditModel.updateOne.bind(FairCreditModel);
+      jest.spyOn(FairCreditModel, 'updateOne').mockImplementationOnce((...args: Parameters<typeof original>) => {
+        const query = original(...args);
+        const execute = query.exec.bind(query);
+        jest.spyOn(query, 'exec').mockImplementationOnce(async () => {
+          await execute(); throw Object.assign(new Error('duplicate balance'), { code: 11000 });
+        });
+        return query;
+      });
+    }
+    await fairCreditService.settleMeetup(group.id, meetup.id, trips, true);
+    expect(await model.countDocuments()).toBe(2);
+    expect(await fairCreditService.getBalance(trips[0]!.userId, group.id)).toBe(-300);
+    expect(await fairCreditService.getBalance(trips[1]!.userId, group.id)).toBe(300);
+    await fairCreditService.settleMeetup(group.id, meetup.id, trips, true);
+    expect(await FairCreditEntryModel.countDocuments()).toBe(2);
+    expect(await fairCreditService.getBalance(trips[0]!.userId, group.id)).toBe(-300);
+  });
+
+  test.each([null, 'connection lost', {}, { code: 123 }])('a non-duplicate balance failure preserves the ledger for retry: %p', async failure => {
+    const { group, meetup, trips } = await setup();
+    jest.spyOn(FairCreditModel, 'updateOne').mockRejectedValueOnce(failure);
+    await expect(fairCreditService.settleMeetup(group.id, meetup.id, trips, true)).rejects.toBe(failure);
+    expect(await FairCreditEntryModel.countDocuments()).toBe(2);
+    expect(await FairCreditModel.countDocuments()).toBe(0);
+    await fairCreditService.settleMeetup(group.id, meetup.id, trips, true);
+    expect(await FairCreditEntryModel.countDocuments()).toBe(2);
+    expect(await fairCreditService.getBalance(trips[1]!.userId, group.id)).toBe(300);
+  });
+
   // Input: valid settlement
   // Expected behavior: rejects and no balance moves when the ledger cannot be written
   // Mocked behavior: FairCreditEntryModel.insertMany rejects
@@ -103,19 +168,23 @@ describe('Mocked: fairCreditService.settleMeetup', () => {
     });
   });
 
-  // Input: valid settlement
-  // Expected behavior: a credit change for a member without a submitted trip is recorded as ESTIMATED
-  // Mocked behavior: creditChanges returns a change for a member who is not in the trips
-  test('Change without a matching trip defaults to ESTIMATED', async () => {
+  // Input: a stored legacy snapshot without commute provenance.
+  // Expected: real credit calculations preserve its members/durations; unknown provenance
+  // is conservatively recorded as ESTIMATED, and retry cannot apply the balance twice.
+  test('Legacy snapshot without source records estimated provenance without inventing participants', async () => {
     const { group, meetup, trips } = await setup();
-    const extra = await createUserN(3);
-    jest.spyOn(fairCreditRule, 'creditChanges').mockReturnValue([
-      { userId: extra.id, actualSeconds: 600, normalizedBurden: 600, expectedBurden: 600, delta: 0 },
+    await SettlementModel.collection.insertOne({ meetupId: meetup._id, groupId: group._id,
+      trips: trips.map(({ source: _source, ...trip }) => trip) });
+    const snapshot = await SettlementModel.findOne({ meetupId: meetup.id }).orFail();
+    await fairCreditService.settleMeetup(group.id, meetup.id, snapshot.trips, true);
+    const rows = await FairCreditEntryModel.find({ meetupId: meetup.id }).lean();
+    expect(rows.map(row => String(row.userId))).toEqual(trips.map(trip => trip.userId));
+    expect(rows.map(row => ({ source: row.source, seconds: row.actualSeconds }))).toEqual([
+      { source: 'ESTIMATED', seconds: 600 }, { source: 'ESTIMATED', seconds: 1200 },
     ]);
-
-    await fairCreditService.settleMeetup(group.id, meetup.id, trips);
-
-    expect(await FairCreditEntryModel.findOne({ userId: extra.id }).orFail()).toMatchObject({ source: 'ESTIMATED' });
+    await fairCreditService.settleMeetup(group.id, meetup.id, snapshot.trips, true);
+    expect(await FairCreditEntryModel.countDocuments()).toBe(2);
+    expect(await fairCreditService.getBalance(trips[0]!.userId, group.id)).toBe(-300);
   });
 });
 

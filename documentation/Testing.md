@@ -55,6 +55,8 @@ Tested backend source revision: `a25c3263efae8e20dc4be53fbd7f6aab29001146`.
 
 #### 2.1.3. Explanation on How to Run the Tests
 
+For a complete backend run with a strict 100% gate for statements, branches, functions and lines, run `npm run test:coverage` from `backend/`. It uses `jest.coverage.config.js`, inherits the unchanged `src/**/*.ts` collection scope, and writes text, HTML, LCOV and JSON reports under `backend/coverage/`. There are no business-source coverage exclusions or ignore annotations. The interface scripts keep using the base Jest configuration so their intentionally partial mock-only/no-mock-only reports are not required to reach 100% individually.
+
 1. **Clone the Repository**:
    - Open your terminal and clone the repository:
      ```bash
