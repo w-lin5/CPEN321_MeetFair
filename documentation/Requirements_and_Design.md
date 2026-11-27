@@ -7,6 +7,7 @@
 | 2026-10-19 | All Sections | Initial submission for CP1 |
 | 2026-11-04 | 3.1-3.7, 4.1-4.7 | CP2: updated requirements, use cases, APIs, and architecture for group management, meetup scheduling and participation, Places/Routes recommendations, weighted voting, Fair Credit settlement, and live-trip tracking; clarified validation, permissions, privacy, refresh, notifications, and edge cases; added approximate screen mock-ups; documented the `settlements` collection; updated the dependency and sequence diagrams; and fixed a typo in feature 5. |
 | 2026-11-19 | 3.1-3.2, 3.5, 3.7, 4.1, 4.3, 4.5-4.7 | CP3: Addressed TA feedback by moving refresh and notifications to usability design, making Create Group Formal Use Case 2 and updating diagrams, and removing Health Check from the business component decomposition. Replaced the accessibility validation plan with a viewport/font-scale matrix, TalkBack workflows and explicit pass/fail criteria. Added venue-local opening-hours filtering before recommendation ranking, insufficient confirmed-open venue handling and Google field/billing implications |
+| 2026-11-27 | 3.7, 4.7 | M3: Removed Response Time and Usability and Accessibility from the formal NFRs and their design descriptions in response to TA feedback. Retained Security and Access Control and Location Privacy, both covered by the recorded backend NFR tests. |
 ---
 
 ## 2. Project Description
@@ -291,16 +292,6 @@ The following mock-ups are visual references for selected group and meetup scree
     - **Description**: Live location sharing must require the user's explicit action and device permission. Only authorized members of the relevant group may receive location updates. Sharing must stop when the trip ends, and the app must make the sharing state visible to the user.
     - **Justification**: A person's current location is sensitive. Users need control over when it is shared and who can see it.
 
-3. **Response Time**
-    - **Description**: Description: Under normal network conditions, ordinary API requests (loading groups, meetups, and vote totals) should complete within 1 second. After the server accepts a vote, connected members’ screens should show the update within 1 second. The app should acknowledge every user action that triggers work within 0.1 seconds. Operations that take longer, such as recommendation generation, which depends on external Google services, must show visible progress.
-    - **Justification**: Nielsen’s response-time limits, based on human perception, put instantaneous feedback at about 0.1 s, uninterrupted flow of thought at about 1 s, and sustained attention at about 10 s. Members should be able to vote and see results without breaking their flow, and longer operations must not appear frozen.
-    - Reference: Nielsen, J. (1993), "Response Times: The 3 Important Limits," Nielsen Norman Group, <https://www.nngroup.com/articles/response-times-3-important-limits/>
-
-4. **Usability and Accessibility**
-    - **Description**: The Android app should clearly show the current meetup status, the user's selected candidate, whether their vote is locked, and the finalized winner. Important actions and errors must be expressed in text, not only through color. Controls should remain usable with Android's font scaling and accessibility services.
-    - **Acceptance target (not yet verified)**: On the group list, group details, meetup, voting, profile and group fairness screens, test portrait viewports of 360 x 640 dp, 411 x 891 dp and 800 x 1280 dp at font scales 1.0, 1.5 and 2.0 (9 configurations per screen). Every required action must remain reachable by scrolling, with no overlapping controls or clipped action labels. On the 411 x 891 dp viewport at font scale 1.0 with TalkBack enabled, complete voting, vote locking, finalization, Calendar addition and fairness-history navigation without sighted assistance; every actionable control must expose an accessible name and its enabled/disabled state. Pass only when all listed configurations and workflows have zero blocking failures; record failures and screenshots in the testing document.
-    - **Justification**: Users must understand whether their vote will count and be able to complete the main tasks on different devices and with different accessibility needs.
-
 ---
 
 ## 4. Designs Specification
@@ -516,10 +507,3 @@ The Mermaid sources of these diagrams are in [`res/`](res/).
 
 2. [**Location Privacy**](#37-non-functional-requirements)
     - **Implementation**: Request Android location permission only when a participant starts sharing their commute, after a confirmation dialog explains who can see their location. Send location updates over the authenticated REST API, and check group membership for every update and read. Realtime events carry no coordinates. Show when sharing is active with a system notification, stop updates when the trip ends, and store only the latest coordinate plus the data needed to calculate travel time.
-
-3. [**Response Time**](#37-non-functional-requirements)
-    - **Implementation**: Use Socket.IO to push vote totals and meetup status changes to connected members instead of requiring repeated requests. Run network calls outside the Android main thread and show loading or progress states. Google Places and Routes requests run on the back end, and the app shows "Generating places..." while waiting. **Planned**: measure API response times and realtime delivery against the targets in Section 3.7.
-
-4. [**Usability and Accessibility**](#37-non-functional-requirements)
-    - **Implementation**: Show the selected candidate, locked-vote state, current vote totals, meetup status, and winner in text. Display loading and error messages near the relevant action, and ask for confirmation before the organizer finalizes while some participants have not locked their votes. **Planned validation**: run the viewport/font-scale matrix and TalkBack workflows specified in Section 3.7, using the pass/fail procedure in Testing Section 3.2. These are acceptance targets, not a claim that accessibility testing has passed.
-    - **Implemented refresh and feedback**: A shared PullToRefreshBox retains the last displayed content during refresh and supports empty and error states. Participation events reload connected meetup pages. A shared Snackbar host survives navigation and dismisses transient notices automatically. Status notifications are triggered by transitions rather than initial data loading. Meetup-deletion notices are limited to participants, while nonparticipants silently leave invalid pages; group deletion notifies group members. Leaving does not produce Snackbars.
