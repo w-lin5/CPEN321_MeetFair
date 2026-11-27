@@ -320,7 +320,7 @@ Covers formal Use Case 2 (Create Group) and Section 3.4 use cases (Join Group, M
 
 #### 4.2.2. Feature 4: Voting and Fairness (1) ([`VotingTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/VotingTest.kt))
 
-Covers the Vote on a Candidate and Lock Vote use cases.
+Covers the Vote on a Candidate and Lock Vote use case.
 
 - **Expected Behaviors (Automated Single-User):**
 

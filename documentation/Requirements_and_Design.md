@@ -63,11 +63,10 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
 - Use cases for feature 4: Voting and Fairness
 
-1. **Vote on a Candidate**: A member casts a vote for their preferred spot from the top 3 recommendations and may change it; every member sees the tally update live.
-2. **Lock Vote**: A member makes their vote final; it then counts with a weight based on their current Fair Credit.
-3. **Finalize Meetup**: The organizer closes the voting and the system determines the winning location.
-4. **Add Meetup to Google Calendar**: A member adds the finalized meetup at the winning location to their own Google Calendar.
-5. **View Fairness History**: A member checks their profile and, for a specific group, every member's Fair Credit and their own past credit changes.
+1. **Vote on a Candidate and Lock Vote**: A member casts a vote for their preferred spot from the top 3 recommendations, may change it before locking, and makes it final by locking; locked votes count with a weight based on Fair Credit, and every member sees the tally update live.
+2. **Finalize Meetup**: The organizer closes the voting and the system determines the winning location.
+3. **Add Meetup to Google Calendar**: A member adds the finalized meetup at the winning location to their own Google Calendar.
+4. **View Fairness History**: A member checks their profile and, for a specific group, every member's Fair Credit and their own past credit changes.
 
 - Use cases for feature 5: Live Location
 
@@ -76,7 +75,7 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
 ### **3.5. Formal Use Case Specifications (5 Most Major Use Cases)**
 
-#### Use Case 1: Vote on a Candidate
+#### Use Case 1: Vote on a Candidate and Lock Vote
 
 **Description**: A member votes for one of the three candidate places of a meetup and may change the vote until they lock it. A locked vote counts with a weight from the member's Fair Credit, and every member sees the tally update live.
 
@@ -497,8 +496,8 @@ The SVG source is [`res/Dependency_Diagram.svg`](res/Dependency_Diagram.svg).
 
 ### **4.6. Use Case Sequence Diagram (5 Most Major Use Cases)**
 
-1. [**Vote on a Candidate**](#use-case-1-vote-on-a-candidate)\
-![Vote on a Candidate sequence diagram](images/SD_UC1_Vote_on_a_Candidate.png)
+1. [**Vote on a Candidate and Lock Vote**](#use-case-1-vote-on-a-candidate-and-lock-vote)\
+![Vote on a Candidate and Lock Vote sequence diagram](images/SD_UC1_Vote_on_a_Candidate.png)
 2. [**Create Group**](#use-case-2-create-group)\
 ![Create Group sequence diagram](images/SD_UC2_Create_Group.png)
 3. [**Get Recommendations**](#use-case-3-get-recommendations)\
