@@ -7,6 +7,7 @@
 | 2026-10-19 | All Sections | Initial submission for CP1 |
 | 2026-11-04 | 3.1-3.7, 4.1-4.7 | CP2: updated requirements, use cases, APIs, and architecture for group management, meetup scheduling and participation, Places/Routes recommendations, weighted voting, Fair Credit settlement, and live-trip tracking; clarified validation, permissions, privacy, refresh, notifications, and edge cases; added approximate screen mock-ups; documented the `settlements` collection; updated the dependency and sequence diagrams; and fixed a typo in feature 5. |
 | 2026-11-19 | 3.1-3.2, 3.5, 3.7, 4.1, 4.3, 4.5-4.7 | CP3: Addressed TA feedback by moving refresh and notifications to usability design, making Create Group Formal Use Case 2 and updating diagrams, and removing Health Check from the business component decomposition. Replaced the accessibility validation plan with a viewport/font-scale matrix, TalkBack workflows and explicit pass/fail criteria. Added venue-local opening-hours filtering before recommendation ranking, insufficient confirmed-open venue handling and Google field/billing implications |
+| 2026-11-27 | 3.4-3.5 | Clarified that repeated or concurrent settlement requests must not apply Fair Credit changes more than once. |
 ---
 
 ## 2. Project Description
@@ -67,6 +68,7 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 2. **Finalize Meetup**: The organizer closes the voting and the system determines the winning location.
 3. **Add Meetup to Google Calendar**: A member adds the finalized meetup at the winning location to their own Google Calendar.
 4. **View Fairness History**: A member checks their profile and, for a specific group, every member's Fair Credit and their own past credit changes.
+5. **Settle Fair Credit**: After the finalized meetup time has arrived and all current members' trips have ended, the meetup organizer settles Fair Credit. The system uses tracked commute durations when available and stored or calculated travel-time estimates otherwise, saves a settlement snapshot, updates members' balances and history, and marks the meetup SETTLED. A repeated request does not apply credit changes again.
 
 - Use cases for feature 5: Live Location
 
@@ -262,8 +264,8 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 - 6b. A location update fails.
   - 6b1. The system displays "Location update failed. Retrying..." and tries again while the trip is still active.
 
-- 9a. Settlement is requested more than once.
-  - 9a1. The system prevents duplicate Fair Credit changes for the same participant and meetup.
+- 9a. Settlement is requested more than once, including concurrent retries.
+  - 9a1. The system completes settlement without applying duplicate Fair Credit balance or ledger changes for any participant in that meetup.
 
 ### **3.6. Screen Mock-ups**
 

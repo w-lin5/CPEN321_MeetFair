@@ -40,7 +40,7 @@
 | **GET /api/meetups/:meetupId/votes**             | [`backend/tests/no-mock/voting.test.ts`](../backend/tests/no-mock/voting.test.ts)          | [`backend/tests/mock/voting.test.ts`](../backend/tests/mock/voting.test.ts)             | MongoDB Vote Collection (`VoteModel.find`), Recommendation Service (`recommendationService.getByMeetupId`) |
 | **POST /api/meetups/:meetupId/finalize**         | [`backend/tests/no-mock/voting.test.ts`](../backend/tests/no-mock/voting.test.ts)          | [`backend/tests/mock/voting.test.ts`](../backend/tests/mock/voting.test.ts)            | MongoDB Meetup Collection (`MeetupModel.findOneAndUpdate`), Recommendation Service (`recommendationService.getByMeetupId`) |
 | **tally / winner selection** *(internal)*        | [`backend/tests/unit/tally.test.ts`](../backend/tests/unit/tally.test.ts); [`backend/tests/no-mock/voting.test.ts`](../backend/tests/no-mock/voting.test.ts) | N/A | Pure tally and tie-breaking rules; no external dependencies |
-| **POST /api/meetups/:meetupId/settle**            | [`backend/tests/no-mock/settlement.test.ts`](../backend/tests/no-mock/settlement.test.ts) | N/A | Trip and Fair Credit settlement state |
+| **POST /api/meetups/:meetupId/settle**            | [`backend/tests/no-mock/settlement.test.ts`](../backend/tests/no-mock/settlement.test.ts) | N/A | Settlement eligibility, active-trip blocking, repeated and concurrent request idempotency, and recovery after partial failures |
 | **POST /api/meetups/:meetupId/calendar-event**   | [`backend/tests/no-mock/calendar.test.ts`](../backend/tests/no-mock/calendar.test.ts)         | [`backend/tests/mock/calendar.test.ts`](../backend/tests/mock/calendar.test.ts)           | Google Calendar Client (`calendarClient.createEvent`) |
 | **GET /api/users/me/profile**                    | [`backend/tests/no-mock/profile.test.ts`](../backend/tests/no-mock/profile.test.ts)          | [`backend/tests/mock/profile.test.ts`](../backend/tests/mock/profile.test.ts)            | MongoDB Fair Credit Collection (`FairCreditModel.find`), Group Service (`groupService.listForUser`) |
 | **PUT /api/users/me/profile**                    | [`backend/tests/no-mock/profile.test.ts`](../backend/tests/no-mock/profile.test.ts)          | [`backend/tests/mock/profile.test.ts`](../backend/tests/mock/profile.test.ts)            | MongoDB User Collection (`UserModel.findByIdAndUpdate`) |
@@ -371,7 +371,7 @@ Covers the Vote on a Candidate and Lock Vote use case.
 
 #### 4.2.3. Feature 4: Voting and Fairness (2) ([`FinalizeMeetupTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/FinalizeMeetupTest.kt))
 
-Covers formal Use Case 4 (Finalize Meetup), Calendar integration, and Section 3.4 Use Case 5 (View Fairness History).
+Covers Feature 4 use cases Finalize Meetup, Add Meetup to Google Calendar, View Fairness History, and Settle Fair Credit. The settlement and populated-history E2E flow is in [`ShareLiveLocationTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/e2e/ShareLiveLocationTest.kt), because it exercises the completed live trip before settlement.
 
 - **Expected Behaviors (Automated Single-User):**
 
@@ -425,7 +425,6 @@ Covers formal Use Case 4 (Finalize Meetup), Calendar integration, and Section 3.
   | **Failure 6a: Google Calendar consent canceled** (Use Case 4 Failure 6a) | On finalized meetup, tap "Add to Google Calendar". When the Google account permission prompt opens, tap "Cancel" or system Back. | App displays *"Google Calendar permission request was canceled."* and keeps the button enabled for retry. | Google OAuth permission dialog is an external Google Play Services / Chrome Custom Tab activity outside Compose test inspection. |
   | **Failure 7a: Google Calendar API rate limit / server failure** (Use Case 4 Failure 7a) | Simulate Google API error (e.g. 429 quota exhaustion) and tap "Add to Google Calendar". | App displays the error reason (e.g. *"Google Calendar API rate limit reached. Please retry in a few minutes."*); no event ID is saved. | Live Google API quota exhaustion cannot be triggered in automated production tests without risking quota throttling. Verified via mocks in [`calendar.test.ts`](../backend/tests/mock/calendar.test.ts). |
   | **Calendar Failure 7b: duplicate event request** (Use Case 4 Failure 7b) | Add a finalized meetup once through the GUI and verify it appears as "In calendar". The app replaces `add_to_calendar_button` with this status, so the GUI cannot submit a second add request. For the duplicate-request check, submit the same Calendar event request again using the meetup ID and an authorized access token. | The GUI shows "In calendar" after the first add. The repeated API request returns *"This meetup is already in your calendar"*. The request assertion in `calendar_duplicateEvent` is automated, but it is API-level; the GUI behavior remains a manual check. | The current UI removes the add button after success. The instrumentation method submits a repository request directly and does not exercise a second GUI tap. Backend behavior is covered in [`calendar.test.ts`](../backend/tests/no-mock/calendar.test.ts). |
-  | **View Fairness History: Settled meetup ledger entries** (Section 3.4 Use Case 5) | Complete a meetup through arrival, then as organizer trigger "Settle Fair Credit". Open Group Details -> "Fair Credits". | Screen displays the settled meetup ledger entry with commute duration, group average, and net credit adjustment. | `shareLocation_startTripArrive` checks arrival but does not settle or inspect the ledger. Settlement is currently covered by backend tests in [`settlement.test.ts`](../backend/tests/no-mock/settlement.test.ts); the complete GUI flow remains manual. |
 
 ---
 
@@ -437,12 +436,13 @@ Covers Share Live Location and View Members' Location.
 
   | **Scenario Steps** | **Test Case Steps** |
   | ------------------ | ------------------- |
-  | **Main Success Scenario: start trip, share live location, and arrive (steps 1–8)** (`shareLocation_startTripArrive`) | |
+  | **Main Success Scenario: start trip, share live location, arrive and settle Fair Credit (steps 1–9)** (`shareLocation_startTripArriveAndSettleFairCredit`) | |
   | 1. The participant opens the finalized meetup at its scheduled time. | Open finalized meetup scheduled 1 minute ahead. Wait for `leaving_button` ("I am leaving") to become available upon meetup time arrival, and click it. |
   | 2. The participant confirms live location sharing in the disclosure dialog. | Wait for "Share your live location?" explanation dialog. Click `share_trip_confirm` ("Share and start trip"). |
   | 3-4. System requests and participant grants runtime location permission. | Handle Android runtime permission prompt if presented ("While using the app"). |
   | 5-6. System starts trip, records start time, and shares live updates. | Open live location view. Check that `location_sharing_indicator` and `trip_status_text` ("On the way") are displayed. |
   | 8. The participant selects "I arrived"; system records arrival and stops sharing. | Click `arrived_button`. If the "Have you arrived?" confirmation appears, confirm "I arrived". Check that `trip_status_text` updates to "Arrived", `commute_duration_text` is displayed, and `location_sharing_indicator` is removed. |
+  | 9. The organizer settles Fair Credit and checks the updated history. | Confirm the settle dialog, then open Group Details -> "Fair Credits". Verify the meetup ledger entry and its expanded trip and group-average details. |
   | **Failure 1a: before scheduled meetup time** (`shareLocation_beforeMeetupTime`) | |
   | 1a. The participant views the finalized meetup 10 minutes before scheduled time. | Create and finalize a meetup scheduled 10 minutes in the future. Open the meetup screen. |
   | 1a1. The app does not offer "I am leaving". | Check that the button with test tag `leaving_button` does not exist. |
@@ -454,6 +454,8 @@ Covers Share Live Location and View Members' Location.
   | 6a/6b. Network drops while sharing live location during an active trip. | Start trip with live sharing active. Enable airplane mode with UiDevice. |
   | 6a1/6b1. The app displays connection loss and retry notices while keeping sharing active. | Wait for and check "Live connection unavailable. Refreshing periodically." (6a) and "Location update failed. Retrying..." (6b). Check that `location_sharing_indicator` remains displayed. |
   | 6a2/6b2. Connectivity is restored; sharing automatically resumes. | Disable airplane mode. Wait for sharing indicator to confirm recovery ("Sharing your live location" or "Waiting for a fresh location fix..."). |
+
+**Failure 9a: repeated settlement request (automated backend API coverage, not Android E2E).** The no-mock settlement suite submits repeated and concurrent `POST /api/meetups/:meetupId/settle` requests. [`concurrent settlement requests apply each balance change once`](../backend/tests/no-mock/settlement.test.ts) verifies that requests do not duplicate Fair Credit entries or balance changes; the main settlement test also retries a successful request and checks that the ledger remains unchanged. This is API-level coverage because the app removes the settle action after success, so the UI does not offer a second tap.
 
 - **Multi-User Interactive Scenarios (`--multi-user`):**
 
@@ -468,7 +470,6 @@ Covers Share Live Location and View Members' Location.
 
   | **Requirement / Use Case** | **Manual Test Procedure** | **Pass Criterion** | **Technical Justification for Manual Verification** |
   | -------------------------- | -------------------------- | ------------------ | --------------------------------------------------- |
-  | **Failure 9a: Settlement requested more than once** (Use Case 5 Failure 9a) | After the organizer settles Fair Credit, submit the settlement request again. | The second request is rejected and does not apply duplicate Fair Credit updates. | This is currently backend-only; the idempotency behavior is verified in [`settlement.test.ts`](../backend/tests/no-mock/settlement.test.ts). |
   | **View Members' Location: Real-time map marker movement** (Section 3.4 Use Case 2) | Member A shares location and moves (or simulates GPS route updates via `adb emu geo fix`). Member B views the live map on Device B. | Member B's map renders Member A's pin marker moving smoothly to the updated location in real time. | Real-time map marker position interpolation across two devices requires continuous mock GPS hardware streams. Live transit status synchronization is automated in `shareLocation_anotherMemberSeesTripStatus`; coordinate-free realtime events are verified in [`location-privacy.test.ts`](../backend/tests/nfr/location-privacy.test.ts). |
   | **Live Commute Tracking: Ongoing notification & lockscreen privacy** (Requirements Section 3.7 & LOC-5) | Start live trip. Pull down notification shade. Lock device and inspect lockscreen notification. | Ongoing notification persists, displays transit status, offers quick actions ("Pause sharing", "I arrived"), and redacts private coordinates on the lockscreen. | System notification tray and lockscreen UI belong to Android OS System UI; verified by dedicated NFR tests in [`LocationPrivacyNotificationTest.kt`](../frontend/app/src/androidTest/java/com/example/cpen321application/nfr/LocationPrivacyNotificationTest.kt). |
 
