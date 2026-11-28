@@ -60,7 +60,7 @@ All mocked recommendation HTTP interface tests now reside in `backend/tests/mock
 
 #### 2.1.2. Commit Hash Where Tests Run
 
-Previously recorded backend source revision: `a25c3263efae8e20dc4be53fbd7f6aab29001146`.
+Verified backend revision for the combined interface coverage in Section 2.5: `46884403bfe44e940c56596f258ff88e4f17ce12`.
 
 #### 2.1.3. Explanation on How to Run the Tests
 
@@ -139,7 +139,7 @@ The workflow runs on pushes, pull requests and manual dispatch. It uses Node.js 
 
 ### 2.5. Combined Jest Coverage Report With and Without Mocks
 
-The combined interface run executed `tests/mock/` and `tests/no-mock/`. All **502 tests across 39 suites** passed. Coverage reached **98.52% statements, 95.58% branches, 99.71% functions, and 99.39% lines**.
+The combined interface run executed `tests/mock/` and `tests/no-mock/`. All **502 tests across 39 suites** passed. The rerun reproduced the coverage shown below: **98.52% statements, 95.58% branches, 99.71% functions, and 99.39% lines**.
 
 ![Combined Jest coverage output for mocked and unmocked interface tests](images/Coverage_Combined.png)
 

@@ -126,7 +126,7 @@ describe('Mocked: GET /api/groups/:groupId', () => {
     const res = await request(createApp()).get(`/api/groups/${group.id}`).set('Authorization', bearer(user.id));
 
     expect(res.status).toBe(500);
-    expect(res.body.members).toBeUndefined();
+    expect(res.body).toEqual({ error: 'Internal Server Error' });
   });
 
   // Input: id of a group whose member's user document is gone
@@ -201,6 +201,7 @@ describe('Mocked: POST /api/groups/join', () => {
       .send({ inviteCode: 'ABC234' });
 
     expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Internal Server Error' });
     jest.restoreAllMocks();
     expect((await GroupModel.findById(group.id).orFail()).members).toHaveLength(1);
   });

@@ -55,7 +55,7 @@ describe('Unmocked: POST /api/groups', () => {
     const res = await request(createApp()).post('/api/groups').set('Authorization', bearer(user.id)).send({ name });
 
     expect(res.status).toBe(400);
-    expect(res.body.details).toHaveLength(1);
+    expect(res.body).toEqual({ error: 'Invalid request', details: ['name must be a non-empty string of at most 60 characters'] });
     expect(await GroupModel.countDocuments()).toBe(0);
   });
 
@@ -65,6 +65,7 @@ describe('Unmocked: POST /api/groups', () => {
     const res = await request(createApp()).post('/api/groups').send({ name: 'Study Crew' });
 
     expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'Missing bearer token' });
   });
 });
 
@@ -105,6 +106,7 @@ describe('Unmocked: GET /api/groups', () => {
     const res = await request(createApp()).get('/api/groups');
 
     expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'Missing bearer token' });
   });
 });
 
@@ -137,6 +139,7 @@ describe('Unmocked: GET /api/groups/:groupId', () => {
     const res = await request(createApp()).get('/api/groups/abc').set('Authorization', bearer(user.id));
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'Invalid request', details: ['groupId must be a 24-hex ObjectId'] });
   });
 
   // Input: well-formed id of a group that does not exist
@@ -252,6 +255,7 @@ describe('Unmocked: POST /api/groups/join', () => {
     const results = await Promise.all([join(), join()]);
 
     expect(results.map((r) => Number(r.status)).sort()).toEqual([200, 409]);
+    expect(results.find((r) => r.status === 409)?.body).toEqual({ error: 'Already a member of this group' });
     expect((await GroupModel.findById(group.id).orFail()).members).toHaveLength(2);
   });
 
@@ -266,6 +270,7 @@ describe('Unmocked: POST /api/groups/join', () => {
       .send({ inviteCode });
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'Invalid request', details: ['inviteCode must be a non-empty string of at most 16 characters'] });
   });
 
   // Input: no Authorization header
@@ -274,5 +279,6 @@ describe('Unmocked: POST /api/groups/join', () => {
     const res = await request(createApp()).post('/api/groups/join').send({ inviteCode: 'ABC234' });
 
     expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'Missing bearer token' });
   });
 });

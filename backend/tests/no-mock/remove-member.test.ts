@@ -6,6 +6,7 @@ import { VoteModel, FairCreditEntryModel } from '../../src/voting-fairness/model
 import * as placesClient from '../../src/integrations/places.client';
 import { placeSearchService } from '../../src/recommendation/place-search.service';
 import { bearer } from '../helpers/auth';
+import { expectApiError } from '../helpers/http';
 import { clearDb, startDb, stopDb } from '../helpers/db';
 import { addMember, addParticipants, createGroup, createMeetup, createUserN, createVotingMeetup, futureScheduledAt, MISSING_ID, PARTICIPATION, PLACE_1 } from '../helpers/factories';
 
@@ -51,8 +52,8 @@ describe('Unmocked: DELETE /api/groups/:groupId/members/:memberId', () => {
     expect((await MeetupModel.findById(meetup.id).orFail()).participants).toHaveLength(0);
     expect(await FairCreditEntryModel.countDocuments({ meetupId: meetup.id, userId: member.id })).toBe(1);
     const app = createApp();
-    expect((await request(app).get(`/api/groups/${group.id}`).set('Authorization', bearer(member.id))).status).toBe(403);
-    expect((await request(app).get(`/api/meetups/${meetup.id}`).set('Authorization', bearer(member.id))).status).toBe(403);
+    expectApiError(await request(app).get(`/api/groups/${group.id}`).set('Authorization', bearer(member.id)), 403, 'Not a member of this group');
+    expectApiError(await request(app).get(`/api/meetups/${meetup.id}`).set('Authorization', bearer(member.id)), 403, 'Not a member of this group');
     const groups = await request(app).get('/api/groups').set('Authorization', bearer(member.id));
     expect(groups.body).toEqual([]);
   });
@@ -63,10 +64,10 @@ describe('Unmocked: DELETE /api/groups/:groupId/members/:memberId', () => {
   // Expected output: None
   test('requires organizer privileges and prevents self-removal', async () => {
     const { organizer, member, outsider, group } = await setup();
-    expect((await remove(group.id, member.id)).status).toBe(401);
-    expect((await remove(group.id, organizer.id, member.id)).status).toBe(403);
-    expect((await remove(group.id, member.id, outsider.id)).status).toBe(403);
-    expect((await remove(group.id, organizer.id, organizer.id)).status).toBe(400);
+    expectApiError(await remove(group.id, member.id), 401, 'Missing bearer token');
+    expectApiError(await remove(group.id, organizer.id, member.id), 403, 'Only the group organizer can remove members');
+    expectApiError(await remove(group.id, member.id, outsider.id), 403, 'Not a member of this group');
+    expectApiError(await remove(group.id, organizer.id, organizer.id), 400, 'The group organizer cannot remove themselves');
     expect((await GroupModel.findById(group.id).orFail()).members).toHaveLength(2);
   });
 
@@ -76,10 +77,10 @@ describe('Unmocked: DELETE /api/groups/:groupId/members/:memberId', () => {
   // Expected output: None
   test('validates identifiers and missing targets', async () => {
     const { organizer, member, group } = await setup();
-    expect((await remove('invalid', member.id, organizer.id)).status).toBe(400);
-    expect((await remove(group.id, 'invalid', organizer.id)).status).toBe(400);
-    expect((await remove(MISSING_ID, member.id, organizer.id)).status).toBe(404);
-    expect((await remove(group.id, MISSING_ID, organizer.id)).status).toBe(404);
+    expectApiError(await remove('invalid', member.id, organizer.id), 400, 'Invalid request', ['groupId must be a 24-hex ObjectId']);
+    expectApiError(await remove(group.id, 'invalid', organizer.id), 400, 'Invalid request', ['memberId must be a 24-hex ObjectId']);
+    expectApiError(await remove(MISSING_ID, member.id, organizer.id), 404, 'Group not found');
+    expectApiError(await remove(group.id, MISSING_ID, organizer.id), 404, 'Member not found in this group');
   });
 
   // Input: organizer removes a member who participates in a VOTING or FINALIZED meetup
@@ -90,7 +91,7 @@ describe('Unmocked: DELETE /api/groups/:groupId/members/:memberId', () => {
     const { organizer, member, group } = await setup();
     const meetup = await createMeetup(group.id, organizer.id, { status });
     await addParticipants(meetup.id, [member.id]);
-    expect((await remove(group.id, member.id, organizer.id)).status).toBe(409);
+    expectApiError(await remove(group.id, member.id, organizer.id), 409, 'This member has entered details for a meetup whose voting has started. Settle that meetup before removing them.');
     expect((await GroupModel.findById(group.id).orFail()).members).toHaveLength(2);
     expect((await MeetupModel.findById(meetup.id).orFail()).participants).toHaveLength(1);
   });
@@ -143,7 +144,7 @@ describe('Unmocked: DELETE /api/groups/:groupId/members/:memberId', () => {
     await addParticipants(setupMeetup.id, [member.id]);
     const voting = await createVotingMeetup(group.id, organizer.id, [member.id]);
     await VoteModel.create({ meetupId: voting.id, userId: member.id, placeId: PLACE_1, locked: true, weight: 1 });
-    expect((await remove(group.id, member.id, organizer.id)).status).toBe(409);
+    expectApiError(await remove(group.id, member.id, organizer.id), 409, 'This member has entered details for a meetup whose voting has started. Settle that meetup before removing them.');
     expect((await MeetupModel.findById(setupMeetup.id).orFail()).participants).toHaveLength(1);
     expect(await VoteModel.countDocuments({ meetupId: voting.id, userId: member.id })).toBe(1);
   });
@@ -171,7 +172,7 @@ describe('Unmocked: DELETE /api/groups/:groupId/members/:memberId', () => {
       .set('Authorization', bearer(member.id)).send(PARTICIPATION)).status).toBe(403);
     expect((await request(createApp()).post(`/api/groups/${group.id}/meetups`)
       .set('Authorization', bearer(member.id)).send({ title: 'Test', scheduledAt: futureScheduledAt() })).status).toBe(403);
-    expect((await remove(group.id, member.id, organizer.id)).status).toBe(404);
+    expectApiError(await remove(group.id, member.id, organizer.id), 404, 'Member not found in this group');
   });
 
   // Input: organizer removes a member who has a locked vote in a SETTLED meetup and a vote in another group's meetup; then reads the tally

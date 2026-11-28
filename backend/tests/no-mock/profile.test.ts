@@ -6,6 +6,7 @@ import { profileService } from '../../src/users-groups/profile.service';
 import { userService } from '../../src/users-groups/user.service';
 import { fairCreditService } from '../../src/voting-fairness/fair-credit.service';
 import { GOOGLE_PROFILE, bearer } from '../helpers/auth';
+import { expectApiError } from '../helpers/http';
 import { clearDb, startDb, stopDb } from '../helpers/db';
 import { MISSING_ID, addMember, createGroup, createMeetup, createUserN } from '../helpers/factories';
 
@@ -80,8 +81,8 @@ describe('Unmocked: GET /api/users/me/profile', () => {
   test('Missing user and unauthenticated', async () => {
     const app = createApp();
 
-    expect((await request(app).get('/api/users/me/profile').set('Authorization', bearer(MISSING_ID))).status).toBe(404);
-    expect((await request(app).get('/api/users/me/profile')).status).toBe(401);
+    expectApiError(await request(app).get('/api/users/me/profile').set('Authorization', bearer(MISSING_ID)), 404, 'User not found');
+    expectApiError(await request(app).get('/api/users/me/profile'), 401, 'Missing bearer token');
   });
 });
 
@@ -113,7 +114,7 @@ describe('Unmocked: PUT /api/users/me/profile', () => {
 
       const res = await request(createApp()).put('/api/users/me/profile').set('Authorization', bearer(ada.id)).send(body);
 
-      expect(res.status).toBe(400);
+      expectApiError(res, 400, 'Invalid request', ['displayName must be a non-empty string of at most 60 characters']);
       expect((await UserModel.findById(ada.id))?.displayName).toBeNull();
     },
   );
@@ -126,7 +127,8 @@ describe('Unmocked: PUT /api/users/me/profile', () => {
       .set('Authorization', bearer(MISSING_ID))
       .send({ displayName: 'Ghost' });
 
-    expect(res.status).toBe(404);
+    expectApiError(res, 404, 'User not found');
+    expect(await UserModel.exists({ _id: MISSING_ID })).toBeNull();
   });
 
   // Input: custom display name, then the user signs in with Google again

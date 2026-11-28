@@ -2,6 +2,7 @@ import request, { type Agent } from 'supertest';
 
 import { createApp } from '../../src/app';
 import { NotFound } from '../../src/common/errors';
+import { setTransport } from '../../src/realtime/publisher';
 import { recommendationService } from '../../src/recommendation/recommendation.service';
 import { MeetupModel } from '../../src/users-groups/models';
 import { fairCreditService } from '../../src/voting-fairness/fair-credit.service';
@@ -13,6 +14,7 @@ import { PLACE_1, PLACE_2, addMember, createGroup, createUserN, createVotingMeet
 beforeAll(startDb);
 afterEach(async () => {
   jest.restoreAllMocks();
+  setTransport(null);
   await clearDb();
 });
 afterAll(stopDb);
@@ -58,6 +60,7 @@ describe('Mocked: PUT /api/meetups/:meetupId/vote', () => {
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: 'Internal Server Error' });
+    expect(await VoteModel.countDocuments({ meetupId: meetup.id, userId: ada.id })).toBe(0);
   });
 });
 
@@ -77,6 +80,9 @@ describe('Mocked: POST /api/meetups/:meetupId/vote/lock', () => {
     expect(res.status).toBe(200);
     expect(res.body.weight).toBe(2.5);
     expect(credit).toHaveBeenCalledWith(ada.id, String(meetup.groupId));
+    expect(await VoteModel.findOne({ meetupId: meetup.id, userId: ada.id }).lean()).toMatchObject({
+      placeId: PLACE_2, locked: true, weight: 2.5,
+    });
   });
 });
 
@@ -123,16 +129,45 @@ describe('Mocked: POST /api/meetups/:meetupId/finalize', () => {
     return ctx;
   }
 
-  // Input: organizer finalizes with a clear winner
-  // Expected status code: 409
-  // Expected behavior: a concurrent finalize already moved the meetup, so this one reports a conflict
-  // Mocked behavior: MeetupModel.findOneAndUpdate resolves null
+  // Input: two organizer requests resolve the same tie with different candidates.
+  // Mocked behavior: pause the first conditional write until the other request commits.
+  // Expected: one 200 and one 409 with the voting-state error. The losing request
+  // preserves the winning request's saved data and publishes no extra event.
   test('Concurrent finalize', async () => {
     const { organizer, meetup } = await withLockedVote();
-    jest.spyOn(MeetupModel, 'findOneAndUpdate').mockResolvedValue(null as never);
+    await VoteModel.create({ meetupId: meetup.id, userId: organizer.id, placeId: PLACE_2, locked: true, weight: 1 });
+    const finalize = (placeId: string) => app().post(`/api/meetups/${meetup.id}/finalize`)
+      .set('Authorization', bearer(organizer.id)).send({ placeId });
+    const events: { room: string; event: string; payload: unknown }[] = [];
+    setTransport((room, event, payload) => events.push({ room, event, payload }));
+    const original = MeetupModel.findOneAndUpdate.bind(MeetupModel);
+    const runCompetingFinalize = jest.fn(async () => {
+      const competing = await finalize(PLACE_2);
+      expect(competing.status).toBe(200);
+      expect(competing.body).toMatchObject({ status: 'FINALIZED', winner: { placeId: PLACE_2 } });
+      return MeetupModel.findById(meetup.id).lean().orFail();
+    });
+    jest.spyOn(MeetupModel, 'findOneAndUpdate').mockImplementationOnce((...args: Parameters<typeof original>) => {
+      const query = original(...args);
+      const execute = query.exec.bind(query);
+      jest.spyOn(query, 'exec').mockImplementationOnce(async () => {
+        await runCompetingFinalize();
+        return execute();
+      });
+      return query;
+    });
 
-    expect((await app().post(`/api/meetups/${meetup.id}/finalize`).set('Authorization', bearer(organizer.id))).status)
-      .toBe(409);
+    const rejected = await finalize(PLACE_1);
+
+    expect(rejected.status).toBe(409);
+    expect(rejected.body).toEqual({ error: 'Only a meetup in VOTING can be finalized' });
+    expect(runCompetingFinalize).toHaveBeenCalledTimes(1);
+    expect(await MeetupModel.findById(meetup.id).lean()).toEqual(await runCompetingFinalize.mock.results[0]?.value);
+    expect(events).toEqual([{
+      room: `meetup:${meetup.id}`,
+      event: 'meetup:status',
+      payload: { meetupId: meetup.id, status: 'FINALIZED', winner: expect.objectContaining({ placeId: PLACE_2 }) },
+    }]);
   });
 
   // Input: organizer finalizes with a clear winner
@@ -147,6 +182,7 @@ describe('Mocked: POST /api/meetups/:meetupId/finalize', () => {
     const res = await app().post(`/api/meetups/${meetup.id}/finalize`).set('Authorization', bearer(organizer.id));
 
     expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Internal Server Error' });
     jest.restoreAllMocks();
     const saved = await MeetupModel.findById(meetup.id).orFail();
     expect(saved.status).toBe('VOTING');
@@ -167,7 +203,9 @@ describe('Mocked: POST /api/meetups/:meetupId/finalize', () => {
 
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: 'Winning candidate not found' });
-    expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('VOTING');
+    const saved = await MeetupModel.findById(meetup.id).orFail();
+    expect(saved.status).toBe('VOTING');
+    expect(saved.winner).toBeUndefined();
   });
 });
 
