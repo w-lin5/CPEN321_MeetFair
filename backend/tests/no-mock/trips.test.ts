@@ -102,19 +102,41 @@ describe('Unmocked: POST /api/meetups/:meetupId/trip/arrive', () => {
   });
 });
 
+describe('Unmocked: PUT /api/meetups/:meetupId/trip/location', () => {
+  // Input: a sharing member submits a second point, then an out-of-range latitude.
+  // Expected: 200 with the latest point, then 400 with a validation error and no write.
+  test('replaces the previous point and preserves it when the next update is invalid', async () => {
+    const { meetup, member, auth, call } = await setup();
+    const sendPoint = (lat: number) => request(app).put(`/api/meetups/${meetup.id}/trip/location`)
+      .set('Authorization', auth(member.id)).send({ lat, lng: -123, accuracyM: 8 });
+    expect((await call('start')).status).toBe(200);
+    expect((await sendPoint(49)).status).toBe(200);
+    const latest = await sendPoint(49.1);
+    expect(latest.status).toBe(200);
+    expect(latest.body).toMatchObject({ userId: member.id, location: { lat: 49.1, lng: -123, accuracyM: 8 } });
+    const invalid = await sendPoint(100);
+    expect(invalid.status).toBe(400);
+    expect(invalid.body).toMatchObject({ error: 'Invalid request', details: [expect.stringContaining('lat')] });
+    expect(await TripModel.countDocuments({ meetupId: meetup.id })).toBe(1);
+    expect(await TripModel.findOne({ meetupId: meetup.id }).lean()).toMatchObject({ location: { lat: 49.1, lng: -123, accuracyM: 8 } });
+  });
+});
+
 // Interface POST /api/meetups/:meetupId/trip/stop
 describe('Unmocked: POST /api/meetups/:meetupId/trip/stop', () => {
-  // Input: participant starts a trip, sends a latitude of 100, stops sharing, then starts again
-  // Expected status code: 400 for the location; 204 for the stop; 200 for the restart
-  // Expected behavior: stopping clears sharing and the location; resuming keeps the original startedAt
-  // Expected output: None
-  test('pause and resume do not reset the clock; invalid coordinates are rejected', async () => {
-    const { meetup, member, auth, call } = await setup();
+  // Input: sharing participant with a stored point pauses, a group member lists trips, then the participant resumes.
+  // Expected: 204 for stop, 200 with a paused trip and no visible point for list, 200 for resume.
+  // DB location is cleared and the original start time is retained.
+  test('pause clears the shared point from storage and member views while preserving the timer', async () => {
+    const { meetup, member, viewer, auth, call } = await setup();
     const started = await call('start');
     expect((await request(app).put(`/api/meetups/${meetup.id}/trip/location`).set('Authorization', auth(member.id))
-      .send({ lat: 100, lng: -123, accuracyM: 8 })).status).toBe(400);
+      .send({ lat: 49, lng: -123, accuracyM: 8 })).status).toBe(200);
     expect((await call('stop')).status).toBe(204);
-    expect(await TripModel.findOne({ meetupId: meetup.id }).lean()).toMatchObject({ sharing: false, location: null });
+    expect(await TripModel.findOne({ meetupId: meetup.id }).lean()).toMatchObject({ status: 'ACTIVE', sharing: false, location: null });
+    const listed = await request(app).get(`/api/meetups/${meetup.id}/trips`).set('Authorization', auth(viewer.id));
+    expect(listed.status).toBe(200);
+    expect(listed.body).toEqual([expect.objectContaining({ userId: member.id, status: 'ACTIVE', sharing: false, location: null })]);
     const resumed = await call('start');
     expect(resumed.status).toBe(200);
     expect(resumed.body.startedAt).toBe(started.body.startedAt);

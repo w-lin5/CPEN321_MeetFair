@@ -47,34 +47,36 @@ test('a finalized legacy meetup without a destination cannot start sharing', asy
   expect(await TripModel.countDocuments()).toBe(0);
 });
 
-test.each([new Error('storage down'), null, 'network failure', {}, { code: 123 }])('a non-duplicate start write failure never creates or announces a trip: %p', async failure => {
-  const fixture = await setup();
-  jest.spyOn(console, 'error').mockImplementation(() => undefined);
-  jest.spyOn(TripModel, 'updateOne').mockRejectedValueOnce(failure);
-  const result = await fixture.start();
-  expect(result.status).toBe(500);
-  expect(result.body).toEqual({ error: 'Internal Server Error' });
-  expect(await TripModel.countDocuments()).toBe(0);
-  expect(fixture.events).toEqual([]);
-});
-
-test('a committed start followed by a duplicate-key response returns the same active trip', async () => {
-  const fixture = await setup();
-  const original = TripModel.updateOne.bind(TripModel);
-  jest.spyOn(TripModel, 'updateOne').mockImplementationOnce((...args: Parameters<typeof original>) => {
-    const query = original(...args);
-    const execute = query.exec.bind(query);
-    jest.spyOn(query, 'exec').mockImplementationOnce(async () => {
-      await execute(); throw Object.assign(new Error('duplicate active trip'), { code: 11000 });
-    });
-    return query;
+describe('Mocked: POST /api/meetups/:meetupId/trip/start', () => {
+  test.each([new Error('storage down'), null, 'network failure', {}, { code: 123 }])('a non-duplicate start write failure never creates or announces a trip: %p', async failure => {
+    const fixture = await setup();
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    jest.spyOn(TripModel, 'updateOne').mockRejectedValueOnce(failure);
+    const result = await fixture.start();
+    expect(result.status).toBe(500);
+    expect(result.body).toEqual({ error: 'Internal Server Error' });
+    expect(await TripModel.countDocuments()).toBe(0);
+    expect(fixture.events).toEqual([]);
   });
-  const first = await fixture.start();
-  const retry = await fixture.start();
-  expect(first.status).toBe(200);
-  expect(retry.status).toBe(200);
-  expect(retry.body).toMatchObject({ id: first.body.id, startedAt: first.body.startedAt, status: 'ACTIVE', sharing: true });
-  expect(await TripModel.countDocuments()).toBe(1);
+
+  test('a committed start followed by a duplicate-key response returns the same active trip', async () => {
+    const fixture = await setup();
+    const original = TripModel.updateOne.bind(TripModel);
+    jest.spyOn(TripModel, 'updateOne').mockImplementationOnce((...args: Parameters<typeof original>) => {
+      const query = original(...args);
+      const execute = query.exec.bind(query);
+      jest.spyOn(query, 'exec').mockImplementationOnce(async () => {
+        await execute(); throw Object.assign(new Error('duplicate active trip'), { code: 11000 });
+      });
+      return query;
+    });
+    const first = await fixture.start();
+    const retry = await fixture.start();
+    expect(first.status).toBe(200);
+    expect(retry.status).toBe(200);
+    expect(retry.body).toMatchObject({ id: first.body.id, startedAt: first.body.startedAt, status: 'ACTIVE', sharing: true });
+    expect(await TripModel.countDocuments()).toBe(1);
+  });
 });
 
 test('a missing user profile uses a safe member label without hiding an authorized trip', async () => {
@@ -85,4 +87,60 @@ test('a missing user profile uses a safe member label without hiding an authoriz
   expect(result.status).toBe(200);
   expect(result.body).toHaveLength(1);
   expect(result.body[0]).toMatchObject({ userId: fixture.organizer.id, name: 'Member', photoUrl: null, status: 'ACTIVE' });
+});
+
+const writeFailures = [
+  { route: 'PUT /api/meetups/:meetupId/trip/location', action: 'location' },
+  { route: 'POST /api/meetups/:meetupId/trip/stop', action: 'stop' },
+  { route: 'POST /api/meetups/:meetupId/trip/arrive', action: 'arrive' },
+] as const;
+
+describe.each(writeFailures)('Mocked: $route', ({ action }) => {
+  // Input: an active trip with a saved point. Mock: the trip write rejects once.
+  // Expected: safe 500, stored trip unchanged, and no real-time success notification.
+  test('preserves the active trip if its update cannot be saved', async () => {
+    const fixture = await setup();
+    const path = `/api/meetups/${fixture.meetup.id}/trip`;
+    const token = bearer(fixture.organizer.id);
+    const position = (lat: number) => request(app).put(`${path}/location`).set('Authorization', token)
+      .send({ lat, lng: -123, accuracyM: 8 });
+    expect((await fixture.start()).status).toBe(200);
+    expect((await position(49)).status).toBe(200);
+    const before = await TripModel.findOne({ meetupId: fixture.meetup.id }).lean().orFail();
+    const eventCount = fixture.events.length;
+    const failure = new Error('private storage error');
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const write = action === 'location'
+      ? jest.spyOn(TripModel, 'findOneAndUpdate').mockRejectedValueOnce(failure)
+      : jest.spyOn(TripModel, 'updateOne').mockRejectedValueOnce(failure);
+    const response = action === 'location'
+      ? await position(49.1)
+      : await request(app).post(`${path}/${action}`).set('Authorization', token);
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: 'Internal Server Error' });
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(await TripModel.findById(before._id).lean()).toEqual(before);
+    expect(fixture.events).toHaveLength(eventCount);
+  });
+});
+
+describe('Mocked: GET /api/meetups/:meetupId/trips', () => {
+  // Input: an authorized viewer lists trips. Mock: the trip query fails once.
+  // Expected: safe 500 without coordinates, followed by a successful retry with the original point.
+  test('returns a generic error on read failure and preserves the shared trip', async () => {
+    const fixture = await setup();
+    const path = `/api/meetups/${fixture.meetup.id}`;
+    const point = { lat: 49.1, lng: -123, accuracyM: 8 };
+    expect((await fixture.start()).status).toBe(200);
+    expect((await request(app).put(`${path}/trip/location`).set('Authorization', bearer(fixture.organizer.id)).send(point)).status).toBe(200);
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    jest.spyOn(TripModel, 'find').mockRejectedValueOnce(new Error('private storage error'));
+    const list = () => request(app).get(`${path}/trips`).set('Authorization', bearer(fixture.viewer.id));
+    const failure = await list();
+    expect(failure.status).toBe(500);
+    expect(failure.body).toEqual({ error: 'Internal Server Error' });
+    const retry = await list();
+    expect(retry.status).toBe(200);
+    expect(retry.body).toEqual([expect.objectContaining({ userId: fixture.organizer.id, location: expect.objectContaining(point) })]);
+  });
 });

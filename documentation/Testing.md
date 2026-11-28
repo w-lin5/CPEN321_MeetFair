@@ -8,6 +8,8 @@
 | 2026-11-04 | 2.1.1, 2.1.2, 2.1.3, 2.3, 2.4, 3.2, 4.1, 4.2 | CP2: documented Recommendation Engine interfaces and test commands; updated Create or Join Group and Vote on a Candidate scenarios, automated coverage, and manual multi-user cases; clarified mocked tests and removed references to nonexistent models; updated the commit hash and coverage reports; removed a leftover placeholder and added the automated no-network Create or Join Group test. |
 | 2026-11-19 | 2.1.1, 3.1, 3.2, 4.1, 4.2 | CP3: Added dedicated backend and Android NFR tests for Security and Access Control (HTTPS/WSS, session verification, role restrictions, Calendar token non-persistence) and Location Privacy (consent, authorization, point retention, coordinate-free realtime events, sharing notifications). Added missing backend test-file references. Updated front-end test specifications with the E2E suites covering all use cases and failure scenarios across Features 2, 4, and 5 with updated setup and run instructions. |
 | 2026-11-27 | 2.1.1 | M3: Added live-trip API test references and clarified which interfaces have mocked cases, which dependencies those cases replace, and why some interfaces are verified through integration or unit tests alone. |
+| 2026-11-27 | 2.1.2, 2.5 | M3: Added a combined mocked and unmocked interface coverage report and recorded its tested commit. |
+| 2026-11-27 | 2.1.1, 2.5 | M3: Added Google provider and live-trip interface tests, updated the mocked dependency references, and documented the resulting coverage. |
 ---
 
 ## 2. Back-end Test Specification: APIs
@@ -42,11 +44,11 @@
 | **GET /api/meetups/:meetupId/votes**             | [`backend/tests/no-mock/voting.test.ts`](../backend/tests/no-mock/voting.test.ts)          | [`backend/tests/mock/voting.test.ts`](../backend/tests/mock/voting.test.ts)             | MongoDB Vote Collection (`VoteModel.find`), Recommendation Service (`recommendationService.getByMeetupId`) |
 | **POST /api/meetups/:meetupId/finalize**         | [`backend/tests/no-mock/voting.test.ts`](../backend/tests/no-mock/voting.test.ts)          | [`backend/tests/mock/voting.test.ts`](../backend/tests/mock/voting.test.ts)            | MongoDB Meetup Collection (`MeetupModel.findOneAndUpdate`), Recommendation Service (`recommendationService.getByMeetupId`) |
 | **tally / winner selection** *(internal)* | [`backend/tests/unit/tally.test.ts`](../backend/tests/unit/tally.test.ts); [`backend/tests/no-mock/voting.test.ts`](../backend/tests/no-mock/voting.test.ts) | No mocked case for the calculation itself. Direct unit tests supply inputs and verify the deterministic tally and tie-breaking rules. | None |
-| **GET /api/meetups/:meetupId/trips** | [`tests/no-mock/trips.test.ts`](../backend/tests/no-mock/trips.test.ts); [`tests/nfr/location-privacy.test.ts`](../backend/tests/nfr/location-privacy.test.ts); [`tests/mock/trip-failures.test.ts`](../backend/tests/mock/trip-failures.test.ts) | No mocked list case. Authorization and the member-name fallback are verified through the real database read. | None |
+| **GET /api/meetups/:meetupId/trips** | [`tests/no-mock/trips.test.ts`](../backend/tests/no-mock/trips.test.ts); [`tests/nfr/location-privacy.test.ts`](../backend/tests/nfr/location-privacy.test.ts); [`tests/mock/trip-failures.test.ts`](../backend/tests/mock/trip-failures.test.ts) | [tests/mock/trip-failures.test.ts](../backend/tests/mock/trip-failures.test.ts) | `TripModel.find` fails once to verify a safe 500 and a successful retry. |
 | **POST /api/meetups/:meetupId/trip/start** *(also resumes sharing)* | [`tests/no-mock/trips.test.ts`](../backend/tests/no-mock/trips.test.ts); [`tests/nfr/location-privacy.test.ts`](../backend/tests/nfr/location-privacy.test.ts) | [`tests/mock/trip-failures.test.ts`](../backend/tests/mock/trip-failures.test.ts); [`tests/no-mock/trips.test.ts`](../backend/tests/no-mock/trips.test.ts) *(start racing with group leave)* | `TripModel.updateOne` and its query execution simulate storage failure, a duplicate-key response, or an interleaved group leave. |
-| **PUT /api/meetups/:meetupId/trip/location** | [`tests/no-mock/trips.test.ts`](../backend/tests/no-mock/trips.test.ts); [`tests/nfr/location-privacy.test.ts`](../backend/tests/nfr/location-privacy.test.ts) | No mocked write case. Tests submit coordinates through HTTP and verify authorization, validation, and latest-point retention with real database records. | None |
-| **POST /api/meetups/:meetupId/trip/stop** *(pauses sharing)* | [`tests/no-mock/trips.test.ts`](../backend/tests/no-mock/trips.test.ts); [`tests/nfr/location-privacy.test.ts`](../backend/tests/nfr/location-privacy.test.ts) | No mocked write case. Integration tests verify that pausing clears coordinates, blocks further updates, and preserves the original trip timer after resuming. | None |
-| **POST /api/meetups/:meetupId/trip/arrive** | [`tests/no-mock/trips.test.ts`](../backend/tests/no-mock/trips.test.ts); [`tests/nfr/location-privacy.test.ts`](../backend/tests/nfr/location-privacy.test.ts) | No mocked write case. Integration tests verify persisted timing, coordinate removal, and a repeated arrival request against real database records. | None |
+| **PUT /api/meetups/:meetupId/trip/location** | [`tests/no-mock/trips.test.ts`](../backend/tests/no-mock/trips.test.ts); [`tests/nfr/location-privacy.test.ts`](../backend/tests/nfr/location-privacy.test.ts) | [tests/mock/trip-failures.test.ts](../backend/tests/mock/trip-failures.test.ts) | `TripModel.findOneAndUpdate` fails before saving a new point. |
+| **POST /api/meetups/:meetupId/trip/stop** *(pauses sharing)* | [`tests/no-mock/trips.test.ts`](../backend/tests/no-mock/trips.test.ts); [`tests/nfr/location-privacy.test.ts`](../backend/tests/nfr/location-privacy.test.ts) | [tests/mock/trip-failures.test.ts](../backend/tests/mock/trip-failures.test.ts) | `TripModel.updateOne` fails before pausing sharing. |
+| **POST /api/meetups/:meetupId/trip/arrive** | [`tests/no-mock/trips.test.ts`](../backend/tests/no-mock/trips.test.ts); [`tests/nfr/location-privacy.test.ts`](../backend/tests/nfr/location-privacy.test.ts) | [tests/mock/trip-failures.test.ts](../backend/tests/mock/trip-failures.test.ts) | `TripModel.updateOne` fails before arrival is saved. |
 | **POST /api/meetups/:meetupId/settle** | [`tests/no-mock/settlement.test.ts`](../backend/tests/no-mock/settlement.test.ts) | [`tests/mock/settlement-recovery.test.ts`](../backend/tests/mock/settlement-recovery.test.ts); [`tests/no-mock/settlement.test.ts`](../backend/tests/no-mock/settlement.test.ts)| Settlement snapshot and meetup status writes (`SettlementModel.findOneAndUpdate`, query execution, `MeetupModel.findOneAndUpdate`), Fair Credit balance writes (`FairCreditModel.updateOne`), and outbound HTTP (`fetch`, blocked in recovery tests). |
 | **POST /api/meetups/:meetupId/calendar-event**   | [`backend/tests/no-mock/calendar.test.ts`](../backend/tests/no-mock/calendar.test.ts)         | [`backend/tests/mock/calendar.test.ts`](../backend/tests/mock/calendar.test.ts)           | Google Calendar Client (`calendarClient.createEvent`) |
 | **GET /api/users/me/profile**                    | [`backend/tests/no-mock/profile.test.ts`](../backend/tests/no-mock/profile.test.ts)          | [`backend/tests/mock/profile.test.ts`](../backend/tests/mock/profile.test.ts)            | MongoDB Fair Credit Collection (`FairCreditModel.find`), Group Service (`groupService.listForUser`) |
@@ -58,7 +60,7 @@ All mocked recommendation HTTP interface tests now reside in `backend/tests/mock
 
 #### 2.1.2. Commit Hash Where Tests Run
 
-Tested backend source revision: `a25c3263efae8e20dc4be53fbd7f6aab29001146`.
+Previously recorded backend source revision: `a25c3263efae8e20dc4be53fbd7f6aab29001146`.
 
 #### 2.1.3. Explanation on How to Run the Tests
 
@@ -134,6 +136,22 @@ The workflow runs on pushes, pull requests and manual dispatch. It uses Node.js 
 ### 2.4. Jest Coverage Report Screenshots Without Mocks
 
 ![Coverage without mocks](images/Coverage_Without_Mocks.png)
+
+### 2.5. Combined Jest Coverage Report With and Without Mocks
+
+The combined interface run executed `tests/mock/` and `tests/no-mock/`. All **502 tests across 39 suites** passed. Coverage reached **98.52% statements, 95.58% branches, 99.71% functions, and 99.39% lines**.
+
+![Combined Jest coverage output for mocked and unmocked interface tests](images/Coverage_Combined.png)
+
+Both runs collect coverage from `src/**/*.ts`. The combined interface report covered 715 of 748 branches. The remaining 33 branches are in six files:
+
+| Area | Why coverage is lower in the interface run |
+| --- | --- |
+| Google Places, Routes, and opening hours | **26 branches:** `place-opening-hours.ts` (16), `places.client.ts` (8), and `routes.client.ts` (2). The recommendation flow provides explicit search arguments and validates participant and candidate counts before requesting travel times. The [Places](../backend/tests/unit/places.client.test.ts), [Routes](../backend/tests/unit/routes.client.test.ts), and [opening-hours](../backend/tests/unit/place-opening-hours.test.ts) tests cover direct-call defaults, empty matrices, missing API keys, and additional malformed provider data, such as an impossible calendar date. |
+| Recommendation scoring and preference mapping | **5 branches:** `scoring.ts` (4) and `preference-types.ts` (1). The HTTP flow requires participants and deduplicates places before ranking. Direct [scoring tests](../backend/tests/unit/scoring.test.ts) cover empty participant lists and tie-breaks, including duplicate place IDs. The [preference mapping tests](../backend/tests/unit/preference-types.test.ts) exercise retired stored preference values. |
+| Live location | **2 branches and 1 function** in `trip-updates.ts`. The interface suite checks the visible state after pausing. The [trip update unit tests](../backend/tests/unit/trip-updates.test.ts) use a controlled clock to verify the delayed callback both when additional positions arrived and when no further notification is needed. |
+
+The full suite also runs `tests/unit/` and `tests/nfr/`. The recorded run passed **626 tests across 50 suites** and reached **100%** for statements, branches, functions, and lines.
 
 ---
 
