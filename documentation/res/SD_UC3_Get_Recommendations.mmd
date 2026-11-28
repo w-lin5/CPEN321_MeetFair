@@ -1,4 +1,5 @@
 ﻿%% Use Case 3: Get Recommendations (Requirements_and_Design.md section 4.6).
+%% Each "break" block is one failure scenario of the formal specification (section 3.5); the request stops there.
 sequenceDiagram
     actor O as Organizer
     participant FE as Front-end
@@ -13,33 +14,73 @@ sequenceDiagram
     FE->>REC: POST /api/meetups/:meetupId/recommendations/from-places
     REC->>UG: getForMember(meetupId, userId)
     UG-->>REC: Meetup (organizer, participants, status)
-    alt not the organizer, not in SETUP, or details missing
-        REC-->>FE: 403, 409 or 400 with the reason
+
+    break 1a. caller is not the meetup organizer
+        REC-->>FE: 403 "Only the meetup organizer can search for places"
         FE-->>O: show error
-    else valid
-        REC->>MAPS: Places searchNearby(center, place types)
-        MAPS-->>REC: candidate places
-        REC->>VF: getBalances(groupId, userIds)
-        VF-->>REC: Fair Credit balances
-        REC->>MAPS: Routes computeRouteMatrix(origins, places), one per travel mode
-        MAPS-->>REC: travel times
-        alt Google Maps fails or fewer than 3 usable places
-            REC-->>FE: 502 or 400 with the reason
-            FE-->>O: show error, meetup stays in SETUP, organizer may retry
-        else at least 3 usable places
-            REC->>REC: score places, keep the top 3
-            REC->>UG: transitionStatus(meetupId, SETUP, VOTING)
-            alt meetup no longer in SETUP
-                UG-->>REC: false
-                REC-->>FE: 409 "Recommendations can only be generated while the meetup is in SETUP"
-                FE-->>O: show error
-            else claimed
-                UG-->>REC: true
-                REC->>DB: store recommendation
-                REC->>RT: publish(meetup room, recommendations:ready and meetup:status VOTING)
-                RT-->>FE: recommendations:ready, meetup:status (members in the room)
-                REC-->>FE: 201 Recommendation
-                FE-->>O: open voting screen with the 3 places
-            end
-        end
     end
+    break 1b. meetup is not in SETUP
+        REC-->>FE: 409 "Places can only be searched while the meetup is in SETUP"
+        FE-->>O: show error, organizer may reload the meetup
+    end
+    break 2a. no participant has submitted details
+        REC-->>FE: 400 "At least one member must submit their starting location before searching for places."
+        FE-->>O: show error, organizer may ask members and retry
+    end
+    break 2c. a participant's starting location is invalid
+        REC-->>FE: 400 "A member has an invalid starting location. Please submit it again."
+        FE-->>O: show error
+    end
+    break 2b. organizer has not submitted their own details
+        REC-->>FE: 400 "The organizer must submit their starting location and preferences before searching for places."
+        FE-->>O: show error
+    end
+
+    REC->>MAPS: Places searchNearby(center, place types, scheduled time)
+    break 3b. Google Places fails
+        MAPS-->>REC: error
+        REC-->>FE: 502 "Unable to retrieve nearby places. Please try again later."
+        FE-->>O: show error, meetup stays in SETUP, organizer may retry
+    end
+    MAPS-->>REC: candidate places
+    REC->>REC: keep places confirmed open at the meetup time
+    break 3a. fewer than 3 places confirmed open
+        REC-->>FE: 400 "Fewer than 3 nearby places could be confirmed open at the meetup time. Try a different time, starting location or preference."
+        FE-->>O: show error, meetup stays in SETUP
+    end
+
+    REC->>VF: getBalances(groupId, userIds)
+    VF-->>REC: Fair Credit balances
+    REC->>MAPS: Routes computeRouteMatrix(origins, places), one per travel mode
+    break 4a. Google Routes fails
+        MAPS-->>REC: error
+        REC-->>FE: 502 "Unable to estimate travel times. Please try again later."
+        FE-->>O: show error, meetup stays in SETUP, organizer may retry
+    end
+    MAPS-->>REC: travel times
+    REC->>REC: score places with usable travel times
+    break 5a. fewer than 3 places have usable travel times
+        REC-->>FE: 400 "Not enough nearby places found. At least 3 are needed to start voting."
+        FE-->>O: show error, meetup stays in SETUP, organizer may retry
+    end
+    REC->>REC: keep the top 3
+
+    REC->>UG: transitionStatus(meetupId, SETUP, VOTING)
+    break 1b. meetup left SETUP meanwhile (e.g. concurrent request)
+        UG-->>REC: false
+        REC-->>FE: 409 "Recommendations can only be generated while the meetup is in SETUP"
+        FE-->>O: show error
+    end
+    UG-->>REC: true
+    REC->>DB: store recommendation
+    break 7a. storing the recommendation fails
+        DB-->>REC: error
+        REC->>UG: transitionStatus(meetupId, VOTING, SETUP)
+        REC-->>FE: 500 "Internal Server Error"
+        FE-->>O: show error, meetup is back in SETUP, organizer may retry
+    end
+    DB-->>REC: stored
+    REC->>RT: publish(meetup room, recommendations:ready and meetup:status VOTING)
+    RT-->>FE: recommendations:ready, meetup:status (members in the room)
+    REC-->>FE: 201 Recommendation
+    FE-->>O: open voting screen with the 3 places

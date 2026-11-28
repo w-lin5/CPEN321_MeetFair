@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="1910" viewBox="0 0 1360 1910" font-family="DejaVu Sans, Verdana, sans-serif">
+<!-- Use case diagram (Requirements_and_Design.md section 3.2). Generated layout; edit coordinates directly. -->
+<defs><marker id="open" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="12" markerHeight="12" orient="auto"><path d="M1,1 L11,6 L1,11" fill="none" stroke="#5F5E5A" stroke-width="1.5"/></marker></defs>
+<rect width="1360" height="1910" fill="#FFFFFF"/>
+<rect x="400" y="120" width="560" height="1665" rx="6" fill="#F9F9F7" stroke="#888" stroke-width="1.5"/>
+<text x="424" y="158" font-size="24" font-weight="bold" fill="#222">MeetFair system</text>
+<line x1="220" y1="880" x2="420" y2="208" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="220" y1="880" x2="420" y2="284" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="220" y1="880" x2="420" y2="360" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="220" y1="880" x2="420" y2="436" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="220" y1="880" x2="420" y2="512" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="220" y1="880" x2="420" y2="588" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="220" y1="880" x2="420" y2="664" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="220" y1="880" x2="420" y2="740" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="220" y1="880" x2="420" y2="816" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="1155" y1="840" x2="940" y2="892" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="1155" y1="840" x2="940" y2="968" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="1155" y1="840" x2="940" y2="1044" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="1155" y1="840" x2="940" y2="1120" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="220" y1="880" x2="420" y2="1196" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="1155" y1="840" x2="940" y2="1272" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="220" y1="880" x2="420" y2="1398" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="1155" y1="840" x2="940" y2="1474" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="220" y1="880" x2="420" y2="1550" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="220" y1="880" x2="420" y2="1626" stroke="#5F5E5A" stroke-width="1.5"/>
+<line x1="220" y1="880" x2="420" y2="1702" stroke="#5F5E5A" stroke-width="1.5"/>
+<ellipse cx="680" cy="208" rx="260" ry="30" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1.5"/>
+<text x="680" y="216" font-size="22" text-anchor="middle" fill="#2C2C2A">Sign in</text>
+<ellipse cx="680" cy="284" rx="260" ry="30" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1.5"/>
+<text x="680" y="292" font-size="22" text-anchor="middle" fill="#2C2C2A">Sign out</text>
+<ellipse cx="680" cy="360" rx="260" ry="30" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1.5"/>
+<text x="680" y="368" font-size="22" text-anchor="middle" fill="#2C2C2A">Edit profile</text>
+<ellipse cx="680" cy="436" rx="260" ry="30" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.5"/>
+<text x="680" y="444" font-size="22" text-anchor="middle" fill="#0C447C">Create group</text>
+<ellipse cx="680" cy="512" rx="260" ry="30" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.5"/>
+<text x="680" y="520" font-size="22" text-anchor="middle" fill="#0C447C">Create meetup</text>
+<ellipse cx="680" cy="588" rx="260" ry="30" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.5"/>
+<text x="680" y="596" font-size="22" text-anchor="middle" fill="#0C447C">Join group</text>
+<ellipse cx="680" cy="664" rx="260" ry="30" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.5"/>
+<text x="680" y="672" font-size="22" text-anchor="middle" fill="#0C447C">Enter start location &amp; preferences</text>
+<ellipse cx="680" cy="740" rx="260" ry="30" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.5"/>
+<text x="680" y="748" font-size="22" text-anchor="middle" fill="#0C447C">Leave meetup</text>
+<ellipse cx="680" cy="816" rx="260" ry="30" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.5"/>
+<text x="680" y="824" font-size="22" text-anchor="middle" fill="#0C447C">Leave group</text>
+<ellipse cx="680" cy="892" rx="260" ry="30" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.5"/>
+<text x="680" y="900" font-size="22" text-anchor="middle" fill="#0C447C">Remove member</text>
+<ellipse cx="680" cy="968" rx="260" ry="30" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.5"/>
+<text x="680" y="976" font-size="22" text-anchor="middle" fill="#0C447C">Delete meetup</text>
+<ellipse cx="680" cy="1044" rx="260" ry="30" fill="#E6F1FB" stroke="#185FA5" stroke-width="1.5"/>
+<text x="680" y="1052" font-size="22" text-anchor="middle" fill="#0C447C">Delete group</text>
+<ellipse cx="680" cy="1120" rx="260" ry="30" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1.5"/>
+<text x="680" y="1128" font-size="22" text-anchor="middle" fill="#085041">Get recommendations</text>
+<ellipse cx="680" cy="1196" rx="260" ry="30" fill="#FCEBEB" stroke="#A32D2D" stroke-width="1.5"/>
+<text x="680" y="1204" font-size="22" text-anchor="middle" fill="#791F1F">Vote on a candidate and lock vote</text>
+<ellipse cx="680" cy="1272" rx="260" ry="30" fill="#FCEBEB" stroke="#A32D2D" stroke-width="1.5"/>
+<text x="680" y="1280" font-size="22" text-anchor="middle" fill="#791F1F">Finalize meetup</text>
+<ellipse cx="680" cy="1398" rx="260" ry="30" fill="#FCEBEB" stroke="#A32D2D" stroke-width="1.5"/>
+<text x="680" y="1406" font-size="22" text-anchor="middle" fill="#791F1F">Add meetup to Google Calendar</text>
+<ellipse cx="680" cy="1474" rx="260" ry="30" fill="#FCEBEB" stroke="#A32D2D" stroke-width="1.5"/>
+<text x="680" y="1482" font-size="22" text-anchor="middle" fill="#791F1F">Settle Fair Credit</text>
+<ellipse cx="680" cy="1550" rx="260" ry="30" fill="#FCEBEB" stroke="#A32D2D" stroke-width="1.5"/>
+<text x="680" y="1558" font-size="22" text-anchor="middle" fill="#791F1F">View fairness history</text>
+<ellipse cx="680" cy="1626" rx="260" ry="30" fill="#FAEEDA" stroke="#854F0B" stroke-width="1.5"/>
+<text x="680" y="1634" font-size="22" text-anchor="middle" fill="#633806">Share live location</text>
+<ellipse cx="680" cy="1702" rx="260" ry="30" fill="#FAEEDA" stroke="#854F0B" stroke-width="1.5"/>
+<text x="680" y="1710" font-size="22" text-anchor="middle" fill="#633806">View members' location</text>
+<line x1="680" y1="1302" x2="680" y2="1367" stroke="#5F5E5A" stroke-width="1.5" stroke-dasharray="7 5" marker-end="url(#open)"/>
+<text x="692" y="1342" font-size="20" font-style="italic" fill="#444">«include»</text>
+<line x1="940" y1="208" x2="1080" y2="208" stroke="#5F5E5A" stroke-width="1.5"/>
+<rect x="1080" y="160" width="220" height="96" rx="10" fill="#FFFFFF" stroke="#444" stroke-width="2"/>
+<text x="1190" y="200" font-size="24" font-weight="bold" text-anchor="middle" fill="#222">Google</text>
+<text x="1190" y="234" font-size="24" font-weight="bold" text-anchor="middle" fill="#222">Sign-In</text>
+<line x1="940" y1="1120" x2="1080" y2="1120" stroke="#5F5E5A" stroke-width="1.5"/>
+<rect x="1080" y="1072" width="220" height="96" rx="10" fill="#FFFFFF" stroke="#444" stroke-width="2"/>
+<text x="1190" y="1112" font-size="24" font-weight="bold" text-anchor="middle" fill="#222">Google Maps</text>
+<text x="1190" y="1146" font-size="24" font-weight="bold" text-anchor="middle" fill="#222">Platform</text>
+<line x1="940" y1="1398" x2="1080" y2="1398" stroke="#5F5E5A" stroke-width="1.5"/>
+<rect x="1080" y="1350" width="220" height="96" rx="10" fill="#FFFFFF" stroke="#444" stroke-width="2"/>
+<text x="1190" y="1390" font-size="24" font-weight="bold" text-anchor="middle" fill="#222">Google</text>
+<text x="1190" y="1424" font-size="24" font-weight="bold" text-anchor="middle" fill="#222">Calendar</text>
+<line x1="155" y1="880" x2="220" y2="880" stroke="#5F5E5A" stroke-width="1.5"/>
+<circle cx="130" cy="848" r="16" fill="#FFFFFF" stroke="#5F5E5A" stroke-width="3"/><line x1="130" y1="864" x2="130" y2="908" stroke="#5F5E5A" stroke-width="3"/><line x1="105" y1="880" x2="155" y2="880" stroke="#5F5E5A" stroke-width="3"/><line x1="130" y1="908" x2="110" y2="940" stroke="#5F5E5A" stroke-width="3"/><line x1="130" y1="908" x2="150" y2="940" stroke="#5F5E5A" stroke-width="3"/>
+<text x="130" y="982" font-size="28" font-weight="bold" text-anchor="middle" fill="#222">Member</text>
+<circle cx="1180" cy="808" r="16" fill="#FFFFFF" stroke="#5F5E5A" stroke-width="3"/><line x1="1180" y1="824" x2="1180" y2="868" stroke="#5F5E5A" stroke-width="3"/><line x1="1155" y1="840" x2="1205" y2="840" stroke="#5F5E5A" stroke-width="3"/><line x1="1180" y1="868" x2="1160" y2="900" stroke="#5F5E5A" stroke-width="3"/><line x1="1180" y1="868" x2="1200" y2="900" stroke="#5F5E5A" stroke-width="3"/>
+<text x="1180" y="773" font-size="28" font-weight="bold" text-anchor="middle" fill="#222">Organizer</text>
+<polyline points="1205,840 1345,840 1345,1850 130,1850 130,1028" fill="none" stroke="#5F5E5A" stroke-width="1.5"/>
+<path d="M130,1000 L144,1028 L116,1028 Z" fill="#FFFFFF" stroke="#5F5E5A" stroke-width="1.5"/>
+<text x="150" y="1458" font-size="22" font-style="italic" fill="#444">is a</text>
+<circle cx="1012" cy="1610" r="10" fill="#5F5E5A"/>
+<text x="1040" y="1618" font-size="22" fill="#222">1 Sign in</text>
+<circle cx="1012" cy="1650" r="10" fill="#185FA5"/>
+<text x="1040" y="1658" font-size="22" fill="#222">2 Groups and meetups</text>
+<circle cx="1012" cy="1690" r="10" fill="#0F6E56"/>
+<text x="1040" y="1698" font-size="22" fill="#222">3 Recommendation</text>
+<circle cx="1012" cy="1730" r="10" fill="#A32D2D"/>
+<text x="1040" y="1738" font-size="22" fill="#222">4 Voting and fairness</text>
+<circle cx="1012" cy="1770" r="10" fill="#854F0B"/>
+<text x="1040" y="1778" font-size="22" fill="#222">5 Live location</text>
+</svg>
