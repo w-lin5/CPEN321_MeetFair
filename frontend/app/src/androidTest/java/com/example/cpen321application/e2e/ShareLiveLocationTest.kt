@@ -1,11 +1,14 @@
 package com.example.cpen321application.e2e
 
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -46,15 +49,15 @@ import java.util.Locale
 /**
  * End-to-end tests for Use Case 5 "Share Live Location" against the back end.
  * Each test starts signed in on the group list, creates its own group and meetup with a scheduled time,
- * completes participation, voting and finalization, and tests live location sharing.
+ * completes participation, voting and finalization, and tests live location sharing through arrival and settlement.
  */
 class ShareLiveLocationTest : BaseE2ETest() {
     private var createdInviteCode: String? = null
 
-    // Main success: leave, share and arrive
+    // Main success: leave, share, arrive, settle Fair Credit, and inspect the updated history.
     @Test
-    fun shareLocation_startTripArrive() {
-        openFinalizedMeetup(leadMinutes = 1)
+    fun shareLocation_startTripArriveAndSettleFairCredit() {
+        val meetupTitle = openFinalizedMeetup(leadMinutes = 1)
 
         // 1. Wait until scheduled time arrives and "I am leaving" is offered.
         waitForLeavingButton()
@@ -73,7 +76,7 @@ class ShareLiveLocationTest : BaseE2ETest() {
 
         compose.waitFor(hasTestTag(TestTags.LOCATION_SHARING_INDICATOR))
         compose.onNodeWithTag(TestTags.LOCATION_SHARING_INDICATOR).assertIsDisplayed()
-        compose.onNodeWithTag(TestTags.TRIP_STATUS_TEXT).assertIsDisplayed()
+        compose.onAllNodesWithTag(TestTags.TRIP_STATUS_TEXT).onFirst().assertIsDisplayed()
 
         // 8. Select "I arrived"; system records arrival time, calculates duration, and stops sharing.
         compose.waitFor(hasTestTag(TestTags.ARRIVED_BUTTON))
@@ -88,6 +91,35 @@ class ShareLiveLocationTest : BaseE2ETest() {
         compose.onNodeWithTag(TestTags.TRIP_STATUS_TEXT).assertTextContains("arrived", substring = true, ignoreCase = true)
         compose.onNodeWithTag(TestTags.COMMUTE_DURATION_TEXT).assertIsDisplayed()
         compose.onNodeWithTag(TestTags.LOCATION_SHARING_INDICATOR).assertDoesNotExist()
+
+        compose.onNodeWithTag(TestTags.BACK_BUTTON).performClick()
+        compose.waitFor(hasTestTag(TestTags.MEETUP_TITLE_TEXT) and hasText(meetupTitle, substring = true))
+
+        // The organizer settles from the meetup after the scheduled time and all trips have ended.
+        compose.waitFor(hasTestTag("settle_fair_credit"), timeoutMs = 180_000)
+        compose.onNodeWithTag("settle_fair_credit").performScrollTo().performClick()
+        compose.waitFor(hasText("Settle Fair Credit?"))
+        compose.onNodeWithText("Settle", useUnmergedTree = true).performClick()
+        compose.waitFor(hasText("Fair Credit settled. View updated balances and history in the group's Fair Credit page."))
+
+        // Verify the settled meetup appears in the group's populated Fair Credit history.
+        compose.onNodeWithTag(TestTags.BACK_BUTTON).performScrollTo().performClick()
+        compose.waitFor(hasTestTag("group_fair_credit_button"))
+        compose.onNodeWithTag("group_fair_credit_button").performScrollTo().performClick()
+
+        val entryMatcher = hasTestTag(TestTags.FAIRNESS_ENTRY_ITEM) and hasText(meetupTitle, substring = true)
+        compose.waitFor(entryMatcher)
+        compose.onNode(entryMatcher)
+            .performScrollTo()
+            .assertTextContains(meetupTitle, substring = true)
+            .assertTextContains("Fair Credit change:", substring = true)
+            .performClick()
+
+        compose.onAllNodes(hasTestTag(TestTags.FAIRNESS_HISTORY_EMPTY)).assertCountEquals(0)
+        compose.onNodeWithText("Your trip:", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Group average adjusted burden:", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 
     // Failure 1a: before scheduled time
@@ -124,7 +156,7 @@ class ShareLiveLocationTest : BaseE2ETest() {
         compose.onNodeWithTag(TestTags.LEAVING_BUTTON).performScrollTo().assertIsDisplayed()
 
         startSharingTripAndGrantPermission()
-        compose.onNodeWithTag(TestTags.TRIP_STATUS_TEXT).assertIsDisplayed()
+        compose.onAllNodesWithTag(TestTags.TRIP_STATUS_TEXT).onFirst().assertIsDisplayed()
     }
 
     // Failures 6a/6b: airplane mode drops realtime and location requests; restore service afterwards.

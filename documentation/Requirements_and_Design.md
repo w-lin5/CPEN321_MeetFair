@@ -8,6 +8,7 @@
 | 2026-11-04 | 3.1-3.7, 4.1-4.7 | CP2: updated requirements, use cases, APIs, and architecture for group management, meetup scheduling and participation, Places/Routes recommendations, weighted voting, Fair Credit settlement, and live-trip tracking; clarified validation, permissions, privacy, refresh, notifications, and edge cases; added approximate screen mock-ups; documented the `settlements` collection; updated the dependency and sequence diagrams; and fixed a typo in feature 5. |
 | 2026-11-19 | 3.1-3.2, 3.5, 3.7, 4.1, 4.3, 4.5-4.7 | CP3: Addressed TA feedback by moving refresh and notifications to usability design, making Create Group Formal Use Case 2 and updating diagrams, and removing Health Check from the business component decomposition. Replaced the accessibility validation plan with a viewport/font-scale matrix, TalkBack workflows and explicit pass/fail criteria. Added venue-local opening-hours filtering before recommendation ranking, insufficient confirmed-open venue handling and Google field/billing implications |
 | 2026-11-27 | 3.7, 4.7 | M3: Removed Response Time and Usability and Accessibility from the formal NFRs and their design descriptions in response to TA feedback. Retained Security and Access Control and Location Privacy, both covered by the recorded backend NFR tests. |
+| 2026-11-27 | 3.2, 3.4, 3.5, 4.5, 4.6 | M3: Addressed CP3 TA feedback. Added an \<\<include>> from Finalize meetup to Add meetup to Google Calendar in the use case diagram (SVG source added). Stated that the account is created on first sign-in. Added the Users & Groups cleanup dependencies (direct model writes on leave/remove/delete) to the dependency diagram. Split the Get Recommendations sequence diagram into one branch per formal failure scenario. |
 ---
 
 ## 2. Project Description
@@ -30,6 +31,8 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
 ![Use Case Diagram](images/Use_Case_Diagram.png)
 
+"Finalize meetup" \<\<include>>s "Add meetup to Google Calendar", matching Formal Use Case 4. The SVG source is [`res/Use_Case_Diagram.svg`](res/Use_Case_Diagram.svg).
+
 ### **3.3. Actors Description**
 
 1. **Member**: A signed-in user who belongs to a group. A member creates or joins groups, creates meetups, enters their start location and preferences, votes, adds finalized meetups to their calendar and shares their live location on the way so their actual commute time is recorded.
@@ -42,7 +45,7 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
 - Use cases for feature 1: Sign In
 
-1. **Sign In**: A user authenticates into the app using their Google account to access their groups and past fairness history.
+1. **Sign In**: A user authenticates into the app using their Google account to access their groups and past fairness history. There is no separate sign-up: the first time a Google account signs in, the system automatically creates the user's MeetFair account from their Google profile (name, email and photo), and later sign-ins use that same account.
 2. **Sign out**: A user securely ends their active session on the device.
 3. **Edit Profile**: A member changes the name other members see, or goes back to their Google name.
 
@@ -68,6 +71,7 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 2. **Finalize Meetup**: The organizer closes the voting and the system determines the winning location.
 3. **Add Meetup to Google Calendar**: A member adds the finalized meetup at the winning location to their own Google Calendar.
 4. **View Fairness History**: A member checks their profile and, for a specific group, every member's Fair Credit and their own past credit changes.
+5. **Settle Fair Credit**: After the finalized meetup time has arrived and all current members' trips have ended, the meetup organizer settles Fair Credit. The system uses tracked commute durations when available and stored or calculated travel-time estimates otherwise, saves a settlement snapshot, updates members' balances and history, and marks the meetup SETTLED. A repeated request does not apply credit changes again.
 
 - Use cases for feature 5: Live Location
 
@@ -194,7 +198,7 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 
 #### Use Case 4: Finalize Meetup
 
-**Description**: The Organizer closes the voting process, allowing the system to determine the winning location from the locked, weighted votes. Each member can then add the finalized meetup at the winning location to their own Google Calendar.
+**Description**: The Organizer closes the voting process, allowing the system to determine the winning location from the locked, weighted votes. Each member can then add the finalized meetup at the winning location to their own Google Calendar. Steps 5–8 and failures 6a–7b are the included use case "Add Meetup to Google Calendar" (the \<\<include>> relationship in the use case diagram).
 
 **Primary actor(s)**: Organizer, Member, Google Calendar
     
@@ -263,8 +267,8 @@ MeetFair is a group meetup planning app designed to make repeated meetups more c
 - 6b. A location update fails.
   - 6b1. The system displays "Location update failed. Retrying..." and tries again while the trip is still active.
 
-- 9a. Settlement is requested more than once.
-  - 9a1. The system prevents duplicate Fair Credit changes for the same participant and meetup.
+- 9a. Settlement is requested more than once, including concurrent retries.
+  - 9a1. The system completes settlement without applying duplicate Fair Credit balance or ledger changes for any participant in that meetup.
 
 ### **3.6. Screen Mock-ups**
 
@@ -478,8 +482,10 @@ The following mock-ups are visual references for selected group and meetup scree
 
 ![Dependencies diagram](images/Dependency_Diagram.png)
 
-An arrow A -> B means A calls B's interface. No two back-end components depend on each other, so every arrow points one way:
+An arrow A -> B means A calls B's interface or reads/writes B's models directly. Labels name the main calls; the full interfaces are listed in Section 4.1.
 
+- **Users & Groups cleanup**: when a member leaves a group or meetup, is removed, or a group or meetup is deleted, Users & Groups writes the other components' models directly (`group.service.ts`, `meetup.service.ts`, `deletion.service.ts`): it deletes votes (Voting), cancels or deletes trips (Live Location), deletes recommendations (Recommendation Engine), and deletes Fair Credit balances, ledger entries and settlement snapshots (Fair Credit). These are the only arrows that point back from Users & Groups to the other components.
+- **Live Location** also reads the `groups`, `meetups` and `recommendations` models and reads/writes the `settlements` model directly during settlement, in addition to the interface calls shown.
 - **Voting & Fairness** is shown as its two modules. **Fair Credit** (balances, ledger, settlement, vote weight) depends only on Users & Groups, and the Recommendation Engine reads balances from it. **Voting** reads the candidates from the Recommendation Engine. So the Recommendation Engine never depends on Voting.
 - **Realtime Gateway** is also shown as its two modules. Users & Groups, the Recommendation Engine, Voting & Fairness and Live Location only call the **Event Publisher**, which has no dependencies. Users & Groups calls it when members leave or are removed, participation is withdrawn, or groups and meetups are deleted. The **Socket.IO server** registers itself with the publisher (`setTransport`) and uses Users & Groups to check room membership, so Users & Groups never depends on the socket layer.
 

@@ -57,11 +57,11 @@ fun ComposeTestRule.waitFor(matcher: SemanticsMatcher, timeoutMs: Long = NETWORK
 }
 
 /** Waits for any active status snackbars (e.g. "Meetup finalized...", "Voting has started...") to dismiss. */
-fun ComposeTestRule.dismissSnackbarNotices() {
+fun ComposeTestRule.dismissSnackbarNotices(timeoutMs: Long = 10_000L) {
     val notice = hasText("Voting has started.", substring = true) or
         hasText("Meetup finalized", substring = true)
     if (exists(notice)) {
-        runCatching { waitUntil(7_000) { !exists(notice) } }
+        runCatching { waitUntil(timeoutMs) { !exists(notice) } }
     }
 }
 

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1560" height="985" viewBox="0 0 1560 985" font-family="Arial, Helvetica, sans-serif">
   <!-- Dependency diagram (Requirements_and_Design.md section 4.5). Hand-laid-out SVG; edit coordinates directly.
-       An arrow A -> B means A depends on (calls) B. No two components depend on each other. -->
+       An arrow A -> B means A depends on (calls or writes) B. -->
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
@@ -50,6 +50,20 @@
   <text class="lbl end" x="418" y="575">closeRoom</text>
   <path class="edge" d="M1230,208 H1410 V78" marker-end="url(#arrow)"/>
   <text class="lbl mid" x="1325" y="200">verify ID token</text>
+  <!-- Users & Groups writes other components' models directly when members leave or are removed and when groups or meetups are deleted -->
+  <path class="edge" d="M700,236 V338"/>
+  <path class="edge" d="M520,338 H1060"/>
+  <path class="edge" d="M520,338 V398" marker-end="url(#arrow)"/>
+  <path class="edge" d="M800,338 V398" marker-end="url(#arrow)"/>
+  <path class="edge" d="M1060,338 V358" marker-end="url(#arrow)"/>
+  <circle cx="700" cy="338" r="3.5" fill="#333"/>
+  <circle cx="800" cy="338" r="3.5" fill="#333"/>
+  <text class="lbl" x="708" y="281">leave / remove / delete:</text>
+  <text class="lbl" x="708" y="296">writes their models</text>
+  <text class="lbl end" x="514" y="382">Trip</text>
+  <text class="lbl end" x="794" y="382">Recommendation</text>
+  <text class="lbl end" x="1054" y="374">Vote, FairCredit,</text>
+  <text class="lbl end" x="1054" y="389">FairCreditEntry, Settlement</text>
 
   <!-- Live Location -->
   <path class="edge" d="M560,400 V238" marker-end="url(#arrow)"/>
@@ -68,7 +82,9 @@
   <text class="lbl" x="863" y="262">getForMember,</text>
   <text class="lbl" x="863" y="277">transitionStatus</text>
   <path class="edge" d="M950,428 H1063" marker-end="url(#arrow)"/>
-  <text class="lbl mid" x="1003" y="420">getBalances</text>
+  <text class="lbl mid" x="1003" y="420">getBalances,</text>
+  <text class="lbl mid" x="1003" y="446">voteWeight,</text>
+  <text class="lbl mid" x="1003" y="461">normalizedBurden</text>
   <path class="edge" d="M780,456 V878" marker-end="url(#arrow)"/>
   <text class="lbl" x="788" y="845">searchNearby,</text>
   <text class="lbl" x="788" y="860">computeRouteMatrix</text>
@@ -135,5 +151,5 @@
   <ellipse class="ext" cx="1410" cy="718" rx="60" ry="12"/>
   <text class="node" x="1410" y="752">MongoDB</text>
 
-  <text x="20" y="972" font-size="13" fill="#555">A → B: A depends on (calls) B. Solid boxes inside a dashed group are modules of that one component.</text>
+  <text x="20" y="972" font-size="13" fill="#555">A → B: A depends on (calls or writes the models of) B. Solid boxes inside a dashed group are modules of that one component.</text>
 </svg>
