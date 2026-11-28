@@ -139,7 +139,8 @@ describe('Mocked: POST /api/auth/google', () => {
     const res = await request(createApp()).post('/api/auth/google').send({ idToken: 'valid' });
 
     expect(res.status).toBe(500);
-    expect(res.body.token).toBeUndefined();
+    expect(res.body).toEqual({ error: 'Internal Server Error' });
+    expect(await UserModel.countDocuments()).toBe(0);
   });
 });
 

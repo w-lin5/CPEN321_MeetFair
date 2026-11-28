@@ -77,13 +77,13 @@ describe('Unmocked: POST /api/groups/:groupId/meetups', () => {
   // Expected status code: 400
   // Expected behavior: nothing is stored
   test.each([
-    [{ scheduledAt: futureScheduledAt() }],
-    [{ title: '   ', scheduledAt: futureScheduledAt() }],
-    [{ title: 'x'.repeat(101), scheduledAt: futureScheduledAt() }],
-    [{ title: 'Library' }],
-    [{ title: 'Library', scheduledAt: 'tomorrow' }],
-    [{ title: 'Library', scheduledAt: '2026-13-45T99:99' }],
-  ])('Invalid body %j', async (body) => {
+    [{ scheduledAt: futureScheduledAt() }, 'title must be a non-empty string of at most 100 characters'],
+    [{ title: '   ', scheduledAt: futureScheduledAt() }, 'title must be a non-empty string of at most 100 characters'],
+    [{ title: 'x'.repeat(101), scheduledAt: futureScheduledAt() }, 'title must be a non-empty string of at most 100 characters'],
+    [{ title: 'Library' }, 'scheduledAt must be an ISO-8601 date time'],
+    [{ title: 'Library', scheduledAt: 'tomorrow' }, 'scheduledAt must be an ISO-8601 date time'],
+    [{ title: 'Library', scheduledAt: '2026-13-45T99:99' }, 'scheduledAt must be an ISO-8601 date time'],
+  ])('Invalid body %j', async (body, detail) => {
     const { organizer, group } = await setupGroup();
 
     const res = await request(createApp())
@@ -92,6 +92,7 @@ describe('Unmocked: POST /api/groups/:groupId/meetups', () => {
       .send(body);
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'Invalid request', details: [detail] });
     expect(await MeetupModel.countDocuments()).toBe(0);
   });
 
@@ -108,6 +109,7 @@ describe('Unmocked: POST /api/groups/:groupId/meetups', () => {
       .send({ title: 'Library', scheduledAt: futureScheduledAt() });
 
     expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: 'Not a member of this group' });
     expect(await MeetupModel.countDocuments()).toBe(0);
   });
 
@@ -132,6 +134,7 @@ describe('Unmocked: POST /api/groups/:groupId/meetups', () => {
       .send({ title: 'Library', scheduledAt: futureScheduledAt() });
 
     expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'Missing bearer token' });
   });
 });
 
@@ -180,7 +183,9 @@ describe('Unmocked: GET /api/groups/:groupId/meetups', () => {
     const missing = await request(app).get(`/api/groups/${MISSING_ID}/meetups`).set('Authorization', bearer(outsider.id));
 
     expect(forbidden.status).toBe(403);
+    expect(forbidden.body).toEqual({ error: 'Not a member of this group' });
     expect(missing.status).toBe(404);
+    expect(missing.body).toEqual({ error: 'Group not found' });
   });
 });
 
@@ -210,6 +215,7 @@ describe('Unmocked: GET /api/meetups/:meetupId', () => {
     const res = await request(createApp()).get(`/api/meetups/${meetup.id}`).set('Authorization', bearer(outsider.id));
 
     expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: 'Not a member of this group' });
   });
 
   // Input: meetup id that does not exist / is malformed
@@ -228,6 +234,7 @@ describe('Unmocked: GET /api/meetups/:meetupId', () => {
     const res = await request(createApp()).get(`/api/meetups/${MISSING_ID}`);
 
     expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'Missing bearer token' });
   });
 });
 
@@ -320,18 +327,18 @@ describe('Unmocked: PUT /api/meetups/:meetupId/participation', () => {
   // Expected status code: 400
   // Expected behavior: nothing is stored
   test.each([
-    [{ ...PARTICIPATION, startLocation: { lat: 91, lng: 0 } }],
-    [{ ...PARTICIPATION, startLocation: { lat: 0, lng: -181 } }],
-    [{ ...PARTICIPATION, startLocation: { lat: '49', lng: 0 } }],
-    [{ ...PARTICIPATION, startLocation: { lat: 0, lng: 0, label: 'x'.repeat(121) } }],
-    [{ ...PARTICIPATION, startLocation: 'UBC' }],
-    [{ travelMode: 'WALK', preferences: [] }],
-    [{ ...PARTICIPATION, travelMode: 'TELEPORT' }],
-    [{ startLocation: PARTICIPATION.startLocation, preferences: [] }],
-    [{ ...PARTICIPATION, preferences: ['KARAOKE'] }],
-    [{ ...PARTICIPATION, preferences: ['FOOD', 'FOOD', 'FOOD', 'FOOD', 'FOOD', 'FOOD'] }],
-    [{ ...PARTICIPATION, preferences: 'FOOD' }],
-  ])('Invalid body %j', async (body) => {
+    [{ ...PARTICIPATION, startLocation: { lat: 91, lng: 0 } }, 'lat must be a number between -90 and 90'],
+    [{ ...PARTICIPATION, startLocation: { lat: 0, lng: -181 } }, 'lng must be a number between -180 and 180'],
+    [{ ...PARTICIPATION, startLocation: { lat: '49', lng: 0 } }, 'lat must be a number between -90 and 90'],
+    [{ ...PARTICIPATION, startLocation: { lat: 0, lng: 0, label: 'x'.repeat(121) } }, 'label must be a string of at most 120 characters'],
+    [{ ...PARTICIPATION, startLocation: 'UBC' }, 'startLocation must be an object'],
+    [{ travelMode: 'WALK', preferences: [] }, 'startLocation must be an object'],
+    [{ ...PARTICIPATION, travelMode: 'TELEPORT' }, 'travelMode must be one of WALK, TRANSIT, DRIVE'],
+    [{ startLocation: PARTICIPATION.startLocation, preferences: [] }, 'travelMode must be one of WALK, TRANSIT, DRIVE'],
+    [{ ...PARTICIPATION, preferences: ['KARAOKE'] }, 'preferences has an invalid item'],
+    [{ ...PARTICIPATION, preferences: ['FOOD', 'FOOD', 'FOOD', 'FOOD', 'FOOD', 'FOOD'] }, 'preferences must be array of at most 4 items'],
+    [{ ...PARTICIPATION, preferences: 'FOOD' }, 'preferences must be array of at most 4 items'],
+  ])('Invalid body %j', async (body, detail) => {
     const { member, group } = await setupGroup();
     const meetup = await createMeetup(group.id, member.id);
 
@@ -341,6 +348,7 @@ describe('Unmocked: PUT /api/meetups/:meetupId/participation', () => {
       .send(body);
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'Invalid request', details: [detail] });
     expect((await MeetupModel.findById(meetup.id).orFail()).participants).toHaveLength(0);
   });
 
@@ -365,6 +373,7 @@ describe('Unmocked: PUT /api/meetups/:meetupId/participation', () => {
       .send({ ...PARTICIPATION, travelMode: 'DRIVE' });
 
     expect(newEntry.status).toBe(409);
+    expect(newEntry.body).toEqual({ error: 'Meetup is no longer accepting participation' });
     expect(replace.status).toBe(409);
     expect(replace.body).toEqual({ error: 'Meetup is no longer accepting participation' });
     const stored = await MeetupModel.findById(meetup.id).orFail();
@@ -385,6 +394,7 @@ describe('Unmocked: PUT /api/meetups/:meetupId/participation', () => {
       .send(PARTICIPATION);
 
     expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: 'Not a member of this group' });
   });
 
   // Input: meetup id that does not exist
@@ -398,6 +408,7 @@ describe('Unmocked: PUT /api/meetups/:meetupId/participation', () => {
       .send(PARTICIPATION);
 
     expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'Meetup not found' });
   });
 
   // Input: no Authorization header
@@ -406,5 +417,6 @@ describe('Unmocked: PUT /api/meetups/:meetupId/participation', () => {
     const res = await request(createApp()).put(`/api/meetups/${MISSING_ID}/participation`).send(PARTICIPATION);
 
     expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'Missing bearer token' });
   });
 });

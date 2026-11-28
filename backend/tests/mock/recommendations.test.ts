@@ -208,12 +208,18 @@ describe('Mocked: fairness-ranked recommendations end to end', () => {
   // Expected output: None
   test('only the organizer can generate, and only once', async () => {
     const { a, b, meetup } = await setupThreeMembers();
-    expect((await generate(meetup.id, b.id)).status).toBe(403);
+    const denied = await generate(meetup.id, b.id);
+    expect(denied.status).toBe(403);
+    expect(denied.body).toEqual({ error: 'Only the meetup organizer can search for places' });
+    expect(await RecommendationModel.countDocuments({ meetupId: meetup.id })).toBe(0);
     expect((await MeetupModel.findById(meetup.id).orFail()).status).toBe('SETUP');
 
     const first = await generate(meetup.id, a.id);
     expect(first.status).toBe(201);
-    expect((await generate(meetup.id, a.id)).status).toBe(409);
+    const duplicate = await generate(meetup.id, a.id);
+    expect(duplicate.status).toBe(409);
+    expect(duplicate.body).toEqual({ error: 'Places can only be searched while the meetup is in SETUP' });
+    expect(await RecommendationModel.countDocuments({ meetupId: meetup.id })).toBe(1);
     expect((await RecommendationModel.findOne({ meetupId: meetup.id }).orFail()).generatedAt.toISOString())
       .toBe(first.body.generatedAt);
   });

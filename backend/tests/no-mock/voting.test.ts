@@ -132,7 +132,11 @@ describe('Unmocked: PUT /api/meetups/:meetupId/vote', () => {
     const res = await vote(meetup.id, ada.id, PLACE_2);
 
     expect(res.status).toBe(409);
-    expect((await VoteModel.findOne({ meetupId: meetup.id }).orFail()).placeId).toBe(PLACE_1);
+    expect(res.body).toEqual({ error: 'Your vote is locked' });
+    expect(await VoteModel.find({ meetupId: meetup.id }).lean()).toEqual([
+      expect.objectContaining({ placeId: PLACE_1, locked: true, weight: 1 }),
+    ]);
+    expect(published).toHaveLength(2);
   });
 
   // Input: meetup still in SETUP
@@ -181,14 +185,24 @@ describe('Unmocked: POST /api/meetups/:meetupId/vote/lock', () => {
   });
 
   // Input: participant without a vote; then locking twice
-  // Expected status code: 404; 409
+  // Expected: 404 with no stored vote; 200 on first lock; 409 and no change on retry
   test('No vote, then already locked', async () => {
     const { ada, meetup } = await setup();
 
-    expect((await lock(meetup.id, ada.id)).status).toBe(404);
-    await vote(meetup.id, ada.id, PLACE_1);
+    const missing = await lock(meetup.id, ada.id);
+    expect(missing.status).toBe(404);
+    expect(missing.body).toEqual({ error: 'Vote for a candidate before locking' });
+    expect(await VoteModel.countDocuments({ meetupId: meetup.id })).toBe(0);
+    expect(published).toEqual([]);
+
+    expect((await vote(meetup.id, ada.id, PLACE_1)).status).toBe(200);
     expect((await lock(meetup.id, ada.id)).status).toBe(200);
-    expect((await lock(meetup.id, ada.id)).status).toBe(409);
+    const saved = await VoteModel.findOne({ meetupId: meetup.id }).lean().orFail();
+    const retry = await lock(meetup.id, ada.id);
+    expect(retry.status).toBe(409);
+    expect(retry.body).toEqual({ error: 'Your vote is already locked' });
+    expect(await VoteModel.find({ meetupId: meetup.id }).lean()).toEqual([saved]);
+    expect(published).toHaveLength(2);
   });
 
   // Input: meetup still in SETUP; non-participant
@@ -331,25 +345,45 @@ describe('Unmocked: POST /api/meetups/:meetupId/finalize', () => {
   });
 
   // Input: clear winner, but the organizer names a different one; then a place that is not a candidate
-  // Expected status code: 409; 400
+  // Expected: 409 and 400 with specific errors. Neither request finalizes or publishes.
   test('Rejects invalid manual picks', async () => {
     const { organizer, ada, meetup } = await setup();
     await lockedVote(meetup.id, ada.id, PLACE_1, 1);
 
-    expect((await finalize(meetup.id, organizer.id, { placeId: PLACE_2 })).status).toBe(409);
-    expect((await finalize(meetup.id, organizer.id, { placeId: 'place-9' })).status).toBe(400);
+    const before = await MeetupModel.findById(meetup.id).lean().orFail();
+    const overridden = await finalize(meetup.id, organizer.id, { placeId: PLACE_2 });
+    expect(overridden.status).toBe(409);
+    expect(overridden.body).toEqual({ error: 'A winner can only be picked manually to break a tie' });
+    expect(await MeetupModel.findById(meetup.id).lean()).toEqual(before);
+
+    const unknown = await finalize(meetup.id, organizer.id, { placeId: 'place-9' });
+    expect(unknown.status).toBe(400);
+    expect(unknown.body).toEqual({ error: "placeId is not one of this meetup's candidates" });
+    expect(await MeetupModel.findById(meetup.id).lean()).toEqual(before);
+    expect(published).toEqual([]);
   });
 
   // Input: participant who is not the organizer; then finalizing twice
-  // Expected status code: 403; 200 then 409
+  // Expected: 403, then 200 and 409. Only the successful request saves and publishes the winner.
   test('Only the organizer, only once', async () => {
     const { organizer, ada, meetup } = await setup();
     await lockedVote(meetup.id, ada.id, PLACE_1, 1);
 
-    expect((await finalize(meetup.id, ada.id)).status).toBe(403);
+    const before = await MeetupModel.findById(meetup.id).lean().orFail();
+    const forbidden = await finalize(meetup.id, ada.id);
+    expect(forbidden.status).toBe(403);
+    expect(forbidden.body).toEqual({ error: 'Only the meetup organizer can finalize' });
+    expect(await MeetupModel.findById(meetup.id).lean()).toEqual(before);
+    expect(published).toEqual([]);
+
     expect((await finalize(meetup.id, organizer.id)).status).toBe(200);
-    expect((await finalize(meetup.id, organizer.id)).status).toBe(409);
-    expect((await MeetupModel.findById(meetup.id).orFail()).winner?.placeId).toBe(PLACE_1);
+    const finalized = await MeetupModel.findById(meetup.id).lean().orFail();
+    expect(finalized).toMatchObject({ status: 'FINALIZED', winner: { placeId: PLACE_1 } });
+    const retry = await finalize(meetup.id, organizer.id);
+    expect(retry.status).toBe(409);
+    expect(retry.body).toEqual({ error: 'Only a meetup in VOTING can be finalized' });
+    expect(await MeetupModel.findById(meetup.id).lean()).toEqual(finalized);
+    expect(published).toHaveLength(1);
   });
 });
 

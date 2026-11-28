@@ -20,7 +20,7 @@ describe('Unmocked: POST /api/auth/google', () => {
     const res = await request(createApp()).post('/api/auth/google').send({});
 
     expect(res.status).toBe(400);
-    expect(res.body.details).toHaveLength(1);
+    expect(res.body).toEqual({ error: 'Invalid request', details: ['idToken must be a non-empty string of at most 4096 characters'] });
     expect(await UserModel.countDocuments()).toBe(0);
   });
 
@@ -30,6 +30,8 @@ describe('Unmocked: POST /api/auth/google', () => {
     const res = await request(createApp()).post('/api/auth/google').send({ idToken });
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'Invalid request', details: ['idToken must be a non-empty string of at most 4096 characters'] });
+    expect(await UserModel.countDocuments()).toBe(0);
   });
 
   // Input: syntactically invalid JSON
@@ -126,6 +128,7 @@ describe('Unmocked: GET /api/users/me', () => {
     const res = await request(createApp()).get('/api/users/me').set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'Invalid or expired session token' });
   });
 
   // Input: valid token whose user no longer exists

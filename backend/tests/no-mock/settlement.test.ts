@@ -7,6 +7,7 @@ import { FairCreditEntryModel, FairCreditModel, SettlementModel } from '../../sr
 import { fairCreditService } from '../../src/voting-fairness/fair-credit.service';
 import * as routes from '../../src/integrations/routes.client';
 import { bearer } from '../helpers/auth';
+import { expectApiError } from '../helpers/http';
 import { clearDb, startDb, stopDb } from '../helpers/db';
 import { addMember, CANDIDATES, createFinalizedMeetup, createGroup, createUserN } from '../helpers/factories';
 
@@ -49,27 +50,31 @@ test('settles tracked and estimated commutes, updates history and next vote weig
   expect((await settle()).status).toBe(200);
   expect(await FairCreditEntryModel.countDocuments({ meetupId: meetup.id })).toBe(2);
   expect(await fairCreditService.getBalance(organizer.id, group.id)).toBe(3600);
-  expect((await request(app).post(`/api/meetups/${meetup.id}/trip/start`).set('Authorization', bearer(member.id))).status).toBe(409);
+  expectApiError(await request(app).post(`/api/meetups/${meetup.id}/trip/start`).set('Authorization', bearer(member.id)), 409, 'The meetup must have a finalized destination');
 });
 
 test('requires authentication, group membership and organizer role', async () => {
   const { meetup, member, outsider, settle } = await setup();
-  expect((await request(app).post(`/api/meetups/${meetup.id}/settle`)).status).toBe(401);
-  expect((await settle(member.id)).status).toBe(403);
-  expect((await settle(outsider.id)).status).toBe(403);
+  const before = await MeetupModel.findById(meetup.id).lean().orFail();
+  expectApiError(await request(app).post(`/api/meetups/${meetup.id}/settle`), 401, 'Missing bearer token');
+  expectApiError(await settle(member.id), 403, 'Only the meetup organizer can settle Fair Credit');
+  expectApiError(await settle(outsider.id), 403, 'Not a member of this group');
+  expect(await MeetupModel.findById(meetup.id).lean()).toEqual(before);
+  expect(await SettlementModel.countDocuments({ meetupId: meetup.id })).toBe(0);
+  expect(await FairCreditEntryModel.countDocuments({ meetupId: meetup.id })).toBe(0);
   expect(await FairCreditModel.countDocuments()).toBe(0);
 });
 
 test('rejects future and unfinalized meetups, and active trips including paused sharing', async () => {
   const { meetup, member, settle } = await setup();
   await MeetupModel.updateOne({ _id: meetup.id }, { $set: { scheduledAt: new Date(Date.now() + 60000) } });
-  expect((await settle()).status).toBe(409);
+  expectApiError(await settle(), 409, 'Fair Credit can be settled after the meetup time arrives');
   await MeetupModel.updateOne({ _id: meetup.id }, { $set: { status: 'VOTING', scheduledAt: new Date(Date.now() - 60000) } });
-  expect((await settle()).status).toBe(409);
+  expectApiError(await settle(), 409, 'The meetup must have a finalized destination');
   await MeetupModel.updateOne({ _id: meetup.id }, { $set: { status: 'FINALIZED' } });
   await TripModel.create({ meetupId: meetup.id, userId: member.id, travelMode: 'TRANSIT',
     startedAt: new Date(), status: 'ACTIVE', sharing: false });
-  expect((await settle()).status).toBe(409);
+  expectApiError(await settle(), 409, 'Wait for all started trips to arrive before settling Fair Credit');
   expect(await SettlementModel.countDocuments()).toBe(0);
   expect(await FairCreditModel.countDocuments()).toBe(0);
 });
@@ -100,7 +105,7 @@ test.each([true, false])('leaving with an active trip (sharing=%s) permits settl
   expect(cancelled.cancelledAt).toBeInstanceOf(Date);
   expect(await TripModel.findOne({ meetupId: meetup.id, userId: organizer.id }).lean())
     .toMatchObject({ status: 'ARRIVED', arrivedAt, actualSeconds: 1800 });
-  expect((await request(app).post(`/api/meetups/${meetup.id}/trip/arrive`).set('Authorization', bearer(member.id))).status).toBe(403);
+  expectApiError(await request(app).post(`/api/meetups/${meetup.id}/trip/arrive`).set('Authorization', bearer(member.id)), 403, 'Not a member of this group');
   expect((await settle()).status).toBe(200);
   expect(await FairCreditEntryModel.findOne({ meetupId: meetup.id, userId: member.id }).lean())
     .toMatchObject({ source: 'ESTIMATED', actualSeconds: 600 });
@@ -118,7 +123,7 @@ test('settlement repairs legacy active trips of departed members but still waits
   await GroupModel.updateOne({ _id: group.id }, { $pull: { members: { userId: member.id } } });
   await TripModel.create({ meetupId: meetup.id, userId: organizer.id, travelMode: 'TRANSIT',
     startedAt: new Date(), status: 'ACTIVE', sharing: false });
-  expect((await settle()).status).toBe(409);
+  expectApiError(await settle(), 409, 'Wait for all started trips to arrive before settling Fair Credit');
   expect(await TripModel.findOne({ meetupId: meetup.id, userId: member.id }).lean())
     .toMatchObject({ status: 'CANCELLED', sharing: false, location: null, actualSeconds: null });
   expect(await SettlementModel.countDocuments()).toBe(0);
@@ -130,7 +135,7 @@ test('rejects invalid commute durations without freezing the meetup', async () =
   const { organizer, meetup, settle } = await setup();
   await TripModel.create({ meetupId: meetup.id, userId: organizer.id, travelMode: 'TRANSIT',
     startedAt: new Date(), status: 'ARRIVED', actualSeconds: 86401 });
-  expect((await settle()).status).toBe(400);
+  expectApiError(await settle(), 400, 'A commute duration is invalid or exceeds one day');
   expect(await SettlementModel.countDocuments()).toBe(0);
   expect(await FairCreditModel.countDocuments()).toBe(0);
 });
@@ -139,7 +144,7 @@ test('retries after a failed final state update without applying credits again',
   const { organizer, group, settle } = await setup();
   const update = jest.spyOn(MeetupModel, 'findOneAndUpdate').mockRejectedValueOnce(new Error('temporary database failure'));
   try {
-    expect((await settle()).status).toBe(500);
+    expectApiError(await settle(), 500, 'Internal Server Error');
   } finally {
     update.mockRestore();
   }
@@ -159,7 +164,7 @@ test('resumes a partial balance update without double counting the first member'
     return original(...args);
   });
   try {
-    expect((await settle()).status).toBe(500);
+    expectApiError(await settle(), 500, 'Internal Server Error');
   } finally {
     update.mockRestore();
   }
@@ -189,7 +194,7 @@ test('unreachable fallback leaves the meetup finalized with no credit changes', 
   await RecommendationModel.deleteMany({ meetupId: meetup.id });
   const estimate = jest.spyOn(routes, 'travelSeconds').mockResolvedValueOnce([[null], [1200]]);
   try {
-    expect((await settle()).status).toBe(409);
+    expectApiError(await settle(), 409, 'A participant has no usable travel estimate; ask them to complete a tracked trip');
     expect((await MeetupModel.findById(meetup.id))?.status).toBe('FINALIZED');
     expect(await FairCreditModel.countDocuments()).toBe(0);
     expect(await SettlementModel.countDocuments()).toBe(0);

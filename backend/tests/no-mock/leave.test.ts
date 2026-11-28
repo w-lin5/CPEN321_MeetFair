@@ -6,6 +6,7 @@ import { placeSearchService } from '../../src/recommendation/place-search.servic
 import { GroupModel, MeetupModel } from '../../src/users-groups/models';
 import { VoteModel } from '../../src/voting-fairness/models';
 import { bearer } from '../helpers/auth';
+import { expectApiError } from '../helpers/http';
 import { clearDb, startDb, stopDb } from '../helpers/db';
 import { addMember, addParticipants, createGroup, createMeetup, createUserN, MISSING_ID, PARTICIPATION, PLACE_1 } from '../helpers/factories';
 
@@ -63,7 +64,7 @@ describe('Unmocked: DELETE /api/meetups/:meetupId/participation', () => {
   test.each(['VOTING', 'FINALIZED', 'SETTLED'] as const)('cannot leave a meetup in %s', async status => {
     const { member, meetup } = await setup();
     await MeetupModel.updateOne({ _id: meetup.id }, { $set: { status } });
-    expect((await leaveMeetup(meetup.id, member.id)).status).toBe(409);
+    expectApiError(await leaveMeetup(meetup.id, member.id), 409, 'You can only leave a meetup before voting starts.');
     expect((await MeetupModel.findById(meetup.id).orFail()).participants).toHaveLength(2);
   });
 
@@ -73,10 +74,10 @@ describe('Unmocked: DELETE /api/meetups/:meetupId/participation', () => {
   // Expected output: None
   test('authorization and invalid identifiers', async () => {
     const { member, outsider, meetup } = await setup();
-    expect((await leaveMeetup(meetup.id)).status).toBe(401);
-    expect((await leaveMeetup(meetup.id, outsider.id)).status).toBe(403);
-    expect((await leaveMeetup('invalid', member.id)).status).toBe(400);
-    expect((await leaveMeetup(MISSING_ID, member.id)).status).toBe(404);
+    expectApiError(await leaveMeetup(meetup.id), 401, 'Missing bearer token');
+    expectApiError(await leaveMeetup(meetup.id, outsider.id), 403, 'Not a member of this group');
+    expectApiError(await leaveMeetup('invalid', member.id), 400, 'Invalid request', ['meetupId must be a 24-hex ObjectId']);
+    expectApiError(await leaveMeetup(MISSING_ID, member.id), 404, 'Meetup not found');
   });
 });
 
@@ -90,7 +91,7 @@ describe('Unmocked: POST /api/groups/:groupId/leave', () => {
     const { member, group, meetup } = await setup();
     const voting = await createMeetup(group.id, member.id, { status: 'VOTING' });
     await addParticipants(voting.id, [member.id]);
-    expect((await leaveGroup(group.id, member.id)).status).toBe(409);
+    expectApiError(await leaveGroup(group.id, member.id), 409, 'You cannot leave while a meetup you joined is still voting.');
     expect((await GroupModel.findById(group.id).orFail()).members).toHaveLength(2);
     expect((await MeetupModel.findById(meetup.id).orFail()).participants).toHaveLength(2);
   });
@@ -123,7 +124,7 @@ describe('Unmocked: POST /api/groups/:groupId/leave', () => {
     expect(await VoteModel.countDocuments({ meetupId: finalized.id, userId: member.id })).toBe(1);
     expect((await MeetupModel.findById(otherMeetup.id).orFail()).participants).toHaveLength(1);
     expect(events.every(event => event === 'meetup:updated')).toBe(true);
-    expect((await request(createApp()).get(`/api/groups/${group.id}`).set('Authorization', bearer(member.id))).status).toBe(403);
+    expectApiError(await request(createApp()).get(`/api/groups/${group.id}`).set('Authorization', bearer(member.id)), 403, 'Not a member of this group');
     await request(createApp()).post('/api/groups/join').set('Authorization', bearer(member.id)).send({ inviteCode: group.inviteCode });
     expect((await MeetupModel.findById(meetup.id).orFail()).participants).toHaveLength(1);
   });
@@ -134,10 +135,10 @@ describe('Unmocked: POST /api/groups/:groupId/leave', () => {
   // Expected output: None
   test('authorization, invalid identifiers and group organizer protection', async () => {
     const { organizer, member, outsider, group } = await setup();
-    expect((await leaveGroup(group.id)).status).toBe(401);
-    expect((await leaveGroup(group.id, outsider.id)).status).toBe(403);
-    expect((await leaveGroup(group.id, organizer.id)).status).toBe(400);
-    expect((await leaveGroup('invalid', member.id)).status).toBe(400);
-    expect((await leaveGroup(MISSING_ID, member.id)).status).toBe(404);
+    expectApiError(await leaveGroup(group.id), 401, 'Missing bearer token');
+    expectApiError(await leaveGroup(group.id, outsider.id), 403, 'Not a member of this group');
+    expectApiError(await leaveGroup(group.id, organizer.id), 400, 'The group organizer cannot leave. Delete the group instead.');
+    expectApiError(await leaveGroup('invalid', member.id), 400, 'Invalid request', ['groupId must be a 24-hex ObjectId']);
+    expectApiError(await leaveGroup(MISSING_ID, member.id), 404, 'Group not found');
   });
 });

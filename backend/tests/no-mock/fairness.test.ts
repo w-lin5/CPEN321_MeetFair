@@ -5,6 +5,7 @@ import { MeetupModel } from '../../src/users-groups/models';
 import { fairCreditService } from '../../src/voting-fairness/fair-credit.service';
 import { FairCreditEntryModel, FairCreditModel } from '../../src/voting-fairness/models';
 import { bearer } from '../helpers/auth';
+import { expectApiError } from '../helpers/http';
 import { clearDb, startDb, stopDb } from '../helpers/db';
 import { MISSING_ID, addMember, createGroup, createMeetup, createUserN } from '../helpers/factories';
 
@@ -94,9 +95,9 @@ describe('Unmocked: GET /api/groups/:groupId/fairness', () => {
   test('Non-member, missing and malformed group', async () => {
     const { grace, groupB } = await setup();
 
-    expect((await getFairness(groupB.id, grace.id)).status).toBe(403);
-    expect((await getFairness(MISSING_ID, grace.id)).status).toBe(404);
-    expect((await getFairness('nope', grace.id)).status).toBe(400);
+    expectApiError(await getFairness(groupB.id, grace.id), 403, 'Not a member of this group');
+    expectApiError(await getFairness(MISSING_ID, grace.id), 404, 'Group not found');
+    expectApiError(await getFairness('nope', grace.id), 400, 'Invalid request', ['groupId must be a 24-hex ObjectId']);
   });
 });
 

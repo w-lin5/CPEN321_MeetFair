@@ -118,7 +118,7 @@ describe('Mocked: GET /api/meetups/:meetupId', () => {
     const res = await request(createApp()).get(`/api/meetups/${meetup.id}`).set('Authorization', bearer(user.id));
 
     expect(res.status).toBe(500);
-    expect(res.body.title).toBeUndefined();
+    expect(res.body).toEqual({ error: 'Internal Server Error' });
   });
 });
 
@@ -139,6 +139,7 @@ describe('Mocked: PUT /api/meetups/:meetupId/participation', () => {
       .send(PARTICIPATION);
 
     expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Internal Server Error' });
     jest.restoreAllMocks();
     expect((await MeetupModel.findById(meetup.id).orFail()).participants).toHaveLength(0);
   });

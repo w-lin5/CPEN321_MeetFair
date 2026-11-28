@@ -76,5 +76,7 @@ describe('Mocked: PUT /api/users/me/profile', () => {
       .send({ displayName: 'Ada' });
 
     expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Internal Server Error' });
+    expect((await UserModel.findById(user.id).orFail()).displayName).toBeNull();
   });
 });

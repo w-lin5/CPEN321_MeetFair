@@ -5,6 +5,7 @@ import { setRoomCloser, setTransport } from '../../src/realtime/publisher';
 import { GroupModel, MeetupModel } from '../../src/users-groups/models';
 import { FairCreditEntryModel, FairCreditModel, VoteModel } from '../../src/voting-fairness/models';
 import { bearer } from '../helpers/auth';
+import { expectApiError } from '../helpers/http';
 import { clearDb, startDb, stopDb } from '../helpers/db';
 import { addMember, addParticipants, CANDIDATES, createGroup, createMeetup, createUserN, MISSING_ID, PLACE_1 } from '../helpers/factories';
 
@@ -37,13 +38,18 @@ function del(path: string, userId?: string): Test {
 async function expectDeletionGuards(kind: 'groups' | 'meetups') {
   const { organizer, member, outsider, group, meetup } = await setup();
   const id = kind === 'groups' ? group.id : meetup.id;
-  expect((await del(`${kind}/${id}`)).status).toBe(401);
-  expect((await del(`${kind}/${id}`, member.id)).status).toBe(403);
-  expect((await del(`${kind}/${id}`, outsider.id)).status).toBe(403);
-  expect((await del(`${kind}/invalid`, organizer.id)).status).toBe(400);
-  expect((await del(`${kind}/${MISSING_ID}`, organizer.id)).status).toBe(404);
+  const events: string[] = [];
+  setTransport((_room, event) => events.push(event));
+  expectApiError(await del(`${kind}/${id}`), 401, 'Missing bearer token');
+  expectApiError(await del(`${kind}/${id}`, member.id), 403, kind === 'groups' ? 'Only the group organizer can delete this group' : 'Only the meetup organizer can delete this meetup');
+  expectApiError(await del(`${kind}/${id}`, outsider.id), 403, 'Not a member of this group');
+  expectApiError(await del(`${kind}/invalid`, organizer.id), 400, 'Invalid request', [kind === 'groups' ? 'groupId must be a 24-hex ObjectId' : 'meetupId must be a 24-hex ObjectId']);
+  expectApiError(await del(`${kind}/${MISSING_ID}`, organizer.id), 404, kind === 'groups' ? 'Group not found' : 'Meetup not found');
   expect(await GroupModel.exists({ _id: group.id })).not.toBeNull();
   expect(await MeetupModel.exists({ _id: meetup.id })).not.toBeNull();
+  expect(await RecommendationModel.countDocuments({ meetupId: meetup.id })).toBe(1);
+  expect(await VoteModel.countDocuments({ meetupId: meetup.id })).toBe(1);
+  expect(events).toEqual([]);
 }
 
 // Interface DELETE /api/meetups/:meetupId
@@ -68,8 +74,8 @@ describe('Unmocked: DELETE /api/meetups/:meetupId', () => {
     expect((await FairCreditModel.findOne({ groupId: group.id, userId: member.id }).orFail()).balance).toBe(30);
     expect(events).toEqual(['meetup:deleted', 'group:meetup-deleted', 'group:meetup-deleted']);
     expect(closed).toEqual([`meetup:${meetup.id}`]);
-    expect((await request(createApp()).get(`/api/meetups/${meetup.id}`).set('Authorization', bearer(member.id))).status).toBe(404);
-    expect((await del(`meetups/${meetup.id}`, organizer.id)).status).toBe(404);
+    expectApiError(await request(createApp()).get(`/api/meetups/${meetup.id}`).set('Authorization', bearer(member.id)), 404, 'Meetup not found');
+    expectApiError(await del(`meetups/${meetup.id}`, organizer.id), 404, 'Meetup not found');
   });
 
   // Input: request without a token; group member who is not the meetup organizer; outsider; malformed id; unknown id
@@ -87,7 +93,7 @@ describe('Unmocked: DELETE /api/meetups/:meetupId', () => {
   test('group ownership does not grant deletion of another organizer\'s meetup', async () => {
     const { organizer, member, group } = await setup();
     const meetup = await createMeetup(group.id, member.id);
-    expect((await del(`meetups/${meetup.id}`, organizer.id)).status).toBe(403);
+    expectApiError(await del(`meetups/${meetup.id}`, organizer.id), 403, 'Only the meetup organizer can delete this meetup');
     expect((await del(`meetups/${meetup.id}`, member.id)).status).toBe(204);
   });
 });
@@ -116,7 +122,7 @@ describe('Unmocked: DELETE /api/groups/:groupId', () => {
     expect(await MeetupModel.exists({ _id: otherMeetup.id })).not.toBeNull();
     expect(await RecommendationModel.countDocuments({ meetupId: otherMeetup.id })).toBe(1);
     expect(await VoteModel.countDocuments({ meetupId: otherMeetup.id })).toBe(1);
-    expect((await request(createApp()).post('/api/groups/join').set('Authorization', bearer(member.id)).send({ inviteCode: group.inviteCode })).status).toBe(404);
+    expectApiError(await request(createApp()).post('/api/groups/join').set('Authorization', bearer(member.id)).send({ inviteCode: group.inviteCode }), 404, 'Invalid invite code');
   });
 
   // Input: request without a token; non-organizer member; outsider; malformed id; unknown id

@@ -4,6 +4,7 @@ import { signSessionToken } from '../../src/common/session';
 import { TripModel } from '../../src/live-location/models';
 import { MeetupModel } from '../../src/users-groups/models';
 import { clearDb, startDb, stopDb } from '../helpers/db';
+import { expectApiError } from '../helpers/http';
 import { addMember, createFinalizedMeetup, createGroup, createUserN } from '../helpers/factories';
 
 const app = createApp();
@@ -34,11 +35,12 @@ describe('Unmocked: POST /api/meetups/:meetupId/trip/start', () => {
   // Expected output: None
   test('requires participation, finalized destination and scheduled time', async () => {
     const { meetup, viewer, call } = await setup();
-    expect((await call('start', viewer.id)).status).toBe(403);
+    expectApiError(await call('start', viewer.id), 403, 'Only members who submitted details can share a trip');
     await MeetupModel.updateOne({ _id: meetup.id }, { $set: { scheduledAt: new Date(Date.now() + 60000) } });
-    expect((await call('start')).status).toBe(409);
+    expectApiError(await call('start'), 409, 'You can start your trip when the meetup time arrives');
     await MeetupModel.updateOne({ _id: meetup.id }, { $set: { scheduledAt: new Date(Date.now() - 60000), status: 'VOTING' } });
-    expect((await call('start')).status).toBe(409);
+    expectApiError(await call('start'), 409, 'The meetup must have a finalized destination');
+    expect(await TripModel.countDocuments({ meetupId: meetup.id })).toBe(0);
   });
 
   // Input: member shares a trip for one meetup, starts a second meetup's trip, stops the first, starts the second, then restarts the first
@@ -50,10 +52,10 @@ describe('Unmocked: POST /api/meetups/:meetupId/trip/start', () => {
     await call('start');
     const second = await createFinalizedMeetup(group.id, organizer.id, [member.id]);
     await MeetupModel.updateOne({ _id: second.id }, { $set: { scheduledAt: new Date(Date.now() - 60000) } });
-    expect((await request(app).post(`/api/meetups/${second.id}/trip/start`).set('Authorization', auth(member.id))).status).toBe(409);
+    expectApiError(await request(app).post(`/api/meetups/${second.id}/trip/start`).set('Authorization', auth(member.id)), 409, 'Another trip is already sharing, or this trip has already ended');
     await call('stop');
     expect((await request(app).post(`/api/meetups/${second.id}/trip/start`).set('Authorization', auth(member.id))).status).toBe(200);
-    expect((await call('start')).status).toBe(409);
+    expectApiError(await call('start'), 409, 'Another trip is already sharing, or this trip has already ended');
     expect(await TripModel.findOne({ meetupId: meetup.id }).lean()).toMatchObject({ sharing: false });
   });
 });
@@ -87,7 +89,7 @@ describe('Unmocked: POST /api/meetups/:meetupId/trip/arrive', () => {
     expect(arrived.body.actualSeconds).toBeGreaterThanOrEqual(125);
     expect(arrived.body.actualSeconds).toBeLessThan(130);
     expect((await call('arrive')).body.arrivedAt).toBe(arrived.body.arrivedAt);
-    expect((await call('start')).status).toBe(409);
+    expectApiError(await call('start'), 409, 'You have already arrived for this meetup');
     expect((await request(app).put(`/api/meetups/${meetup.id}/trip/location`).set('Authorization', auth(member.id))
       .send({ lat: 49, lng: -123, accuracyM: 8 })).status).toBe(409);
   });
@@ -97,8 +99,9 @@ describe('Unmocked: POST /api/meetups/:meetupId/trip/arrive', () => {
   // Expected behavior: no trip is created
   // Expected output: None
   test('requires a started trip', async () => {
-    const { call } = await setup();
-    expect((await call('arrive')).status).toBe(409);
+    const { call, meetup } = await setup();
+    expectApiError(await call('arrive'), 409, 'Start your trip before marking arrival');
+    expect(await TripModel.countDocuments({ meetupId: meetup.id })).toBe(0);
   });
 });
 
@@ -151,8 +154,8 @@ describe('Unmocked: GET /api/meetups/:meetupId/trips', () => {
   // Expected output: None
   test('requires authentication and group membership', async () => {
     const { meetup, outsider, auth } = await setup();
-    expect((await request(app).get(`/api/meetups/${meetup.id}/trips`)).status).toBe(401);
-    expect((await request(app).get(`/api/meetups/${meetup.id}/trips`).set('Authorization', auth(outsider.id))).status).toBe(403);
+    expectApiError(await request(app).get(`/api/meetups/${meetup.id}/trips`), 401, 'Missing bearer token');
+    expectApiError(await request(app).get(`/api/meetups/${meetup.id}/trips`).set('Authorization', auth(outsider.id)), 403, 'Not a member of this group');
   });
 });
 
@@ -178,7 +181,7 @@ describe('Unmocked: POST /api/groups/:groupId/leave', () => {
     expect(await TripModel.findOne({ meetupId: meetup.id, userId: organizer.id }).lean())
       .toMatchObject({ status: 'ACTIVE', sharing: true });
     expect(await TripModel.findById(otherTrip.id).lean()).toMatchObject({ status: 'ACTIVE', sharing: false });
-    expect((await request(app).get(`/api/meetups/${meetup.id}/trips`).set('Authorization', auth(member.id))).status).toBe(403);
+    expectApiError(await request(app).get(`/api/meetups/${meetup.id}/trips`).set('Authorization', auth(member.id)), 403, 'Not a member of this group');
   });
 
   test('rejoining does not resume or mark arrival on a cancelled trip', async () => {
@@ -204,7 +207,7 @@ describe('Unmocked: POST /api/groups/:groupId/leave', () => {
       })() as ReturnType<typeof original>;
     });
     try {
-      expect((await call('start')).status).toBe(403);
+      expectApiError(await call('start'), 403, 'Not a member of this group');
       expect(await TripModel.findOne({ meetupId: meetup.id, userId: member.id }).lean())
         .toMatchObject({ status: 'CANCELLED', sharing: false, location: null, actualSeconds: null });
     } finally {

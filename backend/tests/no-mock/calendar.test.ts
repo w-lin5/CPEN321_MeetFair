@@ -3,6 +3,7 @@ import request, { type Test } from 'supertest';
 import { createApp } from '../../src/app';
 import { MeetupModel } from '../../src/users-groups/models';
 import { bearer } from '../helpers/auth';
+import { expectApiError } from '../helpers/http';
 import { clearDb, startDb, stopDb } from '../helpers/db';
 import {
   MISSING_ID,
@@ -31,7 +32,7 @@ describe('Unmocked: POST /api/meetups/:meetupId/calendar-event', () => {
   // Expected status code: 401
   test('Requires authentication', async () => {
     const res = await post(MISSING_ID);
-    expect(res.status).toBe(401);
+    expectApiError(res, 401, 'Missing bearer token');
   });
 
   // Input: missing accessToken, then a malformed meetup id
@@ -45,16 +46,16 @@ describe('Unmocked: POST /api/meetups/:meetupId/calendar-event', () => {
     const noToken = await post(meetup.id, user.id, {});
     const badId = await post('not-an-id', user.id);
 
-    expect(noToken.status).toBe(400);
-    expect(noToken.body.details).toEqual(['accessToken must be a non-empty string of at most 2048 characters']);
-    expect(badId.status).toBe(400);
+    expectApiError(noToken, 400, 'Invalid request', ['accessToken must be a non-empty string of at most 2048 characters']);
+    expectApiError(badId, 400, 'Invalid request', ['meetupId must be a 24-hex ObjectId']);
+    expect((await MeetupModel.findById(meetup.id).orFail()).participants[0]?.calendarEventId).toBeUndefined();
   });
 
   // Input: meetup id that does not exist
   // Expected status code: 404
   test('Missing meetup', async () => {
     const user = await createUserN(1);
-    expect((await post(MISSING_ID, user.id)).status).toBe(404);
+    expectApiError(await post(MISSING_ID, user.id), 404, 'Meetup not found');
   });
 
   // Input: user outside the meetup's group
@@ -65,7 +66,7 @@ describe('Unmocked: POST /api/meetups/:meetupId/calendar-event', () => {
     const group = await createGroup(owner.id);
     const meetup = await createFinalizedMeetup(group.id, owner.id, [owner.id]);
 
-    expect((await post(meetup.id, outsider.id)).status).toBe(403);
+    expectApiError(await post(meetup.id, outsider.id), 403, 'Not a member of this group');
   });
 
   // Input: meetup still in SETUP
@@ -91,7 +92,7 @@ describe('Unmocked: POST /api/meetups/:meetupId/calendar-event', () => {
     await addMember(group.id, member.id);
     const meetup = await createFinalizedMeetup(group.id, owner.id, [owner.id]);
 
-    expect((await post(meetup.id, member.id)).status).toBe(403);
+    expectApiError(await post(meetup.id, member.id), 403, 'Only participants can do this');
   });
 
   // Input: participant who already added the meetup
